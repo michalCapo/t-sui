@@ -68,4 +68,4 @@ app.Page('/table', layout('Table', TableContent));
 app.Page('/others', layout('Others', OthersContent));
 
 app.AutoReload(true);
-app.Listen(app, 1422);
+app.Listen(1422);

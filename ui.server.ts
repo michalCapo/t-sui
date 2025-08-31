@@ -183,7 +183,7 @@ export class App {
         return html;
     }
 
-    Listen(app: App, port = 1422): void {
+    Listen(port = 1422): void {
         const self = this;
         const server = http.createServer(async function (req: IncomingMessage, res: ServerResponse) {
             try {
