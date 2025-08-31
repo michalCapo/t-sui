@@ -1,4 +1,4 @@
-# Coding style for TYpescript
+# Coding style for Typescript
 
 - when using typescript write as golang code
 - dont use spread operator
