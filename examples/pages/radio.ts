@@ -17,7 +17,8 @@ export function RadioContent(_ctx: Context): string {
         { id: 'other', value: 'Other' },
     ];
 
-    const selected = { Gender: 'male' } as any;
+    type RadioData = { Gender: string };
+    const selected: RadioData = { Gender: 'male' };
 
     const singleRadios = ui.div('flex flex-col gap-2')(
         ui.IRadio('Gender', selected).Value('male').Render('Male'),
@@ -26,7 +27,8 @@ export function RadioContent(_ctx: Context): string {
     );
 
     const radiosDefault = ui.IRadioButtons('Group').Options(genders).Render('Gender');
-    const radiosWithSelected = ui.IRadioButtons('Group2', { Group2: 'female' } as any).Options(genders).Render('Gender');
+    const group2: { Group2: string } = { Group2: 'female' };
+    const radiosWithSelected = ui.IRadioButtons('Group2', group2).Options(genders).Render('Gender');
 
     const validation = ui.div('flex flex-col gap-2')(
         ui.div('text-sm text-gray-700')('Required group (no selection)'),

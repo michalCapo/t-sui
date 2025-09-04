@@ -9,7 +9,8 @@ export function NumberContent(_ctx: Context): string {
         );
     }
 
-    const data = { Age: 30, Price: 19.9 } as any;
+    type NumberData = { Age: number; Price: number };
+    const data: NumberData = { Age: 30, Price: 19.9 };
 
     const basics = ui.div('flex flex-col gap-2')(
         row('Integer with range/step', ui.INumber('Age', data).Numbers(0, 120, 1).Render('Age')),

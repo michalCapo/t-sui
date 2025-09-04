@@ -9,7 +9,8 @@ export function DateContent(_ctx: Context): string {
         );
     }
 
-    const data = { Birth: new Date() } as any;
+    type DateData = { Birth: Date };
+    const data: DateData = { Birth: new Date() };
 
     const basics = ui.div('flex flex-col gap-2')(
         row('Date', ui.IDate('Birth', data).Render('Birth date')),

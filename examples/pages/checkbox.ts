@@ -20,7 +20,8 @@ export function CheckboxContent(_ctx: Context): string {
         );
     }
 
-    const data = { Agree: true } as any;
+    type CheckboxData = { Agree: boolean };
+    const data: CheckboxData = { Agree: true };
 
     const basics = ui.div('flex flex-col gap-2')(
         ex(

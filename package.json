@@ -3,7 +3,8 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "dev": "tsx ts/examples/main.ts"
+        "dev": "tsx examples/main.ts",
+        "dev:watch": "tsx examples/main.ts --watch"
     },
     "devDependencies": {
         "@types/node": "^22.18.1",

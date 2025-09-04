@@ -9,7 +9,8 @@ export function AreaContent(_ctx: Context): string {
         );
     }
 
-    const data = { Bio: 'Short text' } as any;
+    type AreaData = { Bio: string };
+    const data: AreaData = { Bio: 'Short text' };
 
     const basics = ui.div('flex flex-col gap-2')(
         row('Default', ui.IArea('Bio', data).Rows(3).Render('Bio')),

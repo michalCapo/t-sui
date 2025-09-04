@@ -5,6 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ui, { Attr, Target } from './ui';
 
+// Internal: associate parsed request bodies without mutating IncomingMessage
+const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
+
 export type Swap = 'inline' | 'outline' | 'none';
 export type ActionType = 'POST' | 'FORM';
 
@@ -23,10 +26,10 @@ export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
-    private _clients: Set<ServerResponse> = new Set();
-    private _sseClients: Set<ServerResponse> = new Set();
-    // private _watchers: fs.FSWatcher[] = [];
-    // private _watchedDirs: Set<string> = new Set();
+    _clients: Set<ServerResponse> = new Set();
+    _sseClients: Set<ServerResponse> = new Set();
+    _watchers: fs.FSWatcher[] = [];
+    _watchedDirs: Set<string> = new Set();
     _startWatcher!: (watch?: string | string[]) => void;
 
     // Dev: when enabled, injects client-side autoreload script
@@ -71,6 +74,17 @@ export class App {
             '  /* Common hover bg used in nav/examples */\n' +
             '  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n' +
             '</style>');
+    }
+
+    // Internal: broadcast a patch message to all SSE clients
+    _sendPatch(payload: { id: string; swap: Swap; html: string }): void {
+        try {
+            const msg = { id: String(payload.id || ''), swap: String(payload.swap || 'outline'), html: ui.Trim(String(payload.html || '')) };
+            const data = 'event: patch\ndata: ' + JSON.stringify(msg) + '\n\n';
+            for (const res of this._sseClients) {
+                try { res.write(data); } catch { /* noop */ }
+            }
+        } catch { /* noop */ }
     }
 
     HTML(title: string, bodyClass: string, body: string): string {
@@ -172,7 +186,7 @@ export class App {
         if (callable == null)
             return undefined;
 
-        const found = Array.from(this.stored.values()).find(function (item: { path: string; method: "GET" | "POST"; callable: Callable; }) { return item.callable === callable; });
+        const found = Array.from(this.stored.values()).find(function(item: { path: string; method: "GET" | "POST"; callable: Callable; }) { return item.callable === callable; });
         if (found)
             return found.path;
 
@@ -201,14 +215,14 @@ export class App {
 
     Listen(port = 1422): void {
         const self = this;
-        const server = http.createServer(async function (req: IncomingMessage, res: ServerResponse) {
+        const server = http.createServer(async function(req: IncomingMessage, res: ServerResponse) {
             try {
                 const url = req.url as string;
                 const path = url.split('?')[0];
                 const method = (req.method as string) || GET;
 
                 if (path === '/__live') {
-                    try { (req.socket as any).setTimeout(0); } catch { /* noop */ }
+                    try { req.socket.setTimeout(0); } catch { /* noop */ }
                     res.writeHead(200, {
                         'Content-Type': 'text/event-stream',
                         'Cache-Control': 'no-cache',
@@ -217,10 +231,10 @@ export class App {
                     });
                     res.write('event: ping\ndata: 1\n\n');
                     self._clients.add(res);
-                    const heartbeat = setInterval(function () {
+                    const heartbeat = setInterval(function() {
                         try { res.write('event: ping\ndata: 1\n\n'); } catch { /* noop */ }
                     }, 15000);
-                    req.on('close', function () {
+                    req.on('close', function() {
                         clearInterval(heartbeat);
                         try { self._clients.delete(res); } catch { /* noop */ }
                         try { res.end(); } catch { /* noop */ }
@@ -229,7 +243,7 @@ export class App {
                 }
 
                 if (path === '/__sse') {
-                    try { (req.socket as any).setTimeout(0); } catch { /* noop */ }
+                    try { req.socket.setTimeout(0); } catch { /* noop */ }
                     res.writeHead(200, {
                         'Content-Type': 'text/event-stream',
                         'Cache-Control': 'no-cache',
@@ -238,10 +252,10 @@ export class App {
                     });
                     res.write('event: hello\ndata: 1\n\n');
                     self._sseClients.add(res);
-                    const heartbeat2 = setInterval(function () {
+                    const heartbeat2 = setInterval(function() {
                         try { res.write('event: ping\ndata: 1\n\n'); } catch { /* noop */ }
                     }, 15000);
-                    req.on('close', function () {
+                    req.on('close', function() {
                         clearInterval(heartbeat2);
                         try { self._sseClients.delete(res); } catch { /* noop */ }
                         try { res.end(); } catch { /* noop */ }
@@ -250,13 +264,13 @@ export class App {
                 }
 
                 let body = '';
-                await new Promise(function (resolve) {
+                await new Promise(function(resolve) {
                     let done = false;
-                    function finish() { if (done) return; done = true; resolve(null as any); }
+                    function finish() { if (done) return; done = true; resolve(undefined); }
                     try {
-                        req.on('data', function (chunk: unknown) {
+                        req.on('data', function(chunk: unknown) {
                             try { body += String(chunk as string); } catch { /* noop */ }
-                            if (body.length > 1_000_000) { try { (req as any).destroy(); } catch { /* noop */ } finish(); }
+                            if (body.length > 1_000_000) { try { req.destroy(); } catch { /* noop */ } finish(); }
                         });
                         req.on('end', finish);
                         req.on('aborted', finish);
@@ -265,11 +279,11 @@ export class App {
                     } catch { finish(); }
                 });
                 try {
-                    let parsed: unknown = undefined;
-                    if (body) { parsed = JSON.parse(body) as unknown; }
-                    (req as any).body = parsed;
+                    let parsed: BodyItem[] | undefined = undefined;
+                    if (body) { parsed = JSON.parse(body) as BodyItem[]; }
+                    REQ_BODY.set(req, parsed);
                 } catch {
-                    (req as any).body = undefined;
+                    REQ_BODY.set(req, undefined);
                 }
 
                 const html = await self._dispatch(method, path, req, res);
@@ -286,10 +300,10 @@ export class App {
                 // Do not restart on per-request exceptions; keep the server running
             }
         });
-        try { (server as any).headersTimeout = 15000; } catch { /* noop */ }
-        try { (server as any).requestTimeout = 30000; } catch { /* noop */ }
-        try { (server as any).keepAliveTimeout = 5000; } catch { /* noop */ }
-        try { server.on('error', function (err: unknown) { try { console.error('Server error:', err); } catch { /* noop */ } }); } catch { /* noop */ }
+        try { server.headersTimeout = 15000; } catch { /* noop */ }
+        try { server.requestTimeout = 30000; } catch { /* noop */ }
+        try { server.keepAliveTimeout = 5000; } catch { /* noop */ }
+        try { server.on('error', function(err: unknown) { try { console.error('Server error:', err); } catch { /* noop */ } }); } catch { /* noop */ }
         server.listen(port, '0.0.0.0');
         try { console.log('Listening on http://0.0.0.0:' + String(port)); } catch { /* noop */ }
     }
@@ -297,7 +311,7 @@ export class App {
 }
 
 // Start internal filesystem watcher to broadcast autoreload events over SSE
-App.prototype._startWatcher = function (this: App, watch?: string | string[]) {
+App.prototype._startWatcher = function(this: App, watch?: string | string[]) {
     const roots: string[] = [];
     const add = (p?: string) => {
         if (!p) return;
@@ -315,8 +329,8 @@ App.prototype._startWatcher = function (this: App, watch?: string | string[]) {
         if (!fs.existsSync(dir)) return;
         const stat = fs.statSync(dir);
         if (!stat.isDirectory()) return;
-        if ((this as any)._watchedDirs.has(dir)) return;
-        (this as any)._watchedDirs.add(dir);
+        if (this._watchedDirs.has(dir)) return;
+        this._watchedDirs.add(dir);
         dirs.push(dir);
         let entries: string[] = [];
         try { entries = fs.readdirSync(dir); } catch { return; }
@@ -333,7 +347,7 @@ App.prototype._startWatcher = function (this: App, watch?: string | string[]) {
 
     const triggerReload = debounce(() => {
         const msg = 'event: reload\ndata: 1\n\n';
-        for (const res of (this as any)._clients as Set<ServerResponse>) {
+        for (const res of this._clients as Set<ServerResponse>) {
             try { res.write(msg); } catch { /* noop */ }
         }
     }, 100);
@@ -350,7 +364,7 @@ App.prototype._startWatcher = function (this: App, watch?: string | string[]) {
                 }
                 triggerReload();
             });
-            (this as any)._watchers.push(watcher);
+            this._watchers.push(watcher);
         } catch { /* noop */ }
     }
 };
@@ -371,11 +385,11 @@ export class Context {
 
     Body<T extends object>(output: T): void {
         try {
-            const data = this.req ? ((this.req as any).body as BodyItem[] | undefined) : undefined;
+            const data = this.req ? REQ_BODY.get(this.req) : undefined;
             if (!Array.isArray(data)) return;
             for (let i = 0; i < data.length; i++) {
                 const item = data[i];
-                setPath(output as any, item.name, coerce(item.type, item.value));
+                setPath(output as unknown as Record<string, unknown>, item.name, coerce(item.type, item.value));
             }
         } catch {
             /* noop */
@@ -414,9 +428,9 @@ export class Context {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function (target: Attr) { return self.Post('FORM', 'inline', { method: callable, target: target, values: values }); },
-            Replace: function (target: Attr) { return self.Post('FORM', 'outline', { method: callable, target: target, values: values }); },
-            None: function () { return self.Post('FORM', 'none', { method: callable, values: values }); },
+            Render: function(target: Attr) { return self.Post('FORM', 'inline', { method: callable, target: target, values: values }); },
+            Replace: function(target: Attr) { return self.Post('FORM', 'outline', { method: callable, target: target, values: values }); },
+            None: function() { return self.Post('FORM', 'none', { method: callable, values: values }); },
         };
     }
 
@@ -424,9 +438,9 @@ export class Context {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function (target: Attr) { return self.Post('POST', 'inline', { method: callable, target: target, values: values }); },
-            Replace: function (target: Attr) { return self.Post('POST', 'outline', { method: callable, target: target, values: values }); },
-            None: function () { return self.Post('POST', 'none', { method: callable, values: values }); },
+            Render: function(target: Attr) { return self.Post('POST', 'inline', { method: callable, target: target, values: values }); },
+            Replace: function(target: Attr) { return self.Post('POST', 'outline', { method: callable, target: target, values: values }); },
+            None: function() { return self.Post('POST', 'none', { method: callable, values: values }); },
         };
     }
 
@@ -434,9 +448,9 @@ export class Context {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function (target: Attr): Attr { return { onsubmit: self.Post('FORM', 'inline', { method: callable, target: target, values: values }) }; },
-            Replace: function (target: Attr): Attr { return { onsubmit: self.Post('FORM', 'outline', { method: callable, target: target, values: values }) }; },
-            None: function (): Attr { return { onsubmit: self.Post('FORM', 'none', { method: callable, values: values }) }; },
+            Render: function(target: Attr): Attr { return { onsubmit: self.Post('FORM', 'inline', { method: callable, target: target, values: values }) }; },
+            Replace: function(target: Attr): Attr { return { onsubmit: self.Post('FORM', 'outline', { method: callable, target: target, values: values }) }; },
+            None: function(): Attr { return { onsubmit: self.Post('FORM', 'none', { method: callable, values: values }) }; },
         };
     }
 
@@ -450,9 +464,9 @@ export class Context {
 
     Patch(target: Attr | string, html: string, swap: Swap = 'outline'): void {
         try {
-            const id = typeof target === 'string' ? target : ((target && (target as any).id) || '');
+            const id = typeof target === 'string' ? target : ((target && (target as Attr).id) || '');
             if (!id) { return; }
-            (this.app as any)._sendPatch({ id: id, swap: swap, html: html });
+            this.app._sendPatch({ id: id, swap: swap, html: html });
         } catch { /* noop */ }
     }
 
@@ -463,9 +477,9 @@ export class Context {
         const skeleton = (options && options.skeleton) || defaultSkeleton(id);
         const values = (options && options.values) || [];
         try {
-            setTimeout(async function () {
+            setTimeout(async function() {
                 try {
-                    const ctx2 = new Context(self.app, self.req, self.res, self.sessionID);
+                    const ctx = new Context(self.app, self.req, self.res, self.sessionID);
                     let html = '';
                     try {
                         // Prepare body-like values if provided
@@ -480,12 +494,12 @@ export class Context {
                                     items.push({ name: kv[0], type: typeOf(kv[1]), value: valueToString(kv[1]) });
                                 }
                             }
-                            (ctx2.req as any) = { body: items } as any;
+                            REQ_BODY.set(ctx.req, items as BodyItem[]);
                         }
                     } catch { /* noop */ }
-                    try { html = String(await method(ctx2)); } catch (_) { html = ''; }
-                    if (ctx2.append.length) { html += ctx2.append.join(''); }
-                    (self.app as any)._sendPatch({ id: id, swap: swap, html: html });
+                    try { html = String(await method(ctx)); } catch (_) { html = ''; }
+                    if (ctx.append.length) { html += ctx.append.join(''); }
+                    self.app._sendPatch({ id: id, swap: swap, html: html });
                 } catch { /* noop */ }
             }, 0);
         } catch { /* noop */ }
@@ -958,7 +972,7 @@ function script(parts: string[]) {
 
 function debounce(fn: () => void, ms: number) {
     let t: NodeJS.Timeout | undefined;
-    return function () {
+    return function() {
         if (t) clearTimeout(t);
         t = setTimeout(fn, ms);
     };
@@ -980,15 +994,7 @@ function normalizePath(p: string): string {
 function routeKey(method: "GET" | "POST", path: string): string { return method + ' ' + path; }
 
 // Internal: broadcast a patch message to all SSE clients
-(App.prototype as any)._sendPatch = function (this: App, payload: { id: string; swap: Swap; html: string }) {
-    try {
-        const msg = { id: String(payload.id || ''), swap: String(payload.swap || 'outline'), html: ui.Trim(String(payload.html || '')) };
-        const data = 'event: patch\ndata: ' + JSON.stringify(msg) + '\n\n';
-        for (const res of (this as any)._sseClients as Set<ServerResponse>) {
-            try { res.write(data); } catch { /* noop */ }
-        }
-    } catch { /* noop */ }
-};
+// _sendPatch is now implemented as a method on App
 
 function defaultSkeleton(id: string): string {
     const rid = id || ('i' + Math.random().toString(36).slice(2));

@@ -29,7 +29,8 @@ export function SelectContent(ctx: Context): string {
         { id: 'two', value: 'Two' },
         { id: 'three', value: 'Three' },
     ];
-    const data = { Country: '' } as any;
+    type SelectData = { Country: string };
+    const data: SelectData = { Country: '' };
     const optsNoPlaceholder = [
         { id: 'one', value: 'One' },
         { id: 'two', value: 'Two' },

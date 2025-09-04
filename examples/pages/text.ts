@@ -11,7 +11,8 @@ export function TextContent(_ctx: Context): string {
         );
     }
 
-    const data = { Name: 'John Doe' } as any;
+    type TextData = { Name: string };
+    const data: TextData = { Name: 'John Doe' };
 
     // Basics and states
     const basics = ui.div('flex flex-col gap-2')(
