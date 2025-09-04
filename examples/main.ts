@@ -33,13 +33,15 @@ const app = MakeApp('en');
 
 function layout(title: string, body: (ctx: Context) => string): Callable {
     return function (ctx: Context): string {
+        const currentPath = ((ctx.req && (ctx.req as any).url) ? String((ctx.req as any).url) : '/').split('?')[0].toLowerCase();
         let links = '';
         for (let i = 0; i < routes.length; i++) {
             const r = routes[i];
-            const baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap';
-            const cls = r.Path === '/'
-                ? baseCls + ' bg-blue-700 text-white hover:bg-blue-600'
-                : baseCls + ' hover:bg-gray-200';
+            const baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap transition-colors';
+            const isActive = (r.Path || '').toLowerCase() === currentPath;
+            const cls = isActive
+                ? baseCls + ' bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500'
+                : baseCls + ' text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700';
             const a = ui.a(cls, { href: r.Path }, ctx.Load(r.Path));
             if (links.length > 0) links += ' ';
             links += a(r.Title);
