@@ -1,4 +1,4 @@
-import ui from '../../ui';
+import ui, { Target } from '../../ui';
 import { Context } from '../../ui.server';
 import { HelloContent } from './hello';
 import { CounterContent } from './counter';
@@ -30,6 +30,18 @@ function IconsDemo(): string {
 }
 
 export function OthersContent(ctx: Context): string {
+    // Deferred block (SSE skeleton -> replace when ready)
+    const deferredTarget = ui.Target();
+    function DeferredBox(t: Target) {
+        return async function (_: Context): Promise<string> {
+            await new Promise(function (r) { setTimeout(r, 2000); });
+            return ui.div('bg-white p-4 rounded shadow', t)(
+                ui.div('text-lg font-semibold')('Deferred content loaded'),
+                ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
+            );
+        };
+    }
+
     const hello = ui.div('bg-white p-6 rounded-lg shadow w-full')(
         ui.div('text-lg font-bold')(
             'Hello'
@@ -58,6 +70,12 @@ export function OthersContent(ctx: Context): string {
             'Others'
         ),
         ui.div('text-gray-600')('Miscellaneous demos: Hello, Counter, Login, and icon helpers.'),
+        ui.div('bg-white p-6 rounded-lg shadow w-full')(
+            ui.div('text-lg font-bold')('Deferred (SSE)'),
+            ui.div('text-gray-600 mb-3')('Shows a skeleton that is replaced when the server finishes rendering.'),
+            // Return the skeleton immediately; server will push a patch to replace it
+            ctx.Defer(DeferredBox(deferredTarget), deferredTarget, { swap: 'outline' })
+        ),
         hello,
         counter,
         login,

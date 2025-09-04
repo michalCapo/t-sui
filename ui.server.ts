@@ -24,6 +24,7 @@ export class App {
     Language: string;
     HTMLHead: string[];
     private _clients: Set<ServerResponse> = new Set();
+    private _sseClients: Set<ServerResponse> = new Set();
     // private _watchers: fs.FSWatcher[] = [];
     // private _watchedDirs: Set<string> = new Set();
     _startWatcher!: (watch?: string | string[]) => void;
@@ -53,8 +54,23 @@ export class App {
             '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
             '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
             '<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css\" integrity=\"sha512-wnea99uKIC3TJF7v4eKk4Y+lMz2Mklv18+r4na2Gn1abDRPPOeef95xTzdwGD9e6zXJBteMIhZ1+68QC5byJZw==\" crossorigin=\"anonymous\" referrerpolicy=\"no-referrer\" />',
-            script([__stringify, __loader, __offline, __error, __post, __submit, __load]),
+            script([__stringify, __loader, __offline, __error, __post, __submit, __load, __sse, __theme]),
         ];
+        // Dark mode CSS overrides (after Tailwind link to take precedence)
+        this.HTMLHead.push('<style id=\"tsui-dark-overrides\">\n' +
+            '  html.dark{ color-scheme: dark; }\n' +
+            '  /* Override backgrounds commonly used by components and examples */\n' +
+            '  html.dark.bg-white, html.dark.bg-gray-100, html.dark.bg-gray-200{ background-color:#111827 !important; }\n' +
+            '  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-200, .dark .bg-gray-50{ background-color:#111827 !important; }\n' +
+            '  /* Text color overrides */\n' +
+            '  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n' +
+            '  /* Borders and placeholders for form controls */\n' +
+            '  .dark .border-gray-300 { border-color:#374151 !important; }\n' +
+            '  .dark input, .dark select, .dark textarea { color:#e5e7eb !important; background-color:#1f2937 !important; }\n' +
+            '  .dark input::placeholder, .dark textarea::placeholder { color:#9ca3af !important; }\n' +
+            '  /* Common hover bg used in nav/examples */\n' +
+            '  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n' +
+            '</style>');
     }
 
     HTML(title: string, bodyClass: string, body: string): string {
@@ -207,6 +223,27 @@ export class App {
                     req.on('close', function () {
                         clearInterval(heartbeat);
                         try { self._clients.delete(res); } catch { /* noop */ }
+                        try { res.end(); } catch { /* noop */ }
+                    });
+                    return;
+                }
+
+                if (path === '/__sse') {
+                    try { (req.socket as any).setTimeout(0); } catch { /* noop */ }
+                    res.writeHead(200, {
+                        'Content-Type': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                        Connection: 'keep-alive',
+                        'Access-Control-Allow-Origin': '*',
+                    });
+                    res.write('event: hello\ndata: 1\n\n');
+                    self._sseClients.add(res);
+                    const heartbeat2 = setInterval(function () {
+                        try { res.write('event: ping\ndata: 1\n\n'); } catch { /* noop */ }
+                    }, 15000);
+                    req.on('close', function () {
+                        clearInterval(heartbeat2);
+                        try { self._sseClients.delete(res); } catch { /* noop */ }
                         try { res.end(); } catch { /* noop */ }
                     });
                     return;
@@ -410,6 +447,50 @@ export class Context {
     Success(message: string) { displayMessage(this, message, 'bg-green-700 text-white'); }
     Error(message: string) { displayMessage(this, message, 'bg-red-700 text-white'); }
     Info(message: string) { displayMessage(this, message, 'bg-blue-700 text-white'); }
+
+    Patch(target: Attr | string, html: string, swap: Swap = 'outline'): void {
+        try {
+            const id = typeof target === 'string' ? target : ((target && (target as any).id) || '');
+            if (!id) { return; }
+            (this.app as any)._sendPatch({ id: id, swap: swap, html: html });
+        } catch { /* noop */ }
+    }
+
+    Defer(method: Callable, target: Attr, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
+        const self = this;
+        const id = (target && target.id) || '';
+        const swap = (options && options.swap) || 'outline';
+        const skeleton = (options && options.skeleton) || defaultSkeleton(id);
+        const values = (options && options.values) || [];
+        try {
+            setTimeout(async function () {
+                try {
+                    const ctx2 = new Context(self.app, self.req, self.res, self.sessionID);
+                    let html = '';
+                    try {
+                        // Prepare body-like values if provided
+                        if (values.length) {
+                            const items: BodyItem[] = [];
+                            for (let i = 0; i < values.length; i++) {
+                                const obj = values[i];
+                                if (obj == null) continue;
+                                const entries = Object.entries(obj);
+                                for (let j = 0; j < entries.length; j++) {
+                                    const kv = entries[j];
+                                    items.push({ name: kv[0], type: typeOf(kv[1]), value: valueToString(kv[1]) });
+                                }
+                            }
+                            (ctx2.req as any) = { body: items } as any;
+                        }
+                    } catch { /* noop */ }
+                    try { html = String(await method(ctx2)); } catch (_) { html = ''; }
+                    if (ctx2.append.length) { html += ctx2.append.join(''); }
+                    (self.app as any)._sendPatch({ id: id, swap: swap, html: html });
+                } catch { /* noop */ }
+            }, 0);
+        } catch { /* noop */ }
+        return skeleton;
+    }
 }
 
 function displayMessage(ctx: Context, message: string, color: string) {
@@ -507,6 +588,48 @@ export const __post = ui.Trim(`
             .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
             .finally(function () { L.stop(); });
     }
+`);
+
+export const __sse = ui.Trim(`
+    (function(){
+        try {
+            if ((window).__tsuiSSEInit) { return; }
+            (window).__tsuiSSEInit = true;
+            function connect(){
+                var offlineTimer; function showOffline(){ try { __offline.show(); } catch(_){} }
+                function hideOffline(){ try { __offline.hide(); } catch(_){} }
+                try { var old = (window).__tsuiES; if (old) { try { old.close(); } catch(_){} } } catch(_){}
+                var es = new EventSource('/__sse');
+                try { (window).__tsuiES = es; } catch(_){}
+                es.onopen = function(){ hideOffline(); };
+                es.addEventListener('patch', function(ev){
+                    try {
+                        var msg = JSON.parse(ev.data || '{}');
+                        var html = String(msg.html || '');
+                        // Execute inline scripts from fragment
+                        try {
+                            var tpl = document.createElement('template');
+                            tpl.innerHTML = html;
+                            var scripts = Array.prototype.slice.call(tpl.content.querySelectorAll('script'));
+                            for (var i = 0; i < scripts.length; i++) {
+                                var newScript = document.createElement('script');
+                                newScript.textContent = scripts[i].textContent;
+                                document.body.appendChild(newScript);
+                            }
+                        } catch(_){ }
+                        var el = document.getElementById(String(msg.id || ''));
+                        if (!el) { return; }
+                        if (msg.swap === 'inline') { el.innerHTML = html; }
+                        else if (msg.swap === 'outline') { el.outerHTML = html; }
+                    } catch(_){}
+                });
+                es.onerror = function(){ try{ es.close(); }catch(_){ } showOffline(); setTimeout(connect, 1000); };
+                window.addEventListener('beforeunload', function(){ try{ es.close(); } catch(_){} });
+            }
+            if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', connect); }
+            else { connect(); }
+        } catch(_){}
+    })();
 `);
 
 export const __stringify = ui.Trim(`
@@ -789,6 +912,42 @@ export const __load = ui.Trim(`
 
 export function MakeApp(defaultLanguage: string) { return new App(defaultLanguage); }
 
+// Theme initializer and toggler: applies html.dark class from stored preference or system
+export const __theme = ui.Trim(`
+    (function(){
+        try {
+            if ((window).__tsuiThemeInit) { return; }
+            (window).__tsuiThemeInit = true;
+            var doc = document.documentElement;
+            function apply(mode){
+                var m = mode;
+                if (m === 'system') {
+                    try {
+                        m = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+                    } catch (_) { m = 'light'; }
+                }
+                if (m === 'dark') { try { doc.classList.add('dark'); doc.style.colorScheme = 'dark'; } catch(_){} }
+                else { try { doc.classList.remove('dark'); doc.style.colorScheme = 'light'; } catch(_){} }
+            }
+            function set(mode){ try { localStorage.setItem('theme', mode); } catch(_){} apply(mode); }
+            try { (window).setTheme = set; } catch(_){}
+            try { (window).toggleTheme = function(){ var dark = !!doc.classList.contains('dark'); set(dark ? 'light' : 'dark'); }; } catch(_){}
+            var init = 'system';
+            try { init = localStorage.getItem('theme') || 'system'; } catch(_){}
+            apply(init);
+            try {
+                if (window.matchMedia) {
+                    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+                        var s = '';
+                        try { s = localStorage.getItem('theme') || ''; } catch(_){ }
+                        if (!s || s === 'system') { apply('system'); }
+                    });
+                }
+            } catch(_){ }
+        } catch(_){ }
+    })();
+`);
+
 function script(parts: string[]) {
     var out = '';
     for (var i = 0; i < parts.length; i++) {
@@ -819,3 +978,25 @@ function normalizePath(p: string): string {
 }
 
 function routeKey(method: "GET" | "POST", path: string): string { return method + ' ' + path; }
+
+// Internal: broadcast a patch message to all SSE clients
+(App.prototype as any)._sendPatch = function (this: App, payload: { id: string; swap: Swap; html: string }) {
+    try {
+        const msg = { id: String(payload.id || ''), swap: String(payload.swap || 'outline'), html: ui.Trim(String(payload.html || '')) };
+        const data = 'event: patch\ndata: ' + JSON.stringify(msg) + '\n\n';
+        for (const res of (this as any)._sseClients as Set<ServerResponse>) {
+            try { res.write(data); } catch { /* noop */ }
+        }
+    } catch { /* noop */ }
+};
+
+function defaultSkeleton(id: string): string {
+    const rid = id || ('i' + Math.random().toString(36).slice(2));
+    return ui.Trim([
+        '<div id="' + rid + '" class="animate-pulse">',
+        '  <div class="bg-gray-200 h-5 rounded w-5/6 mb-2"></div>',
+        '  <div class="bg-gray-200 h-5 rounded w-2/3 mb-2"></div>',
+        '  <div class="bg-gray-200 h-5 rounded w-4/6"></div>',
+        '</div>'
+    ].join(''));
+}

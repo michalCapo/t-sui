@@ -8,6 +8,7 @@ A tiny server-side UI toolkit in TypeScript that renders HTML strings and ships 
 - Form helpers that serialize/deserialize values and post via `fetch`
 - Partial updates (replace or inner swap) by targeting elements
 - Dev autoreload via SSE
+- Deferred fragments via SSE with skeleton placeholders
 
 License: MIT (see `LICENSE`).
 
@@ -107,6 +108,40 @@ function Save(ctx: Context): string {
 - Context: `ctx.Body(out)`, `ctx.Call(fn).Render/Replace(target)`, `ctx.Send(fn).Render/Replace(target)`, `ctx.Submit(fn).Render/Replace(target)`, `ctx.Load(href)`, `ctx.Success/Error/Info(msg)`
 
 See `examples/` for practical usage.
+
+## Deferred Fragments (SSE + Skeleton)
+
+You can render a quick skeleton while the server prepares a heavier fragment, then swap it in via SSE when ready.
+
+```ts
+import ui from './ui';
+import { Context } from './ui.server';
+
+export function Page(ctx: Context): string {
+  const target = ui.Target();
+
+  // Render a skeleton immediately; the callable runs asynchronously and pushes an SSE patch
+  const skeleton = ctx.Defer(async function RenderHeavy(c: Context): Promise<string> {
+    await new Promise(r => setTimeout(r, 800)); // simulate work
+    return ui.div('bg-white p-4 rounded shadow', target)(
+      ui.div('font-semibold')('Deferred content loaded'),
+      ui.div('text-gray-500 text-sm')('Replaced via SSE patch')
+    );
+  }, target, { swap: 'outline' });
+
+  return ctx.app.HTML('Deferred Demo', 'bg-gray-100 min-h-screen',
+    ui.div('max-w-xl mx-auto p-6')(
+      ui.div('text-xl font-bold mb-2')('Deferred fragment'),
+      skeleton
+    )
+  );
+}
+```
+
+Notes:
+- `ctx.Defer(fn, target)` returns a skeleton block immediately and schedules `fn` to run; when done, the fragment is pushed to the browser and swapped in.
+- Use `swap: 'outline'` to replace the whole element (keep the wrapper with `id`); use `swap: 'inline'` to set `innerHTML` of the target.
+- For server-side updates at arbitrary times (e.g., from an action), call `ctx.Patch(target, html, swap)` to push a patch.
 
 ## Development Notes
 

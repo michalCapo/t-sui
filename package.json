@@ -6,7 +6,7 @@
         "dev": "tsx ts/examples/main.ts"
     },
     "devDependencies": {
-        "@types/node": "^22.18.0",
+        "@types/node": "^22.18.1",
         "typescript": "^5.9.2"
     },
     "dependencies": {

@@ -44,13 +44,16 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
             if (links.length > 0) links += ' ';
             links += a(r.Title);
         }
-        const nav = ui.div('bg-white shadow mb-6')(
-            ui.div('max-w-5xl mx-auto px-4 py-2 flex items-center')(
-                ui.div('flex flex-nowrap gap-1')(links),
+        const switcher = ui.ThemeSwitcher('ml-auto');
+        const nav = ui.div('bg-white dark:bg-gray-900 shadow mb-6')(
+            ui.div('max-w-5xl mx-auto px-4 py-2 flex items-center gap-2')(
+                ui.div('flex flex-nowrap gap-1 overflow-auto')(links),
+                ui.div('flex-1')(),
+                switcher,
             ),
         );
         const content = body(ctx);
-        return app.HTML(title, 'bg-gray-100 min-h-screen', nav + ui.div('max-w-5xl mx-auto px-2')(content));
+        return app.HTML(title, 'bg-gray-100 dark:bg-gray-900 min-h-screen', nav + ui.div('max-w-5xl mx-auto px-2')(content));
     };
 }
 
