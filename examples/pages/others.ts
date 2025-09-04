@@ -33,9 +33,9 @@ export function OthersContent(ctx: Context): string {
     // Deferred block (SSE skeleton -> replace when ready)
     const deferredTarget = ui.Target();
     function DeferredBox(t: Target) {
-        return async function (_: Context): Promise<string> {
-            await new Promise(function (r) { setTimeout(r, 2000); });
-            return ui.div('bg-white p-4 rounded shadow', t)(
+        return async function(_: Context): Promise<string> {
+            await new Promise(function(r) { setTimeout(r, 2000); });
+            return ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow', t)(
                 ui.div('text-lg font-semibold')('Deferred content loaded'),
                 ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
             );

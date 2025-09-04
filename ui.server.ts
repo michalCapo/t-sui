@@ -609,18 +609,17 @@ export const __sse = ui.Trim(`
         try {
             if ((window).__tsuiSSEInit) { return; }
             (window).__tsuiSSEInit = true;
+            function showOffline(){ try { __offline.show(); } catch(_){ } }
+            function hideOffline(){ try { __offline.hide(); } catch(_){ } }
             function connect(){
-                var offlineTimer; function showOffline(){ try { __offline.show(); } catch(_){} }
-                function hideOffline(){ try { __offline.hide(); } catch(_){} }
-                try { var old = (window).__tsuiES; if (old) { try { old.close(); } catch(_){} } } catch(_){}
+                try { var old = (window).__tsuiES; if (old) { try { old.close(); } catch(_){ } } } catch(_){ }
                 var es = new EventSource('/__sse');
-                try { (window).__tsuiES = es; } catch(_){}
+                try { (window).__tsuiES = es; } catch(_){ }
                 es.onopen = function(){ hideOffline(); };
                 es.addEventListener('patch', function(ev){
                     try {
                         var msg = JSON.parse(ev.data || '{}');
                         var html = String(msg.html || '');
-                        // Execute inline scripts from fragment
                         try {
                             var tpl = document.createElement('template');
                             tpl.innerHTML = html;
@@ -635,14 +634,13 @@ export const __sse = ui.Trim(`
                         if (!el) { return; }
                         if (msg.swap === 'inline') { el.innerHTML = html; }
                         else if (msg.swap === 'outline') { el.outerHTML = html; }
-                    } catch(_){}
+                    } catch(_){ }
                 });
-                es.onerror = function(){ try{ es.close(); }catch(_){ } showOffline(); setTimeout(connect, 1000); };
-                window.addEventListener('beforeunload', function(){ try{ es.close(); } catch(_){} });
+                es.onerror = function(){ try{ es.close(); } catch(_){ } showOffline(); setTimeout(connect, 1000); };
+                window.addEventListener('beforeunload', function(){ try{ es.close(); } catch(_){ } });
             }
-            if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', connect); }
-            else { connect(); }
-        } catch(_){}
+            connect();
+        } catch(_){ }
     })();
 `);
 
