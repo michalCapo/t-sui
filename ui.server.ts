@@ -1,8 +1,6 @@
 // Typpescript server for server-side rendering using the combined UI library
 
 import http, { IncomingMessage, ServerResponse } from 'node:http';
-import fs from 'node:fs';
-import path from 'node:path';
 import ui, { Attr, Target } from './ui';
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
@@ -21,6 +19,7 @@ export interface BodyItem {
 }
 
 export type Callable = (ctx: Context) => string | Promise<string>;
+export type Deferred = (ctx: Context) => Promise<string>;
 
 export class App {
     contentId: Target;
@@ -28,9 +27,6 @@ export class App {
     HTMLHead: string[];
     _clients: Set<ServerResponse> = new Set();
     _sseClients: Set<ServerResponse> = new Set();
-    _watchers: fs.FSWatcher[] = [];
-    _watchedDirs: Set<string> = new Set();
-    _startWatcher!: (watch?: string | string[]) => void;
 
     // Dev: when enabled, injects client-side autoreload script
     HTMLBody(cls: string): string {
@@ -62,9 +58,10 @@ export class App {
         // Dark mode CSS overrides (after Tailwind link to take precedence)
         this.HTMLHead.push('<style id=\"tsui-dark-overrides\">\n' +
             '  html.dark{ color-scheme: dark; }\n' +
-            '  /* Override backgrounds commonly used by components and examples */\n' +
-            '  html.dark.bg-white, html.dark.bg-gray-100, html.dark.bg-gray-200{ background-color:#111827 !important; }\n' +
-            '  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-200, .dark .bg-gray-50{ background-color:#111827 !important; }\n' +
+            '  /* Override backgrounds commonly used by components and examples.\n' +
+            '     Do not override bg-gray-200 so skeleton placeholders remain visible. */\n' +
+            '  html.dark.bg-white, html.dark.bg-gray-100 { background-color:#111827 !important; }\n' +
+            '  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-50 { background-color:#111827 !important; }\n' +
             '  /* Text color overrides */\n' +
             '  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n' +
             '  /* Borders and placeholders for form controls */\n' +
@@ -95,8 +92,8 @@ export class App {
         return ui.Trim(html);
     }
 
-    // Enable development autoreload (SSE-based). Optional watch paths.
-    AutoReload(enable: boolean, watch?: string | string[]): void {
+    // Enable development autoreload (SSE-based).
+    AutoReload(enable: boolean): void {
         if (!enable) return;
         // Inject a tiny client that reconnects after server restarts and reloads the page.
         const client = ui.Trim(`
@@ -139,10 +136,7 @@ export class App {
             })();
         `);
         this.HTMLHead.push('<script>' + client + '</script>');
-        try { this._startWatcher(watch); } catch { /* noop */ }
     }
-
-    // AutoRestart removed: stability is handled via server timeouts and graceful error pages
 
     private register(method: "GET" | "POST", path: string, callable: Callable): void {
         if (!path) throw new Error('Path cannot be empty');
@@ -310,65 +304,6 @@ export class App {
 
 }
 
-// Start internal filesystem watcher to broadcast autoreload events over SSE
-App.prototype._startWatcher = function(this: App, watch?: string | string[]) {
-    const roots: string[] = [];
-    const add = (p?: string) => {
-        if (!p) return;
-        const abs = path.resolve(p);
-        if (fs.existsSync(abs)) roots.push(abs);
-    };
-    if (Array.isArray(watch)) { for (const p of watch) add(p); }
-    else if (typeof watch === 'string') { add(watch); }
-    else { add(path.resolve(process.cwd(), 'ts')); }
-
-    const ignoreNames = new Set(['node_modules', '.git', 'dist', 'build', 'out']);
-
-    const dirs: string[] = [];
-    const walk = (dir: string) => {
-        if (!fs.existsSync(dir)) return;
-        const stat = fs.statSync(dir);
-        if (!stat.isDirectory()) return;
-        if (this._watchedDirs.has(dir)) return;
-        this._watchedDirs.add(dir);
-        dirs.push(dir);
-        let entries: string[] = [];
-        try { entries = fs.readdirSync(dir); } catch { return; }
-        for (const name of entries) {
-            if (ignoreNames.has(name)) continue;
-            const full = path.join(dir, name);
-            try {
-                const s = fs.statSync(full);
-                if (s.isDirectory()) walk(full);
-            } catch { /* noop */ }
-        }
-    };
-    for (const r of roots) walk(r);
-
-    const triggerReload = debounce(() => {
-        const msg = 'event: reload\ndata: 1\n\n';
-        for (const res of this._clients as Set<ServerResponse>) {
-            try { res.write(msg); } catch { /* noop */ }
-        }
-    }, 100);
-
-    for (const dir of dirs) {
-        try {
-            const watcher = fs.watch(dir, { persistent: true }, (_event, filename) => {
-                if (filename) {
-                    const full = path.join(dir, filename.toString());
-                    try {
-                        const s = fs.statSync(full);
-                        if (s.isDirectory()) { walk(full); }
-                    } catch { /* may not exist */ }
-                }
-                triggerReload();
-            });
-            this._watchers.push(watcher);
-        } catch { /* noop */ }
-    }
-};
-
 export class Context {
     app: App;
     req: IncomingMessage;
@@ -424,7 +359,7 @@ export class Context {
         return ui.Normalize('__post(event, \"' + swap + '\", \"' + (action.target && action.target.id ? action.target.id : '') + '\", \"' + path + '\", ' + valuesStr + ') ');
     }
 
-    Send(method: Callable, ...values: any[]) {
+    Send<T extends object>(method: Callable, ...values: T[]) {
         const callable = this.Callable(method);
         const self = this;
         return {
@@ -434,7 +369,7 @@ export class Context {
         };
     }
 
-    Call(method: Callable, ...values: any[]) {
+    Call<T extends object>(method: Callable, ...values: T[]) {
         const callable = this.Callable(method);
         const self = this;
         return {
@@ -444,7 +379,7 @@ export class Context {
         };
     }
 
-    Submit(method: Callable, ...values: any[]) {
+    Submit<T extends object>(method: Callable, ...values: T[]) {
         const callable = this.Callable(method);
         const self = this;
         return {
@@ -462,19 +397,22 @@ export class Context {
     Error(message: string) { displayMessage(this, message, 'bg-red-700 text-white'); }
     Info(message: string) { displayMessage(this, message, 'bg-blue-700 text-white'); }
 
-    Patch(target: Attr | string, html: string, swap: Swap = 'outline'): void {
-        try {
-            const id = typeof target === 'string' ? target : ((target && (target as Attr).id) || '');
-            if (!id) { return; }
-            this.app._sendPatch({ id: id, swap: swap, html: html });
-        } catch { /* noop */ }
+    // Patch(target: Target, html: string, swap: Swap = 'outline'): void {
+    //     try {
+    //         this.app._sendPatch({ id: target.id, swap: swap, html: html });
+    //     } catch { /* noop */ }
+    // }
+
+    Patch(target: Target, swap: Swap, method: Deferred): void {
+        method(this)
+            .then(html => this.app._sendPatch({ id: target.id, swap: swap, html: html }))
+            .catch(err => console.error('Patch error:', err));
     }
 
-    private _defer(method: Callable, target: Attr, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
+    private _defer(method: Callable, target: Target, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
         const self = this;
-        const id = (target && target.id) || '';
         const swap = (options && options.swap) || 'outline';
-        const skeleton = (options && options.skeleton) || ui.Skeleton(id);
+        const skeleton = (options && options.skeleton) || '';
         const values = (options && options.values) || [];
         try {
             setTimeout(async function() {
@@ -498,7 +436,7 @@ export class Context {
                     } catch { /* noop */ }
                     try { html = String(await method(ctx)); } catch (_) { html = ''; }
                     if (ctx.append.length) { html += ctx.append.join(''); }
-                    self.app._sendPatch({ id: id, swap: swap, html: html });
+                    self.app._sendPatch({ id: target.id, swap: swap, html: html });
                 } catch { /* noop */ }
             }, 0);
         } catch { /* noop */ }
@@ -508,25 +446,39 @@ export class Context {
     Defer(method: Callable, ...values: any[]) {
         const callable = this.Callable(method);
         const self = this;
-        function make(predefined?: string) {
+        function make(predefined?: (target: Target) => string) {
             return {
-                Render: function(target: Attr, skeleton?: string): string {
-                    const sk = typeof skeleton === 'string' && skeleton.length > 0 ? skeleton : predefined;
-                    return self._defer(callable, target, { swap: 'inline', values: values, skeleton: sk });
+                Render: function(target: Target, skeleton?: string): string {
+                    if (skeleton == null && predefined) {
+                        skeleton = predefined(target);
+                    }
+
+                    return self._defer(callable, target, { swap: 'inline', values: values, skeleton: skeleton });
                 },
-                Replace: function(target: Attr, skeleton?: string): string {
-                    const sk = typeof skeleton === 'string' && skeleton.length > 0 ? skeleton : predefined;
-                    return self._defer(callable, target, { swap: 'outline', values: values, skeleton: sk });
+
+                Replace: function(target: Target, skeleton?: string): string {
+                    if (skeleton == null && predefined) {
+                        skeleton = predefined(target);
+                    }
+
+                    return self._defer(callable, target, { swap: 'outline', values: values, skeleton: skeleton });
                 },
-                None: function(skeleton?: string): string {
-                    const sk = typeof skeleton === 'string' && skeleton.length > 0 ? skeleton : predefined;
-                    return self._defer(callable, { id: '' } as Attr, { swap: 'none', values: values, skeleton: sk });
+
+                Skeleton: function(type?: 'list' | 'component' | 'page' | 'form') {
+                    let skeleton = ui.Skeleton
+
+                    if (type === 'list') {
+                        skeleton = ui.SkeletonList;
+                    } else if (type === 'component') {
+                        skeleton = ui.SkeletonComponent;
+                    } else if (type === 'page') {
+                        skeleton = ui.SkeletonPage;
+                    } else if (type === 'form') {
+                        skeleton = ui.SkeletonForm;
+                    }
+
+                    return make(skeleton);
                 },
-                Skeleton: function(s: string) { return make(s); },
-                SkeletonList: function(count: number) { return make(ui.SkeletonList(count)); },
-                SkeletonComponent: function() { return make(ui.SkeletonComponent()); },
-                SkeletonPage: function() { return make(ui.SkeletonPage()); },
-                SkeletonForm: function() { return make(ui.SkeletonForm()); },
             };
         }
         return make(undefined);
@@ -992,14 +944,6 @@ function script(parts: string[]) {
         out += '<script>' + parts[i] + '</script>';
     }
     return out;
-}
-
-function debounce(fn: () => void, ms: number) {
-    let t: NodeJS.Timeout | undefined;
-    return function() {
-        if (t) clearTimeout(t);
-        t = setTimeout(fn, ms);
-    };
 }
 
 function normalizeMethod(method: string): "GET" | "POST" {

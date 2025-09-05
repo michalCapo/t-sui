@@ -1,138 +1,187 @@
-import ui, { Target } from '../../ui';
+import ui from '../../ui';
 import { Context } from '../../ui.server';
-import { HelloContent } from './hello';
-import { CounterContent } from './counter';
-import { LoginContent } from './login';
+import { Hello } from './hello';
+import { Counter } from './counter';
+import { Login } from './login';
 
-function IconsDemo(): string {
-    return ui.div('bg-white p-6 rounded-lg shadow w-full')(
-        ui.div('text-lg font-bold')(
-            'Icons'
-        ),
-        ui.div('flex flex-col gap-3 mt-2')(
-            ui.div('flex items-center gap-3')(
-                ui.Icon('w-6 h-6 bg-gray-400 rounded'),
-                ui.div('text-sm text-gray-700')(
-                    'Icon (basic)'
-                ),
+// Stable clock target id and singleton guard
+const deferredTarget = ui.Target();
+const clockTarget = ui.Target();
+
+let CLOCK_STARTED = false;
+
+function Icons(): string {
+    const icon = ui.div('flex items-center gap-3 border rounded p-4')
+
+    return ui.div('bg-white rounded-lg shadow w-full')(
+        ui.div('flex flex-col gap-3')(
+            icon(
+                ui.IconStart('w-6 h-6 bg-gray-400 rounded', 'Start aligned icon'),
             ),
-            ui.div('flex items-center gap-3')(
-                ui.Icon2('w-6 h-6 bg-blue-600 rounded', 'Centered with icon left')
+            icon(
+                ui.IconLeft('w-6 h-6 bg-blue-600 rounded', 'Centered with icon left')
             ),
-            ui.div('flex items-center gap-3')(
-                ui.Icon3('w-6 h-6 bg-green-600 rounded', 'Centered with icon right')
+            icon(
+                ui.IconRight('w-6 h-6 bg-green-600 rounded', 'Centered with icon right')
             ),
-            ui.div('flex items-center gap-3')(
-                ui.Icon4('w-6 h-6 bg-purple-600 rounded', 'End-aligned icon')
+            icon(
+                ui.IconEnd('w-6 h-6 bg-purple-600 rounded', 'End-aligned icon')
             ),
         ),
     );
 }
 
-export function OthersContent(ctx: Context): string {
-    const deferredTarget = ui.Target();
+function Clock(ctx: Context) {
 
-    // Deferred block (SSE skeleton -> replace when ready)
-    async function Deferred(_: Context): Promise<string> {
-        await new Promise(function(r) { setTimeout(r, 2000); });
-        return ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow', deferredTarget)(
-            ui.div('text-lg font-semibold')('Deferred content loaded'),
-            ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
+    // Clock helpers
+    function pad2(n: number): string {
+        if (n < 10) {
+            return '0' + String(n);
+        } else {
+            return String(n);
+        }
+    }
+
+    function fmtTime(d: Date): string {
+        const h = pad2(d.getHours());
+        const m = pad2(d.getMinutes());
+        const s = pad2(d.getSeconds());
+        return h + ':' + m + ':' + s;
+    }
+
+    function Render(d: Date): string {
+        return ui.div('flex items-baseline gap-3', clockTarget)(
+            ui.div('text-4xl font-mono tracking-widest')(fmtTime(d)),
+            ui.div('text-gray-500')('Live server time')
         );
     }
 
-    // Helpers to showcase predefined skeletons
-    function makeDeferred(target: Target, title: string) {
-        return async function(_c: Context): Promise<string> {
-            await new Promise(function(r) { setTimeout(r, 1200); });
-            return ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow', target)(
-                ui.div('text-lg font-semibold')(title),
-                ui.div('text-gray-600 text-sm')('Loaded after delay via SSE.')
-            );
-        };
+    async function StartClock(ctx: Context): Promise<string> {
+        if (!CLOCK_STARTED) {
+            CLOCK_STARTED = true;
+            function tick(): void {
+                const now = new Date();
+                // ctx.Patch(clockTarget, Render(now), 'outline');
+            }
+            try { tick(); } catch (_) { /* noop */ }
+            try { setInterval(function() { tick(); }, 1000); } catch (_) { /* noop */ }
+        }
+
+        return '';
     }
 
-    const skListTarget = ui.Target();
-    const skCompTarget = ui.Target();
-    const skPageTarget = ui.Target();
-    const skFormTarget = ui.Target();
+    StartClock(ctx);
 
-    function LoadSkList(_c: Context): string {
-        return ctx.Defer(makeDeferred(skListTarget, 'List content loaded')).Replace(skListTarget, ui.SkeletonList(6));
-    }
-    function LoadSkComponent(_c: Context): string {
-        return ctx.Defer(makeDeferred(skCompTarget, 'Component content loaded')).Replace(skCompTarget, ui.SkeletonComponent());
-    }
-    function LoadSkPage(_c: Context): string {
-        return ctx.Defer(makeDeferred(skPageTarget, 'Page content loaded')).Replace(skPageTarget, ui.SkeletonPage());
-    }
-    function LoadSkForm(_c: Context): string {
-        return ctx.Defer(makeDeferred(skFormTarget, 'Form content loaded')).Replace(skFormTarget, ui.SkeletonForm());
-    }
+    return Render(new Date());
+}
 
-    const hello = ui.div('bg-white p-6 rounded-lg shadow w-full')(
-        ui.div('text-lg font-bold')(
-            'Hello'
-        ),
-        HelloContent(ctx)
-    );
+// Deferred block (SSE skeleton -> replace when ready)
+function Deffered(ctx: Context): string {
+    const body = { as: '' }
 
-    const counter = ui.div('bg-white p-6 rounded-lg shadow w-full')(
-        ui.div('text-lg font-bold')(
-            'Counter'
-        ),
-        CounterContent(ctx)
-    );
+    ctx.Body(body);
+    ctx.Patch(deferredTarget, 'outline', async function(_: Context) {
+        await new Promise(function(r) { setTimeout(r, 2000); });
 
-    const login = ui.div('bg-white p-6 rounded-lg shadow w-full')(
-        ui.div('text-lg font-bold')(
-            'Login'
-        ),
-        LoginContent(ctx)
-    );
+        return ui.div('space-y-4', deferredTarget)(
+            ui.div('grid grid-cols-4 gap-4')(
+                ui.Button()
+                    .Color(ui.Blue)
+                    .Class('rounded')
+                    .Click(ctx.Call(Deffered).Replace(deferredTarget))
+                    .Render('As component'),
 
-    const icons = IconsDemo();
+                ui.Button()
+                    .Color(ui.Blue)
+                    .Class('rounded')
+                    .Click(ctx.Call(Deffered, { as: 'list' }).Replace(deferredTarget))
+                    .Render('As list'),
+
+                ui.Button()
+                    .Color(ui.Blue)
+                    .Class('rounded')
+                    .Click(ctx.Call(Deffered, { as: 'page' }).Replace(deferredTarget))
+                    .Render('As page'),
+
+                ui.Button()
+                    .Color(ui.Blue)
+                    .Class('rounded')
+                    .Click(ctx.Call(Deffered, { as: 'form' }).Replace(deferredTarget))
+                    .Render('As form'),
+            ),
+
+            ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow border rounded p-4')(
+                ui.div('text-lg font-semibold')('Deferred content loaded'),
+                ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
+            )
+        )
+    });
+
+    if (body.as === 'list')
+        return ui.SkeletonList(deferredTarget, 6);
+
+    if (body.as === 'page')
+        return ui.SkeletonPage(deferredTarget);
+
+    if (body.as === 'form')
+        return ui.SkeletonForm(deferredTarget);
+
+    return ui.Skeleton(deferredTarget);
+}
+
+export function OthersContent(ctx: Context): string {
 
     return ui.div('max-w-full sm:max-w-6xl mx-auto flex flex-col gap-6 w-full')(
         ui.div('text-3xl font-bold')(
             'Others'
         ),
         ui.div('text-gray-600')('Miscellaneous demos: Hello, Counter, Login, and icon helpers.'),
-        ui.div('bg-white p-6 rounded-lg shadow w-full')(
-            ui.div('text-lg font-bold')('Predefined Skeletons'),
-            ui.div('text-gray-600 mb-3')('Click a button to load skeleton and swap with deferred content.'),
-            ui.div('grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')(
-                ui.div('border rounded p-3 flex flex-col gap-2')(
-                    ui.div('font-semibold')('Skeleton: List'),
-                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkList).Replace(skListTarget)).Render('Load List'),
-                    ui.div('mt-2', skListTarget)()
-                ),
-                ui.div('border rounded p-3 flex flex-col gap-2')(
-                    ui.div('font-semibold')('Skeleton: Component'),
-                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkComponent).Replace(skCompTarget)).Render('Load Component'),
-                    ui.div('mt-2', skCompTarget)()
-                ),
-                ui.div('border rounded p-3 flex flex-col gap-2')(
-                    ui.div('font-semibold')('Skeleton: Page'),
-                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkPage).Replace(skPageTarget)).Render('Load Page'),
-                    ui.div('mt-2', skPageTarget)()
-                ),
-                ui.div('border rounded p-3 flex flex-col gap-2')(
-                    ui.div('font-semibold')('Skeleton: Form'),
-                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkForm).Replace(skFormTarget)).Render('Load Form'),
-                    ui.div('mt-2', skFormTarget)()
-                ),
-            )
-        ),
+
+        // ui.div('bg-white p-6 rounded-lg shadow w-full')(
+        //     ui.div('text-lg font-bold')('Clock (SSE)'),
+        //     ui.div('text-gray-600 mb-3')('Updates every second via server-sent patches.'),
+
+        //     Clock(ctx),
+        // ),
+
+        // deferred (SSE)
         ui.div('bg-white p-6 rounded-lg shadow w-full')(
             ui.div('text-lg font-bold')('Deferred (SSE)'),
             ui.div('text-gray-600 mb-3')('Shows a skeleton that is replaced when the server finishes rendering.'),
-            // Return the skeleton immediately; server will push a patch to replace it
-            ctx.Defer(Deferred).Replace(deferredTarget)
+
+            Deffered(ctx),
         ),
-        hello,
-        counter,
-        login,
-        icons,
+
+        ui.div('flex flex-wrap')(
+            // hello
+            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+                ui.div('text-lg font-bold mb-3')(
+                    'Hello'
+                ),
+                Hello(ctx)
+            ),
+
+            // counter
+            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+                ui.div('text-lg font-bold mb-3')(
+                    'Counter'
+                ),
+                Counter(ctx, 4)
+            ),
+
+            // login
+            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+                ui.div('text-lg font-bold mb-3')(
+                    'Login'
+                ),
+                Login(ctx)
+            ),
+
+            // icons
+            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+                ui.div('text-lg font-bold mb-3')('Icons'),
+                Icons()
+            ),
+        ),
     );
 }

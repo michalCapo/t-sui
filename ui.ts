@@ -203,13 +203,15 @@ const input = closed('input');
 // Spacers and simple icon helpers
 const Flex1 = div('flex-1')();
 
-function Icon(css: string, ...attr: Attr[]): string { return (div as any)(css, ...attr)(); }
+function Icon(css: string, ...attr: Attr[]): string { return div(css, ...attr)(); }
 
-function Icon2(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Icon(css), Flex1, div('text-center')(text), Flex1); }
+function IconStart(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Icon(css), Flex1, div('text-center')(text), Flex1); }
 
-function Icon3(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Flex1, div('text-center')(text), Icon(css), Flex1); }
+function IconLeft(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Flex1, Icon(css), div('text-center')(text), Flex1); }
 
-function Icon4(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Flex1, div('text-center')(text), Flex1, Icon(css)); }
+function IconRight(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Flex1, div('text-center')(text), Icon(css), Flex1); }
+
+function IconEnd(css: string, text: string): string { return div('flex-1 flex items-center gap-2')(Flex1, div('text-center')(text), Flex1, Icon(css)); }
 
 { attributes };
 
@@ -802,10 +804,9 @@ function SimpleTable(cols: number, css = '') {
     return api;
 }
 
-function Skeleton(id: string): string {
-    const rid = id || ('i' + Math.random().toString(36).slice(2));
+function Skeleton(target: Target): string {
     return Trim([
-        '<div id="' + rid + '" class="animate-pulse">',
+        '<div id="' + target.id + '" class="animate-pulse">',
         '  <div class="bg-gray-200 h-5 rounded w-5/6 mb-2"></div>',
         '  <div class="bg-gray-200 h-5 rounded w-2/3 mb-2"></div>',
         '  <div class="bg-gray-200 h-5 rounded w-4/6"></div>',
@@ -814,7 +815,7 @@ function Skeleton(id: string): string {
 }
 
 // Predefined skeletons
-function SkeletonList(count = 5): string {
+function SkeletonList(target: Target, count = 5): string {
     let items = '';
     const n = (typeof count === 'number' && count > 0) ? count : 5;
     for (let i = 0; i < n; i++) {
@@ -828,12 +829,12 @@ function SkeletonList(count = 5): string {
             '</div>'
         ].join('');
     }
-    return Trim('<div class="animate-pulse">' + items + '</div>');
+    return Trim('<div id="' + target.id + '" class="animate-pulse">' + items + '</div>');
 }
 
-function SkeletonComponent(): string {
+function SkeletonComponent(target: Target): string {
     return Trim([
-        '<div class="animate-pulse">',
+        '<div id="' + target.id + '" class="animate-pulse">',
         '  <div class="bg-gray-200 h-6 rounded w-2/5 mb-4"></div>',
         '  <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
         '  <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
@@ -842,9 +843,9 @@ function SkeletonComponent(): string {
     ].join(''));
 }
 
-function SkeletonPage(): string {
+function SkeletonPage(target: Target): string {
     return Trim([
-        '<div class="animate-pulse">',
+        '<div id="' + target.id + '" class="animate-pulse">',
         '  <div class="bg-gray-200 h-8 rounded w-1/3 mb-6"></div>',
         '  <div class="bg-white rounded-lg p-4 shadow mb-4">',
         '    <div class="bg-gray-200 h-5 rounded w-2/5 mb-3"></div>',
@@ -862,9 +863,9 @@ function SkeletonPage(): string {
     ].join(''));
 }
 
-function SkeletonForm(): string {
+function SkeletonForm(target: Target): string {
     return Trim([
-        '<div class="animate-pulse">',
+        '<div id="' + target.id + '" class="animate-pulse">',
         '  <div class="bg-white rounded-lg p-4 shadow">',
         '    <div class="bg-gray-200 h-6 rounded w-2/5 mb-5"></div>',
         '    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">',
@@ -899,7 +900,7 @@ export default {
     XS, SM, MD, ST, LG, XL, AREA, INPUT, VALUE, BTN, DISABLED,
     Yellow, YellowOutline, Green, GreenOutline, Purple, PurpleOutline, Blue, BlueOutline, Red, RedOutline, Gray, GrayOutline, White, WhiteOutline,
     a, i, p, div, span, form, select, option, ul, li, canvas, img, input, label, space, Flex1,
-    Icon, Icon2, Icon3, Icon4,
+    Icon, IconStart, IconLeft, IconRight, IconEnd,
     Target, Button, Label, IText, IPassword, IArea, INumber, IDate, ITime, IDateTime, ISelect, ICheckbox, IRadio, IRadioButtons, SimpleTable, ThemeSwitcher,
     Skeleton, SkeletonList, SkeletonPage, SkeletonComponent, SkeletonForm,
 };

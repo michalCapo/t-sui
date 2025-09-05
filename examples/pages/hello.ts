@@ -1,21 +1,21 @@
 import ui from '../../ui';
 import { Context } from '../../ui.server';
 
-async function sayHello(ctx: Context) {
+function sayHello(ctx: Context) {
     ctx.Success('Hello');
 
     return ''
 }
 
 async function sayDelay(ctx: Context) {
-    await new Promise(function (resolve) { setTimeout(resolve, 2000); });
+    await new Promise(function(resolve) { setTimeout(resolve, 2000); });
 
     ctx.Info('Information');
 
     return ''
 }
 
-async function sayError(ctx: Context) {
+function sayError(ctx: Context) {
     ctx.Error('Hello error')
 
     return ''
@@ -27,9 +27,9 @@ function sayHelloAgain(_: Context): string {
 
 const buttons = 'rounded whitespace-nowrap'
 
-export function HelloContent(ctx: Context): string {
-    return ui.div('flex flex-row gap-4')(
-        ui.div('grid grid-cols-2 md:grid-cols-4 justify-start gap-4 items-center')(
+export function Hello(ctx: Context): string {
+    return ui.div('gap-4 border rounded p-4')(
+        ui.div('grid grid-cols-2 justify-start gap-4 items-center')(
             ui.Button()
                 .Color(ui.GreenOutline)
                 .Class(buttons)

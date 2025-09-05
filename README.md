@@ -117,6 +117,12 @@ app.Listen(1422);
 
 See `examples/` for practical usage.
 
+## Dark Mode
+
+- The server injects minimal dark-mode overrides so examples look correct with Tailwind’s `dark` class.
+- To keep skeleton placeholders visible on dark backgrounds, `bg-gray-200` is not overridden in dark mode. Containers such as `bg-white`, `bg-gray-50`, and `bg-gray-100` are mapped to a dark surface.
+- If you customize the theme, ensure skeleton shades retain contrast on dark backgrounds.
+
 ## Deferred Fragments (SSE + Skeleton)
 
 You can render a quick skeleton while the server prepares a heavier fragment, then swap it in via SSE when ready.
@@ -161,6 +167,51 @@ Notes:
 - Each of `Render/Replace/None` accepts an optional `skeleton` string. If omitted, a default `ui.Skeleton(target.id)` is used when a target is provided.
 - You can preset a default via `.Skeleton(...)` or the convenience helpers `.SkeletonList(count)`, `.SkeletonComponent()`, `.SkeletonPage()`, `.SkeletonForm()`.
 - For server-side updates at arbitrary times (e.g., from an action), call `ctx.Patch(target, html, swap)` to push a patch.
+
+## Live Updates Example (SSE Clock)
+
+The `Others` page includes a live clock that re-renders every second via SSE patches. Pattern:
+
+```ts
+// inside a page handler
+// Use a stable id so reloads keep the same target
+const CLOCK_ID = 'others_clock';
+const clockTarget = { id: CLOCK_ID };
+let CLOCK_STARTED = false;
+
+function pad2(n: number): string {
+  if (n < 10) { return '0' + String(n); }
+  else { return String(n); }
+}
+
+function ClockView(d: Date): string {
+  const h = pad2(d.getHours());
+  const m = pad2(d.getMinutes());
+  const s = pad2(d.getSeconds());
+  return ui.div('font-mono text-3xl', clockTarget)(h + ':' + m + ':' + s);
+}
+
+async function StartClock(ctx: Context): Promise<string> {
+  if (!CLOCK_STARTED) {
+    CLOCK_STARTED = true;
+    function tick(): void { ctx.Patch(CLOCK_ID, ClockView(new Date()), 'outline'); }
+    tick();
+    setInterval(function(){ tick(); }, 1000);
+  }
+  return '';
+}
+
+// render once and start background updates
+ui.div('...')(
+  ClockView(new Date()),
+  ctx.Defer(StartClock).Skeleton('<!-- clock -->').None()
+)
+```
+
+Notes:
+- Keep the target id stable across reloads to ensure patches land.
+- Guard the interval to avoid multiple timers after manual reloads.
+- Use `.None()` when you only need side-effects (pushing patches) and not an immediate swap. Provide a minimal skeleton like `'<!-- -->'` to avoid inserting a default placeholder.
 
 ## Development Notes
 
