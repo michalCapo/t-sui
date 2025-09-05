@@ -41,6 +41,35 @@ export function OthersContent(ctx: Context): string {
         );
     }
 
+    // Helpers to showcase predefined skeletons
+    function makeDeferred(target: Target, title: string) {
+        return async function(_c: Context): Promise<string> {
+            await new Promise(function(r) { setTimeout(r, 1200); });
+            return ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow', target)(
+                ui.div('text-lg font-semibold')(title),
+                ui.div('text-gray-600 text-sm')('Loaded after delay via SSE.')
+            );
+        };
+    }
+
+    const skListTarget = ui.Target();
+    const skCompTarget = ui.Target();
+    const skPageTarget = ui.Target();
+    const skFormTarget = ui.Target();
+
+    function LoadSkList(_c: Context): string {
+        return ctx.Defer(makeDeferred(skListTarget, 'List content loaded')).Replace(skListTarget, ui.SkeletonList(6));
+    }
+    function LoadSkComponent(_c: Context): string {
+        return ctx.Defer(makeDeferred(skCompTarget, 'Component content loaded')).Replace(skCompTarget, ui.SkeletonComponent());
+    }
+    function LoadSkPage(_c: Context): string {
+        return ctx.Defer(makeDeferred(skPageTarget, 'Page content loaded')).Replace(skPageTarget, ui.SkeletonPage());
+    }
+    function LoadSkForm(_c: Context): string {
+        return ctx.Defer(makeDeferred(skFormTarget, 'Form content loaded')).Replace(skFormTarget, ui.SkeletonForm());
+    }
+
     const hello = ui.div('bg-white p-6 rounded-lg shadow w-full')(
         ui.div('text-lg font-bold')(
             'Hello'
@@ -69,6 +98,32 @@ export function OthersContent(ctx: Context): string {
             'Others'
         ),
         ui.div('text-gray-600')('Miscellaneous demos: Hello, Counter, Login, and icon helpers.'),
+        ui.div('bg-white p-6 rounded-lg shadow w-full')(
+            ui.div('text-lg font-bold')('Predefined Skeletons'),
+            ui.div('text-gray-600 mb-3')('Click a button to load skeleton and swap with deferred content.'),
+            ui.div('grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')(
+                ui.div('border rounded p-3 flex flex-col gap-2')(
+                    ui.div('font-semibold')('Skeleton: List'),
+                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkList).Replace(skListTarget)).Render('Load List'),
+                    ui.div('mt-2', skListTarget)()
+                ),
+                ui.div('border rounded p-3 flex flex-col gap-2')(
+                    ui.div('font-semibold')('Skeleton: Component'),
+                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkComponent).Replace(skCompTarget)).Render('Load Component'),
+                    ui.div('mt-2', skCompTarget)()
+                ),
+                ui.div('border rounded p-3 flex flex-col gap-2')(
+                    ui.div('font-semibold')('Skeleton: Page'),
+                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkPage).Replace(skPageTarget)).Render('Load Page'),
+                    ui.div('mt-2', skPageTarget)()
+                ),
+                ui.div('border rounded p-3 flex flex-col gap-2')(
+                    ui.div('font-semibold')('Skeleton: Form'),
+                    ui.Button().Class('rounded').Color(ui.Blue).Click(ctx.Call(LoadSkForm).Replace(skFormTarget)).Render('Load Form'),
+                    ui.div('mt-2', skFormTarget)()
+                ),
+            )
+        ),
         ui.div('bg-white p-6 rounded-lg shadow w-full')(
             ui.div('text-lg font-bold')('Deferred (SSE)'),
             ui.div('text-gray-600 mb-3')('Shows a skeleton that is replaced when the server finishes rendering.'),

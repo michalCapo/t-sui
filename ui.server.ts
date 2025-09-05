@@ -523,6 +523,10 @@ export class Context {
                     return self._defer(callable, { id: '' } as Attr, { swap: 'none', values: values, skeleton: sk });
                 },
                 Skeleton: function(s: string) { return make(s); },
+                SkeletonList: function(count: number) { return make(ui.SkeletonList(count)); },
+                SkeletonComponent: function() { return make(ui.SkeletonComponent()); },
+                SkeletonPage: function() { return make(ui.SkeletonPage()); },
+                SkeletonForm: function() { return make(ui.SkeletonForm()); },
             };
         }
         return make(undefined);

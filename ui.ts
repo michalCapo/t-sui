@@ -813,6 +813,87 @@ function Skeleton(id: string): string {
     ].join(''));
 }
 
+// Predefined skeletons
+function SkeletonList(count = 5): string {
+    let items = '';
+    const n = (typeof count === 'number' && count > 0) ? count : 5;
+    for (let i = 0; i < n; i++) {
+        items += [
+            '<div class="flex items-center gap-3 mb-3">',
+            '  <div class="bg-gray-200 rounded-full h-10 w-10"></div>',
+            '  <div class="flex-1">',
+            '    <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
+            '    <div class="bg-gray-200 h-4 rounded w-3/6"></div>',
+            '  </div>',
+            '</div>'
+        ].join('');
+    }
+    return Trim('<div class="animate-pulse">' + items + '</div>');
+}
+
+function SkeletonComponent(): string {
+    return Trim([
+        '<div class="animate-pulse">',
+        '  <div class="bg-gray-200 h-6 rounded w-2/5 mb-4"></div>',
+        '  <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
+        '  <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
+        '  <div class="bg-gray-200 h-4 rounded w-4/6"></div>',
+        '</div>'
+    ].join(''));
+}
+
+function SkeletonPage(): string {
+    return Trim([
+        '<div class="animate-pulse">',
+        '  <div class="bg-gray-200 h-8 rounded w-1/3 mb-6"></div>',
+        '  <div class="bg-white rounded-lg p-4 shadow mb-4">',
+        '    <div class="bg-gray-200 h-5 rounded w-2/5 mb-3"></div>',
+        '    <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
+        '    <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
+        '    <div class="bg-gray-200 h-4 rounded w-4/6"></div>',
+        '  </div>',
+        '  <div class="bg-white rounded-lg p-4 shadow mb-4">',
+        '    <div class="bg-gray-200 h-5 rounded w-2/5 mb-3"></div>',
+        '    <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
+        '    <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
+        '    <div class="bg-gray-200 h-4 rounded w-4/6"></div>',
+        '  </div>',
+        '</div>'
+    ].join(''));
+}
+
+function SkeletonForm(): string {
+    return Trim([
+        '<div class="animate-pulse">',
+        '  <div class="bg-white rounded-lg p-4 shadow">',
+        '    <div class="bg-gray-200 h-6 rounded w-2/5 mb-5"></div>',
+        '    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">',
+        '      <div>',
+        '        <div class="bg-gray-200 h-4 rounded w-3/6 mb-2"></div>',
+        '        <div class="bg-gray-200 h-10 rounded w-full"></div>',
+        '      </div>',
+        '      <div>',
+        '        <div class="bg-gray-200 h-4 rounded w-3/6 mb-2"></div>',
+        '        <div class="bg-gray-200 h-10 rounded w-full"></div>',
+        '      </div>',
+        '      <div>',
+        '        <div class="bg-gray-200 h-4 rounded w-2/6 mb-2"></div>',
+        '        <div class="bg-gray-200 h-24 rounded w-full"></div>',
+        '      </div>',
+        '      <div>',
+        '        <div class="bg-gray-200 h-4 rounded w-2/6 mb-2"></div>',
+        '        <div class="bg-gray-200 h-10 rounded w-full"></div>',
+        '      </div>',
+        '    </div>',
+        '    <div class="flex justify-end gap-3 mt-6">',
+        '      <div class="bg-gray-200 h-10 rounded w-24"></div>',
+        '      <div class="bg-gray-200 h-10 rounded w-32"></div>',
+        '    </div>',
+        '  </div>',
+        '</div>'
+    ].join(''));
+}
+
 export default {
     Trim, Normalize, Classes, If, Iff, Map, For, RandomString, makeId,
     XS, SM, MD, ST, LG, XL, AREA, INPUT, VALUE, BTN, DISABLED,
@@ -820,5 +901,5 @@ export default {
     a, i, p, div, span, form, select, option, ul, li, canvas, img, input, label, space, Flex1,
     Icon, Icon2, Icon3, Icon4,
     Target, Button, Label, IText, IPassword, IArea, INumber, IDate, ITime, IDateTime, ISelect, ICheckbox, IRadio, IRadioButtons, SimpleTable, ThemeSwitcher,
-    Skeleton,
+    Skeleton, SkeletonList, SkeletonPage, SkeletonComponent, SkeletonForm,
 };
