@@ -804,95 +804,91 @@ function SimpleTable(cols: number, css = '') {
     return api;
 }
 
-function Skeleton(target: Target): string {
-    return Trim([
-        '<div id="' + target.id + '" class="animate-pulse">',
-        '  <div class="bg-gray-200 h-5 rounded w-5/6 mb-2"></div>',
-        '  <div class="bg-gray-200 h-5 rounded w-2/3 mb-2"></div>',
-        '  <div class="bg-gray-200 h-5 rounded w-4/6"></div>',
-        '</div>'
-    ].join(''));
-}
+export const Skeleton = {
 
-// Predefined skeletons
-function SkeletonList(target: Target, count = 5): string {
-    let items = '';
-    const n = (typeof count === 'number' && count > 0) ? count : 5;
-    for (let i = 0; i < n; i++) {
-        items += [
-            '<div class="flex items-center gap-3 mb-3">',
-            '  <div class="bg-gray-200 rounded-full h-10 w-10"></div>',
-            '  <div class="flex-1">',
-            '    <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
-            '    <div class="bg-gray-200 h-4 rounded w-3/6"></div>',
-            '  </div>',
-            '</div>'
-        ].join('');
-    }
-    return Trim('<div id="' + target.id + '" class="animate-pulse">' + items + '</div>');
-}
+    Default(target: Target): string {
+        return div('animate-pulse', { id: target.id })(
+            div('bg-gray-200 h-5 rounded w-5/6 mb-2')(),
+            div('bg-gray-200 h-5 rounded w-2/3 mb-2')(),
+            div('bg-gray-200 h-5 rounded w-4/6')()
+        );
+    },
 
-function SkeletonComponent(target: Target): string {
-    return Trim([
-        '<div id="' + target.id + '" class="animate-pulse">',
-        '  <div class="bg-gray-200 h-6 rounded w-2/5 mb-4"></div>',
-        '  <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
-        '  <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
-        '  <div class="bg-gray-200 h-4 rounded w-4/6"></div>',
-        '</div>'
-    ].join(''));
-}
+    List(target: Target, count = 5): string {
+        let items = '';
+        const n = (typeof count === 'number' && count > 0) ? count : 5;
 
-function SkeletonPage(target: Target): string {
-    return Trim([
-        '<div id="' + target.id + '" class="animate-pulse">',
-        '  <div class="bg-gray-200 h-8 rounded w-1/3 mb-6"></div>',
-        '  <div class="bg-white rounded-lg p-4 shadow mb-4">',
-        '    <div class="bg-gray-200 h-5 rounded w-2/5 mb-3"></div>',
-        '    <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
-        '    <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
-        '    <div class="bg-gray-200 h-4 rounded w-4/6"></div>',
-        '  </div>',
-        '  <div class="bg-white rounded-lg p-4 shadow mb-4">',
-        '    <div class="bg-gray-200 h-5 rounded w-2/5 mb-3"></div>',
-        '    <div class="bg-gray-200 h-4 rounded w-full mb-2"></div>',
-        '    <div class="bg-gray-200 h-4 rounded w-5/6 mb-2"></div>',
-        '    <div class="bg-gray-200 h-4 rounded w-4/6"></div>',
-        '  </div>',
-        '</div>'
-    ].join(''));
-}
+        for (let i = 0; i < n; i++) {
+            const row = div('flex items-center gap-3 mb-3')(
+                div('bg-gray-200 rounded-full h-10 w-10')(),
+                div('flex-1')(
+                    div('bg-gray-200 h-4 rounded w-5/6 mb-2')(),
+                    div('bg-gray-200 h-4 rounded w-3/6')()
+                )
+            );
+            items += row;
+        }
 
-function SkeletonForm(target: Target): string {
-    return Trim([
-        '<div id="' + target.id + '" class="animate-pulse">',
-        '  <div class="bg-white rounded-lg p-4 shadow">',
-        '    <div class="bg-gray-200 h-6 rounded w-2/5 mb-5"></div>',
-        '    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">',
-        '      <div>',
-        '        <div class="bg-gray-200 h-4 rounded w-3/6 mb-2"></div>',
-        '        <div class="bg-gray-200 h-10 rounded w-full"></div>',
-        '      </div>',
-        '      <div>',
-        '        <div class="bg-gray-200 h-4 rounded w-3/6 mb-2"></div>',
-        '        <div class="bg-gray-200 h-10 rounded w-full"></div>',
-        '      </div>',
-        '      <div>',
-        '        <div class="bg-gray-200 h-4 rounded w-2/6 mb-2"></div>',
-        '        <div class="bg-gray-200 h-24 rounded w-full"></div>',
-        '      </div>',
-        '      <div>',
-        '        <div class="bg-gray-200 h-4 rounded w-2/6 mb-2"></div>',
-        '        <div class="bg-gray-200 h-10 rounded w-full"></div>',
-        '      </div>',
-        '    </div>',
-        '    <div class="flex justify-end gap-3 mt-6">',
-        '      <div class="bg-gray-200 h-10 rounded w-24"></div>',
-        '      <div class="bg-gray-200 h-10 rounded w-32"></div>',
-        '    </div>',
-        '  </div>',
-        '</div>'
-    ].join(''));
+        return div('animate-pulse', { id: target.id })(items);
+    },
+
+    Component(target: Target): string {
+        return div('animate-pulse', { id: target.id })(
+            div('bg-gray-200 h-6 rounded w-2/5 mb-4')(),
+            div('bg-gray-200 h-4 rounded w-full mb-2')(),
+            div('bg-gray-200 h-4 rounded w-5/6 mb-2')(),
+            div('bg-gray-200 h-4 rounded w-4/6')()
+        );
+    },
+
+    Page(target: Target): string {
+        const card = function(): string {
+            return div('bg-white rounded-lg p-4 shadow mb-4')(
+                div('bg-gray-200 h-5 rounded w-2/5 mb-3')(),
+                div('bg-gray-200 h-4 rounded w-full mb-2')(),
+                div('bg-gray-200 h-4 rounded w-5/6 mb-2')(),
+                div('bg-gray-200 h-4 rounded w-4/6')()
+            );
+        };
+        return div('animate-pulse', { id: target.id })(
+            div('bg-gray-200 h-8 rounded w-1/3 mb-6')(),
+            card(),
+            card()
+        );
+    },
+
+    Form(target: Target): string {
+        const fieldShort = function(): string {
+            return div('')(
+                div('bg-gray-200 h-4 rounded w-3/6 mb-2')(),
+                div('bg-gray-200 h-10 rounded w-full')()
+            );
+        };
+        const fieldArea = function(): string {
+            return div('')(
+                div('bg-gray-200 h-4 rounded w-2/6 mb-2')(),
+                div('bg-gray-200 h-24 rounded w-full')()
+            );
+        };
+        const actions = function(): string {
+            return div('flex justify-end gap-3 mt-6')(
+                div('bg-gray-200 h-10 rounded w-24')(),
+                div('bg-gray-200 h-10 rounded w-32')()
+            );
+        };
+        return div('animate-pulse', { id: target.id })(
+            div('bg-white rounded-lg p-4 shadow')(
+                div('bg-gray-200 h-6 rounded w-2/5 mb-5')(),
+                div('grid grid-cols-1 md:grid-cols-2 gap-4')(
+                    div('')(fieldShort()),
+                    div('')(fieldShort()),
+                    div('')(fieldArea()),
+                    div('')(fieldShort())
+                ),
+                actions()
+            )
+        );
+    },
 }
 
 export default {
@@ -902,5 +898,4 @@ export default {
     a, i, p, div, span, form, select, option, ul, li, canvas, img, input, label, space, Flex1,
     Icon, IconStart, IconLeft, IconRight, IconEnd,
     Target, Button, Label, IText, IPassword, IArea, INumber, IDate, ITime, IDateTime, ISelect, ICheckbox, IRadio, IRadioButtons, SimpleTable, ThemeSwitcher,
-    Skeleton, SkeletonList, SkeletonPage, SkeletonComponent, SkeletonForm,
 };

@@ -409,80 +409,80 @@ export class Context {
             .catch(err => console.error('Patch error:', err));
     }
 
-    private _defer(method: Callable, target: Target, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
-        const self = this;
-        const swap = (options && options.swap) || 'outline';
-        const skeleton = (options && options.skeleton) || '';
-        const values = (options && options.values) || [];
-        try {
-            setTimeout(async function() {
-                try {
-                    const ctx = new Context(self.app, self.req, self.res, self.sessionID);
-                    let html = '';
-                    try {
-                        if (values.length) {
-                            const items: BodyItem[] = [];
-                            for (let i = 0; i < values.length; i++) {
-                                const obj = values[i];
-                                if (obj == null) continue;
-                                const entries = Object.entries(obj);
-                                for (let j = 0; j < entries.length; j++) {
-                                    const kv = entries[j];
-                                    items.push({ name: kv[0], type: typeOf(kv[1]), value: valueToString(kv[1]) });
-                                }
-                            }
-                            REQ_BODY.set(ctx.req, items as BodyItem[]);
-                        }
-                    } catch { /* noop */ }
-                    try { html = String(await method(ctx)); } catch (_) { html = ''; }
-                    if (ctx.append.length) { html += ctx.append.join(''); }
-                    self.app._sendPatch({ id: target.id, swap: swap, html: html });
-                } catch { /* noop */ }
-            }, 0);
-        } catch { /* noop */ }
-        return skeleton;
-    }
+    // private _defer(method: Callable, target: Target, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
+    //     const self = this;
+    //     const swap = (options && options.swap) || 'outline';
+    //     const skeleton = (options && options.skeleton) || '';
+    //     const values = (options && options.values) || [];
+    //     try {
+    //         setTimeout(async function() {
+    //             try {
+    //                 const ctx = new Context(self.app, self.req, self.res, self.sessionID);
+    //                 let html = '';
+    //                 try {
+    //                     if (values.length) {
+    //                         const items: BodyItem[] = [];
+    //                         for (let i = 0; i < values.length; i++) {
+    //                             const obj = values[i];
+    //                             if (obj == null) continue;
+    //                             const entries = Object.entries(obj);
+    //                             for (let j = 0; j < entries.length; j++) {
+    //                                 const kv = entries[j];
+    //                                 items.push({ name: kv[0], type: typeOf(kv[1]), value: valueToString(kv[1]) });
+    //                             }
+    //                         }
+    //                         REQ_BODY.set(ctx.req, items as BodyItem[]);
+    //                     }
+    //                 } catch { /* noop */ }
+    //                 try { html = String(await method(ctx)); } catch (_) { html = ''; }
+    //                 if (ctx.append.length) { html += ctx.append.join(''); }
+    //                 self.app._sendPatch({ id: target.id, swap: swap, html: html });
+    //             } catch { /* noop */ }
+    //         }, 0);
+    //     } catch { /* noop */ }
+    //     return skeleton;
+    // }
 
-    Defer(method: Callable, ...values: any[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        function make(predefined?: (target: Target) => string) {
-            return {
-                Render: function(target: Target, skeleton?: string): string {
-                    if (skeleton == null && predefined) {
-                        skeleton = predefined(target);
-                    }
+    // Defer(method: Callable, ...values: any[]) {
+    //     const callable = this.Callable(method);
+    //     const self = this;
+    //     function make(predefined?: (target: Target) => string) {
+    //         return {
+    //             Render: function(target: Target, skeleton?: string): string {
+    //                 if (skeleton == null && predefined) {
+    //                     skeleton = predefined(target);
+    //                 }
 
-                    return self._defer(callable, target, { swap: 'inline', values: values, skeleton: skeleton });
-                },
+    //                 return self._defer(callable, target, { swap: 'inline', values: values, skeleton: skeleton });
+    //             },
 
-                Replace: function(target: Target, skeleton?: string): string {
-                    if (skeleton == null && predefined) {
-                        skeleton = predefined(target);
-                    }
+    //             Replace: function(target: Target, skeleton?: string): string {
+    //                 if (skeleton == null && predefined) {
+    //                     skeleton = predefined(target);
+    //                 }
 
-                    return self._defer(callable, target, { swap: 'outline', values: values, skeleton: skeleton });
-                },
+    //                 return self._defer(callable, target, { swap: 'outline', values: values, skeleton: skeleton });
+    //             },
 
-                Skeleton: function(type?: 'list' | 'component' | 'page' | 'form') {
-                    let skeleton = ui.Skeleton
+    //             Skeleton: function(type?: 'list' | 'component' | 'page' | 'form') {
+    //                 let skeleton = ui.Skeleton
 
-                    if (type === 'list') {
-                        skeleton = ui.SkeletonList;
-                    } else if (type === 'component') {
-                        skeleton = ui.SkeletonComponent;
-                    } else if (type === 'page') {
-                        skeleton = ui.SkeletonPage;
-                    } else if (type === 'form') {
-                        skeleton = ui.SkeletonForm;
-                    }
+    //                 if (type === 'list') {
+    //                     skeleton = ui.SkeletonList;
+    //                 } else if (type === 'component') {
+    //                     skeleton = ui.SkeletonComponent;
+    //                 } else if (type === 'page') {
+    //                     skeleton = ui.SkeletonPage;
+    //                 } else if (type === 'form') {
+    //                     skeleton = ui.SkeletonForm;
+    //                 }
 
-                    return make(skeleton);
-                },
-            };
-        }
-        return make(undefined);
-    }
+    //                 return make(skeleton);
+    //             },
+    //         };
+    //     }
+    //     return make(undefined);
+    // }
 }
 
 function displayMessage(ctx: Context, message: string, color: string) {

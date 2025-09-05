@@ -1,4 +1,4 @@
-import ui from '../../ui';
+import ui, { Skeleton } from '../../ui';
 import { Context } from '../../ui.server';
 import { Hello } from './hello';
 import { Counter } from './counter';
@@ -84,11 +84,17 @@ function Deffered(ctx: Context): string {
         await new Promise(function(r) { setTimeout(r, 2000); });
 
         return ui.div('space-y-4', deferredTarget)(
-            ui.div('grid grid-cols-4 gap-4')(
+            ui.div('grid grid-cols-5 gap-4')(
                 ui.Button()
                     .Color(ui.Blue)
                     .Class('rounded')
                     .Click(ctx.Call(Deffered).Replace(deferredTarget))
+                    .Render('As default'),
+
+                ui.Button()
+                    .Color(ui.Blue)
+                    .Class('rounded')
+                    .Click(ctx.Call(Deffered, { as: 'component' }).Replace(deferredTarget))
                     .Render('As component'),
 
                 ui.Button()
@@ -117,16 +123,19 @@ function Deffered(ctx: Context): string {
         )
     });
 
+    if (body.as === 'component')
+        return Skeleton.Component(deferredTarget);
+
     if (body.as === 'list')
-        return ui.SkeletonList(deferredTarget, 6);
+        return Skeleton.List(deferredTarget, 6);
 
     if (body.as === 'page')
-        return ui.SkeletonPage(deferredTarget);
+        return Skeleton.Page(deferredTarget);
 
     if (body.as === 'form')
-        return ui.SkeletonForm(deferredTarget);
+        return Skeleton.Form(deferredTarget);
 
-    return ui.Skeleton(deferredTarget);
+    return Skeleton.Default(deferredTarget);
 }
 
 export function OthersContent(ctx: Context): string {

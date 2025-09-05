@@ -114,6 +114,7 @@ app.Listen(1422);
 - Server: `App`, `MakeApp(lang)`, `app.Page(path, fn)`, `app.Listen(port)`
 - Context: `ctx.Body(out)`, `ctx.Call(fn).Render/Replace(target)`, `ctx.Send(fn).Render/Replace(target)`, `ctx.Submit(fn).Render/Replace(target)`, `ctx.Defer(fn).Render/Replace/None(target?, skeleton?)`, `ctx.Load(href)`, `ctx.Success/Error/Info(msg)`
 - Skeletons: `ui.Skeleton(id?)`, `ui.SkeletonList(count)`, `ui.SkeletonComponent()`, `ui.SkeletonPage()`, `ui.SkeletonForm()`
+  - Built using the same HTML builder primitives (no raw string concatenation)
 
 See `examples/` for practical usage.
 
