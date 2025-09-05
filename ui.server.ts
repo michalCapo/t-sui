@@ -474,7 +474,7 @@ export class Context {
         const self = this;
         const id = (target && target.id) || '';
         const swap = (options && options.swap) || 'outline';
-        const skeleton = (options && options.skeleton) || defaultSkeleton(id);
+        const skeleton = (options && options.skeleton) || ui.Skeleton(id);
         const values = (options && options.values) || [];
         try {
             setTimeout(async function() {
@@ -508,17 +508,24 @@ export class Context {
     Defer(method: Callable, ...values: any[]) {
         const callable = this.Callable(method);
         const self = this;
-        return {
-            Render: function(target: Attr, skeleton?: string): string {
-                return self._defer(callable, target, { swap: 'inline', values: values, skeleton: skeleton });
-            },
-            Replace: function(target: Attr, skeleton?: string): string {
-                return self._defer(callable, target, { swap: 'outline', values: values, skeleton: skeleton });
-            },
-            None: function(skeleton?: string): string {
-                return self._defer(callable, { id: '' } as Attr, { swap: 'none', values: values, skeleton: skeleton });
-            },
-        };
+        function make(predefined?: string) {
+            return {
+                Render: function(target: Attr, skeleton?: string): string {
+                    const sk = typeof skeleton === 'string' && skeleton.length > 0 ? skeleton : predefined;
+                    return self._defer(callable, target, { swap: 'inline', values: values, skeleton: sk });
+                },
+                Replace: function(target: Attr, skeleton?: string): string {
+                    const sk = typeof skeleton === 'string' && skeleton.length > 0 ? skeleton : predefined;
+                    return self._defer(callable, target, { swap: 'outline', values: values, skeleton: sk });
+                },
+                None: function(skeleton?: string): string {
+                    const sk = typeof skeleton === 'string' && skeleton.length > 0 ? skeleton : predefined;
+                    return self._defer(callable, { id: '' } as Attr, { swap: 'none', values: values, skeleton: sk });
+                },
+                Skeleton: function(s: string) { return make(s); },
+            };
+        }
+        return make(undefined);
     }
 }
 
@@ -1005,17 +1012,3 @@ function normalizePath(p: string): string {
 }
 
 function routeKey(method: "GET" | "POST", path: string): string { return method + ' ' + path; }
-
-// Internal: broadcast a patch message to all SSE clients
-// _sendPatch is now implemented as a method on App
-
-function defaultSkeleton(id: string): string {
-    const rid = id || ('i' + Math.random().toString(36).slice(2));
-    return ui.Trim([
-        '<div id="' + rid + '" class="animate-pulse">',
-        '  <div class="bg-gray-200 h-5 rounded w-5/6 mb-2"></div>',
-        '  <div class="bg-gray-200 h-5 rounded w-2/3 mb-2"></div>',
-        '  <div class="bg-gray-200 h-5 rounded w-4/6"></div>',
-        '</div>'
-    ].join(''));
-}

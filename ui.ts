@@ -802,6 +802,17 @@ function SimpleTable(cols: number, css = '') {
     return api;
 }
 
+function Skeleton(id: string): string {
+    const rid = id || ('i' + Math.random().toString(36).slice(2));
+    return Trim([
+        '<div id="' + rid + '" class="animate-pulse">',
+        '  <div class="bg-gray-200 h-5 rounded w-5/6 mb-2"></div>',
+        '  <div class="bg-gray-200 h-5 rounded w-2/3 mb-2"></div>',
+        '  <div class="bg-gray-200 h-5 rounded w-4/6"></div>',
+        '</div>'
+    ].join(''));
+}
+
 export default {
     Trim, Normalize, Classes, If, Iff, Map, For, RandomString, makeId,
     XS, SM, MD, ST, LG, XL, AREA, INPUT, VALUE, BTN, DISABLED,
@@ -809,4 +820,5 @@ export default {
     a, i, p, div, span, form, select, option, ul, li, canvas, img, input, label, space, Flex1,
     Icon, Icon2, Icon3, Icon4,
     Target, Button, Label, IText, IPassword, IArea, INumber, IDate, ITime, IDateTime, ISelect, ICheckbox, IRadio, IRadioButtons, SimpleTable, ThemeSwitcher,
+    Skeleton,
 };
