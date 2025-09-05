@@ -30,16 +30,15 @@ function IconsDemo(): string {
 }
 
 export function OthersContent(ctx: Context): string {
-    // Deferred block (SSE skeleton -> replace when ready)
     const deferredTarget = ui.Target();
-    function DeferredBox(t: Target) {
-        return async function(_: Context): Promise<string> {
-            await new Promise(function(r) { setTimeout(r, 2000); });
-            return ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow', t)(
-                ui.div('text-lg font-semibold')('Deferred content loaded'),
-                ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
-            );
-        };
+
+    // Deferred block (SSE skeleton -> replace when ready)
+    async function Deferred(_: Context): Promise<string> {
+        await new Promise(function(r) { setTimeout(r, 2000); });
+        return ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow', deferredTarget)(
+            ui.div('text-lg font-semibold')('Deferred content loaded'),
+            ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
+        );
     }
 
     const hello = ui.div('bg-white p-6 rounded-lg shadow w-full')(
@@ -74,7 +73,7 @@ export function OthersContent(ctx: Context): string {
             ui.div('text-lg font-bold')('Deferred (SSE)'),
             ui.div('text-gray-600 mb-3')('Shows a skeleton that is replaced when the server finishes rendering.'),
             // Return the skeleton immediately; server will push a patch to replace it
-            ctx.Defer(DeferredBox(deferredTarget), deferredTarget, { swap: 'outline' })
+            ctx.Defer(Deferred, deferredTarget, { swap: 'outline' })
         ),
         hello,
         counter,

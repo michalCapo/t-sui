@@ -59,7 +59,7 @@ function If(cond: boolean, value: () => string): string {
 }
 
 function Iff(cond: boolean) {
-    return function (...value: string[]) {
+    return function(...value: string[]) {
         if (cond) { return value.join(' '); }
         return '';
     };
@@ -159,8 +159,8 @@ function attributes(...attrs: Attr[]): string {
 }
 
 function open(tag: string) {
-    return function (css: string, ...attr: Attr[]) {
-        return function (...elements: string[]) {
+    return function(css: string, ...attr: Attr[]) {
+        return function(...elements: string[]) {
             const final: Attr[] = [];
             for (let i = 0; i < attr.length; i++) {
                 final.push(attr[i]);
@@ -173,7 +173,7 @@ function open(tag: string) {
 }
 
 function closed(tag: string) {
-    return function (css: string, ...attr: Attr[]) {
+    return function(css: string, ...attr: Attr[]) {
         const final: Attr[] = [];
         for (let i = 0; i < attr.length; i++) {
             final.push(attr[i]);
@@ -214,7 +214,7 @@ function Icon4(css: string, text: string): string { return div('flex-1 flex item
 { attributes };
 
 function Label(css: string, ...attr: Attr[]) {
-    return function (text: string) { return '<label class=\"' + css + '\" ' + attrs(attr) + '>' + text + '</label>'; };
+    return function(text: string) { return '<label class=\"' + css + '\" ' + attrs(attr) + '>' + text + '</label>'; };
 }
 
 function attrs(attr: Attr[]): string {
@@ -244,7 +244,8 @@ function attrs(attr: Attr[]): string {
     return out;
 }
 
-function Target(): Target { return { id: 'i' + RandomString(15) }; }
+function makeId(): string { return 'i' + RandomString(15); }
+function Target(): Target { return { id: makeId() }; }
 
 // Theme switcher: single button that cycles Auto → Light → Dark
 // Uses global setTheme() and shows only the current state
@@ -257,8 +258,8 @@ function ThemeSwitcher(css = ''): string {
 
     const container = [
         '<button id="' + id + '" type="button" class="' +
-            'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 ' +
-            'hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm ' + css + '">',
+        'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 ' +
+        'hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm ' + css + '">',
         '  <span class="icon">' + desktop + '</span>',
         '  <span class="label">Auto</span>',
         '</button>'
@@ -293,7 +294,7 @@ function Button(...attrs: Attr[]) {
         target: {} as Attr,
         visible: true,
         disabled: false,
-        extra: (function () {
+        extra: (function() {
             const out: Attr[] = [];
             for (let i = 0; i < attrs.length; i++) {
                 out.push(attrs[i]);
@@ -369,23 +370,23 @@ function Button(...attrs: Attr[]) {
 function createBase(name: string, data?: any, as: string = 'text') {
     const state = { data: data, placeholder: '', css: '', cssLabel: '', cssInput: '', autocomplete: '', size: MD, onclick: '', onchange: '', as: as, name: name, pattern: '', value: '', target: {} as Attr, visible: true, required: false, disabled: false, readonly: false };
     const api: any = {
-        Class: function (...v: string[]) { state.css = v.join(' '); return api; },
-        ClassLabel: function (...v: string[]) { state.cssLabel = v.join(' '); return api; },
-        ClassInput: function (...v: string[]) { state.cssInput = v.join(' '); return api; },
-        Size: function (v: string) { state.size = v; return api; },
-        Placeholder: function (v: string) { state.placeholder = v; return api; },
-        Pattern: function (v: string) { state.pattern = v; return api; },
-        Autocomplete: function (v: string) { state.autocomplete = v; return api; },
-        Required: function (v = true) { state.required = v; return api; },
-        Readonly: function (v = true) { state.readonly = v; return api; },
-        Disabled: function (v = true) { state.disabled = v; return api; },
-        Type: function (v: string) { state.as = v; return api; },
-        Rows: function (v: number) { (state.target as any).rows = v; return api; },
-        Value: function (v: string) { state.value = v; return api; },
-        Change: function (code: string) { state.onchange = code; return api; },
-        Click: function (code: string) { state.onclick = code; return api; },
-        If: function (v: boolean) { state.visible = v; return api; },
-        _resolveValue: function (): string {
+        Class: function(...v: string[]) { state.css = v.join(' '); return api; },
+        ClassLabel: function(...v: string[]) { state.cssLabel = v.join(' '); return api; },
+        ClassInput: function(...v: string[]) { state.cssInput = v.join(' '); return api; },
+        Size: function(v: string) { state.size = v; return api; },
+        Placeholder: function(v: string) { state.placeholder = v; return api; },
+        Pattern: function(v: string) { state.pattern = v; return api; },
+        Autocomplete: function(v: string) { state.autocomplete = v; return api; },
+        Required: function(v = true) { state.required = v; return api; },
+        Readonly: function(v = true) { state.readonly = v; return api; },
+        Disabled: function(v = true) { state.disabled = v; return api; },
+        Type: function(v: string) { state.as = v; return api; },
+        Rows: function(v: number) { (state.target as any).rows = v; return api; },
+        Value: function(v: string) { state.value = v; return api; },
+        Change: function(code: string) { state.onchange = code; return api; },
+        Click: function(code: string) { state.onclick = code; return api; },
+        If: function(v: boolean) { state.visible = v; return api; },
+        _resolveValue: function(): string {
             if (!state.data) {
                 return state.value;
             }
@@ -414,7 +415,7 @@ function createBase(name: string, data?: any, as: string = 'text') {
 function IText(name: string, data?: any) {
     const base: any = createBase(name, data, 'text');
     return Object.assign(base, {
-        Render: function (label: string): string {
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -430,7 +431,7 @@ function IText(name: string, data?: any) {
 function IPassword(name: string, data?: any) {
     const base: any = createBase(name, data, 'password');
     return Object.assign(base, {
-        Render: function (label: string): string {
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -446,7 +447,7 @@ function IPassword(name: string, data?: any) {
 function IArea(name: string, data?: any) {
     const base: any = createBase(name, data, 'text');
     return Object.assign(base, {
-        Render: function (label: string): string {
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -464,9 +465,9 @@ function INumber(name: string, data?: any) {
     const base: any = createBase(name, data, 'number');
     const local = { min: undefined as number | undefined, max: undefined as number | undefined, step: undefined as number | undefined, valueFormat: '%v' };
     return Object.assign(base, {
-        Numbers: function (min?: number, max?: number, step?: number) { local.min = min; local.max = max; local.step = step; return this; },
-        Format: function (fmt: string) { local.valueFormat = fmt; return this; },
-        Render: function (label: string): string {
+        Numbers: function(min?: number, max?: number, step?: number) { local.min = min; local.max = max; local.step = step; return this; },
+        Format: function(fmt: string) { local.valueFormat = fmt; return this; },
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -503,8 +504,8 @@ function IDate(name: string, data?: any) {
     const base: any = createBase(name, data, 'date');
     const local = { min: undefined as Date | undefined, max: undefined as Date | undefined };
     return Object.assign(base, {
-        Dates: function (min?: Date, max?: Date) { local.min = min; local.max = max; return this; },
-        Render: function (label: string): string {
+        Dates: function(min?: Date, max?: Date) { local.min = min; local.max = max; return this; },
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -530,8 +531,8 @@ function ITime(name: string, data?: any) {
     const base: any = createBase(name, data, 'time');
     const local = { min: undefined as Date | undefined, max: undefined as Date | undefined };
     return Object.assign(base, {
-        Dates: function (min?: Date, max?: Date) { local.min = min; local.max = max; return this; },
-        Render: function (label: string): string {
+        Dates: function(min?: Date, max?: Date) { local.min = min; local.max = max; return this; },
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -556,8 +557,8 @@ function IDateTime(name: string, data?: any) {
     const base: any = createBase(name, data, 'datetime-local');
     const local = { min: undefined as Date | undefined, max: undefined as Date | undefined };
     return Object.assign(base, {
-        Dates: function (min?: Date, max?: Date) { local.min = min; local.max = max; return this; },
-        Render: function (label: string): string {
+        Dates: function(min?: Date, max?: Date) { local.min = min; local.max = max; return this; },
+        Render: function(label: string): string {
             if (!base._state.visible) {
                 return '';
             }
@@ -581,20 +582,20 @@ function IDateTime(name: string, data?: any) {
 function ISelect<T = any>(name: string, data?: T) {
     const state = { data: data, name: name, css: '', cssLabel: '', cssInput: '', size: MD, required: false, disabled: false, placeholder: '', options: [] as AOption[], target: {} as Attr, onchange: '', empty: false, emptyText: '', visible: true, error: false };
     const api = {
-        Class: function (...v: string[]) { state.css = v.join(' '); return api; },
-        ClassLabel: function (...v: string[]) { state.cssLabel = v.join(' '); return api; },
-        ClassInput: function (...v: string[]) { state.cssInput = v.join(' '); return api; },
-        Size: function (v: string) { state.size = v; return api; },
-        Required: function (v = true) { state.required = v; return api; },
-        Disabled: function (v = true) { state.disabled = v; return api; },
-        Options: function (values: AOption[]) { state.options = values; return api; },
-        Placeholder: function (v: string) { state.placeholder = v; return api; },
-        Change: function (code: string) { state.onchange = code; return api; },
-        Empty: function () { state.empty = true; return api; },
-        EmptyText: function (v: string) { state.emptyText = v; state.empty = true; return api; },
-        If: function (v: boolean) { state.visible = v; return api; },
-        Error: function (v = true) { state.error = v; return api; },
-        Render: function (label: string): string {
+        Class: function(...v: string[]) { state.css = v.join(' '); return api; },
+        ClassLabel: function(...v: string[]) { state.cssLabel = v.join(' '); return api; },
+        ClassInput: function(...v: string[]) { state.cssInput = v.join(' '); return api; },
+        Size: function(v: string) { state.size = v; return api; },
+        Required: function(v = true) { state.required = v; return api; },
+        Disabled: function(v = true) { state.disabled = v; return api; },
+        Options: function(values: AOption[]) { state.options = values; return api; },
+        Placeholder: function(v: string) { state.placeholder = v; return api; },
+        Change: function(code: string) { state.onchange = code; return api; },
+        Empty: function() { state.empty = true; return api; },
+        EmptyText: function(v: string) { state.emptyText = v; state.empty = true; return api; },
+        If: function(v: boolean) { state.visible = v; return api; },
+        Error: function(v = true) { state.error = v; return api; },
+        Render: function(label: string): string {
             if (!state.visible) {
                 return '';
             }
@@ -624,12 +625,12 @@ function ISelect<T = any>(name: string, data?: T) {
 function ICheckbox(name: string, data?: any) {
     const state = { data: data, name: name, css: '', size: MD, required: false, disabled: false, error: false };
     const api = {
-        Class: function (...v: string[]) { state.css = v.join(' '); return api; },
-        Size: function (v: string) { state.size = v; return api; },
-        Required: function (v = true) { state.required = v; return api; },
-        Disabled: function (v = true) { state.disabled = v; return api; },
-        Error: function (v = true) { state.error = v; return api; },
-        Render: function (text: string): string {
+        Class: function(...v: string[]) { state.css = v.join(' '); return api; },
+        Size: function(v: string) { state.size = v; return api; },
+        Required: function(v = true) { state.required = v; return api; },
+        Disabled: function(v = true) { state.disabled = v; return api; },
+        Error: function(v = true) { state.error = v; return api; },
+        Render: function(text: string): string {
             const isChecked = state.data ? Boolean((state.data as any)[state.name]) : false;
             const inputEl = (input as any)(Classes('cursor-pointer select-none'), { type: 'checkbox', name: state.name, checked: isChecked ? 'checked' : undefined, required: state.required, disabled: state.disabled });
             const wrapperClass = Classes(state.css, state.size, state.disabled && 'opacity-50 pointer-events-none', state.required && 'invalid-if', state.error && 'invalid');
@@ -644,14 +645,14 @@ function ICheckbox(name: string, data?: any) {
 function IRadio(name: string, data?: any) {
     const state = { data: data, name: name, css: '', cssLabel: '', size: MD, valueSet: '', target: {} as Attr, disabled: false, required: false, error: false };
     const api = {
-        Class: function (...v: string[]) { state.css = v.join(' '); return api; },
-        ClassLabel: function (...v: string[]) { state.cssLabel = v.join(' '); return api; },
-        Size: function (v: string) { state.size = v; return api; },
-        Value: function (v: string) { state.valueSet = v; return api; },
-        Disabled: function (v = true) { state.disabled = v; return api; },
-        Required: function (v = true) { state.required = v; return api; },
-        Error: function (v = true) { state.error = v; return api; },
-        Render: function (text: string): string {
+        Class: function(...v: string[]) { state.css = v.join(' '); return api; },
+        ClassLabel: function(...v: string[]) { state.cssLabel = v.join(' '); return api; },
+        Size: function(v: string) { state.size = v; return api; },
+        Value: function(v: string) { state.valueSet = v; return api; },
+        Disabled: function(v = true) { state.disabled = v; return api; },
+        Required: function(v = true) { state.required = v; return api; },
+        Error: function(v = true) { state.error = v; return api; },
+        Render: function(text: string): string {
             const selected = state.data ? String((state.data as any)[state.name] || '') : '';
             const inputEl = (input as any)(Classes('hover:cursor-pointer'), { type: 'radio', name: state.name, value: state.valueSet, checked: selected === state.valueSet ? 'checked' : undefined, disabled: state.disabled, required: state.required });
             const wrapperCls = Classes(state.css, state.size, state.disabled && 'opacity-50 pointer-events-none', state.required && 'invalid-if', state.error && 'invalid');
@@ -666,12 +667,12 @@ function IRadio(name: string, data?: any) {
 function IRadioButtons(name: string, data?: any) {
     const state = { data: data, name: name, css: '', options: [] as AOption[], required: false, disabled: false, error: false };
     const api = {
-        Options: function (v: AOption[]) { state.options = v; return api; },
-        Class: function (...v: string[]) { state.css = v.join(' '); return api; },
-        Required: function (v = true) { state.required = v; return api; },
-        Disabled: function (v = true) { state.disabled = v; return api; },
-        Error: function (v = true) { state.error = v; return api; },
-        Render: function (text: string): string {
+        Options: function(v: AOption[]) { state.options = v; return api; },
+        Class: function(...v: string[]) { state.css = v.join(' '); return api; },
+        Required: function(v = true) { state.required = v; return api; },
+        Disabled: function(v = true) { state.disabled = v; return api; },
+        Error: function(v = true) { state.error = v; return api; },
+        Render: function(text: string): string {
             const selected = state.data ? String((state.data as any)[state.name] || '') : '';
             let items = '';
             for (let i = 0; i < state.options.length; i++) {
@@ -702,12 +703,12 @@ function SimpleTable(cols: number, css = '') {
     }
 
     const api = {
-        Class: function (col: number, ...classes: string[]) {
+        Class: function(col: number, ...classes: string[]) {
             if (col >= 0 && col < state.cols) { state.colClasses[col] = Classes(...classes); }
             return api;
         },
-        Empty: function () { return api.Field(''); },
-        Field: function (value: string, ...cls: string[]) {
+        Empty: function() { return api.Field(''); },
+        Field: function(value: string, ...cls: string[]) {
             if (
                 state.rows.length === 0 ||
                 state.rows[state.rows.length - 1].length === state.cols ||
@@ -723,7 +724,7 @@ function SimpleTable(cols: number, css = '') {
             state.cellAttrs[state.cellAttrs.length - 1].push('');
             return api;
         },
-        Attr: function (attrs: string) {
+        Attr: function(attrs: string) {
             if (state.cellAttrs.length > 0 && state.cellAttrs[state.cellAttrs.length - 1].length > 0) {
                 const lastRowIndex = state.cellAttrs.length - 1;
                 const lastCellIndex = state.cellAttrs[lastRowIndex].length - 1;
@@ -756,7 +757,7 @@ function SimpleTable(cols: number, css = '') {
             }
             return api;
         },
-        Render: function (): string {
+        Render: function(): string {
             let rowsHtml = '';
             const colspanRe = /colspan=['"]?(\d+)['"]?/;
             for (let rowIndex = 0; rowIndex < state.rows.length; rowIndex++) {
@@ -802,7 +803,7 @@ function SimpleTable(cols: number, css = '') {
 }
 
 export default {
-    Trim, Normalize, Classes, If, Iff, Map, For, RandomString,
+    Trim, Normalize, Classes, If, Iff, Map, For, RandomString, makeId,
     XS, SM, MD, ST, LG, XL, AREA, INPUT, VALUE, BTN, DISABLED,
     Yellow, YellowOutline, Green, GreenOutline, Purple, PurpleOutline, Blue, BlueOutline, Red, RedOutline, Gray, GrayOutline, White, WhiteOutline,
     a, i, p, div, span, form, select, option, ul, li, canvas, img, input, label, space, Flex1,

@@ -59,7 +59,8 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
             ),
         );
         const content = body(ctx);
-        return app.HTML(title, 'bg-gray-100 dark:bg-gray-900 min-h-screen', nav + ui.div('max-w-5xl mx-auto px-2')(content));
+        // Add top padding to avoid content being overlapped by the fixed navbar
+        return app.HTML(title, 'bg-gray-100 dark:bg-gray-900 min-h-screen', nav + ui.div('pt-16 max-w-5xl mx-auto px-2')(content));
     };
 }
 
