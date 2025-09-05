@@ -73,7 +73,7 @@ export function OthersContent(ctx: Context): string {
             ui.div('text-lg font-bold')('Deferred (SSE)'),
             ui.div('text-gray-600 mb-3')('Shows a skeleton that is replaced when the server finishes rendering.'),
             // Return the skeleton immediately; server will push a patch to replace it
-            ctx.Defer(Deferred, deferredTarget, { swap: 'outline' })
+            ctx.Defer(Deferred).Replace(deferredTarget)
         ),
         hello,
         counter,

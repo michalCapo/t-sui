@@ -470,7 +470,7 @@ export class Context {
         } catch { /* noop */ }
     }
 
-    Defer(method: Callable, target: Attr, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
+    private _defer(method: Callable, target: Attr, options?: { swap?: Swap; values?: any[]; skeleton?: string }): string {
         const self = this;
         const id = (target && target.id) || '';
         const swap = (options && options.swap) || 'outline';
@@ -482,7 +482,6 @@ export class Context {
                     const ctx = new Context(self.app, self.req, self.res, self.sessionID);
                     let html = '';
                     try {
-                        // Prepare body-like values if provided
                         if (values.length) {
                             const items: BodyItem[] = [];
                             for (let i = 0; i < values.length; i++) {
@@ -504,6 +503,22 @@ export class Context {
             }, 0);
         } catch { /* noop */ }
         return skeleton;
+    }
+
+    Defer(method: Callable, ...values: any[]) {
+        const callable = this.Callable(method);
+        const self = this;
+        return {
+            Render: function(target: Attr, skeleton?: string): string {
+                return self._defer(callable, target, { swap: 'inline', values: values, skeleton: skeleton });
+            },
+            Replace: function(target: Attr, skeleton?: string): string {
+                return self._defer(callable, target, { swap: 'outline', values: values, skeleton: skeleton });
+            },
+            None: function(skeleton?: string): string {
+                return self._defer(callable, { id: '' } as Attr, { swap: 'none', values: values, skeleton: skeleton });
+            },
+        };
     }
 }
 
