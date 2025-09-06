@@ -467,6 +467,8 @@ export class Context {
         return {
             Render: function(target: Attr) { return self.Post('FORM', 'inline', { method: callable, target: target, values: values }); },
             Replace: function(target: Attr) { return self.Post('FORM', 'outline', { method: callable, target: target, values: values }); },
+            Append: function(target: Attr) { return self.Post('FORM', 'append', { method: callable, target: target, values: values }); },
+            Prepend: function(target: Attr) { return self.Post('FORM', 'prepend', { method: callable, target: target, values: values }); },
             None: function() { return self.Post('FORM', 'none', { method: callable, values: values }); },
         };
     }
@@ -477,6 +479,8 @@ export class Context {
         return {
             Render: function(target: Attr) { return self.Post('POST', 'inline', { method: callable, target: target, values: values }); },
             Replace: function(target: Attr) { return self.Post('POST', 'outline', { method: callable, target: target, values: values }); },
+            Append: function(target: Attr) { return self.Post('POST', 'append', { method: callable, target: target, values: values }); },
+            Prepend: function(target: Attr) { return self.Post('POST', 'prepend', { method: callable, target: target, values: values }); },
             None: function() { return self.Post('POST', 'none', { method: callable, values: values }); },
         };
     }
@@ -487,6 +491,8 @@ export class Context {
         return {
             Render: function(target: Attr): Attr { return { onsubmit: self.Post('FORM', 'inline', { method: callable, target: target, values: values }) }; },
             Replace: function(target: Attr): Attr { return { onsubmit: self.Post('FORM', 'outline', { method: callable, target: target, values: values }) }; },
+            Append: function(target: Attr): Attr { return { onsubmit: self.Post('FORM', 'append', { method: callable, target: target, values: values }) }; },
+            Prepend: function(target: Attr): Attr { return { onsubmit: self.Post('FORM', 'prepend', { method: callable, target: target, values: values }) }; },
             None: function(): Attr { return { onsubmit: self.Post('FORM', 'none', { method: callable, values: values }) }; },
         };
     }
@@ -683,6 +689,8 @@ export const __post = ui.Trim(`
                 if (el != null) {
                     if (swap === 'inline') { el.innerHTML = html; }
                     else if (swap === 'outline') { el.outerHTML = html; }
+                    else if (swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
+                    else if (swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
                 }
             })
             .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
@@ -720,6 +728,8 @@ export const __sse = ui.Trim(`
                         if (!el) { return; }
                         if (msg.swap === 'inline') { el.innerHTML = html; }
                         else if (msg.swap === 'outline') { el.outerHTML = html; }
+                        else if (msg.swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
+                        else if (msg.swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
                     } catch(_){ }
                 });
                 es.onerror = function(){ try{ es.close(); } catch(_){ } showOffline(); setTimeout(connect, 1000); };
@@ -981,6 +991,8 @@ export const __submit = ui.Trim(`
                         if (el2 != null) {
                             if (swap === 'inline') { el2.innerHTML = html; }
                             else if (swap === 'outline') { el2.outerHTML = html; }
+                            else if (swap === 'append') { el2.insertAdjacentHTML('beforeend', html); }
+                            else if (swap === 'prepend') { el2.insertAdjacentHTML('afterbegin', html); }
                         }
                     })
                     .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })

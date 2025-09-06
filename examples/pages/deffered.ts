@@ -13,7 +13,7 @@ async function LazyLoadData(ctx: Context, target: Target) {
 }
 
 async function LazyMoreData(ctx: Context, target: Target) {
-    await new Promise(function(r) { setTimeout(r, 4000); });
+    await new Promise(function(r) { setTimeout(r, 3000); });
 
     return ui.div('grid grid-cols-5 gap-4')(
         ui.Button()
@@ -60,7 +60,7 @@ export function Deffered(ctx: Context): string {
     // replace the target when the data is loaded
     ctx.Patch(target.Replace, LazyLoadData(ctx, target));
 
-    // replace the target when more data is loaded
+    // append to the target when more data is loaded
     ctx.Patch(target.Append, LazyMoreData(ctx, target));
 
     return target.Skeleton(form.as);

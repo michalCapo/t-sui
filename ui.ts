@@ -237,6 +237,17 @@ function renderAttrs(attr: Attr[]): string {
         for (let j = 0; j < keys.length; j++) {
             const k = keys[j] as keyof Attr;
             const v = a[k];
+            // Skip internal target-related fields so they don't render as attributes
+            const kl = String(k).toLowerCase();
+            if (
+                kl === 'skeleton' ||
+                kl === 'replace' ||
+                kl === 'append' ||
+                kl === 'prepend' ||
+                kl === 'render'
+            ) {
+                continue;
+            }
             if (v === undefined || v === false) { continue; }
             let val = String(v);
             if (v === true) { val = String(k); }

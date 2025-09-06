@@ -79,6 +79,10 @@ Run with `npx tsx examples/minimal.ts` and open `http://localhost:1422`.
 - Use `ctx.Submit(handler).Render(target)` or `.Replace(target)` on a `<form>` to control how the result swaps in.
 - Alternatively, trigger POSTs from buttons/links with `ctx.Call(handler).Render(target)` or `.Replace(target)`.
 
+Note:
+- When passing a `ui.Target()` object into an element helper (e.g., `ui.div('...', target)(...)`), only the `id` is rendered as an attribute. Internal control fields `Skeleton`, `Replace`, `Append`, `Prepend`, and `Render` are ignored during attribute rendering.
+- Swap semantics: `Render` swaps `innerHTML`, `Replace` swaps `outerHTML`, `Append` inserts at the end of the target element, and `Prepend` inserts at the beginning of the target element.
+
 Example (copy‑paste to run):
 
 ```ts
