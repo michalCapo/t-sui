@@ -6,7 +6,6 @@ import { Login } from './login';
 
 // Stable clock target id and singleton guard
 const deferredTarget = ui.Target();
-const clockTarget = ui.Target();
 
 let CLOCK_STARTED = false;
 
@@ -32,6 +31,7 @@ function Icons(): string {
 }
 
 function Clock(ctx: Context) {
+    const clockTarget = ui.Target();
 
     // Clock helpers
     function pad2(n: number): string {
@@ -56,23 +56,58 @@ function Clock(ctx: Context) {
         );
     }
 
-    async function StartClock(ctx: Context): Promise<string> {
-        if (!CLOCK_STARTED) {
-            CLOCK_STARTED = true;
-            function tick(): void {
-                const now = new Date();
-                // ctx.Patch(clockTarget, Render(now), 'outline');
-            }
-            try { tick(); } catch (_) { /* noop */ }
-            try { setInterval(function() { tick(); }, 1000); } catch (_) { /* noop */ }
-        }
-
-        return '';
+    function tick(): void {
+        ctx.Patch(clockTarget, 'outline', async function(_: Context) {
+            return Render(new Date());
+        });
     }
 
-    StartClock(ctx);
+    setInterval(function() { tick(); }, 1000);
 
     return Render(new Date());
+}
+
+async function Def(ctx: Context) {
+    await new Promise(function(r) { setTimeout(r, 2000); });
+
+    return ui.div('space-y-4', deferredTarget)(
+        ui.div('grid grid-cols-5 gap-4')(
+            ui.Button()
+                .Color(ui.Blue)
+                .Class('rounded')
+                .Click(ctx.Call(Deffered).Replace(deferredTarget))
+                .Render('As default'),
+
+            ui.Button()
+                .Color(ui.Blue)
+                .Class('rounded')
+                .Click(ctx.Call(Deffered, { as: 'component' }).Replace(deferredTarget))
+                .Render('As component'),
+
+            ui.Button()
+                .Color(ui.Blue)
+                .Class('rounded')
+                .Click(ctx.Call(Deffered, { as: 'list' }).Replace(deferredTarget))
+                .Render('As list'),
+
+            ui.Button()
+                .Color(ui.Blue)
+                .Class('rounded')
+                .Click(ctx.Call(Deffered, { as: 'page' }).Replace(deferredTarget))
+                .Render('As page'),
+
+            ui.Button()
+                .Color(ui.Blue)
+                .Class('rounded')
+                .Click(ctx.Call(Deffered, { as: 'form' }).Replace(deferredTarget))
+                .Render('As form'),
+        ),
+
+        ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow border rounded p-4')(
+            ui.div('text-lg font-semibold')('Deferred content loaded'),
+            ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
+        )
+    )
 }
 
 // Deferred block (SSE skeleton -> replace when ready)
@@ -80,48 +115,7 @@ function Deffered(ctx: Context): string {
     const body = { as: '' }
 
     ctx.Body(body);
-    ctx.Patch(deferredTarget, 'outline', async function(_: Context) {
-        await new Promise(function(r) { setTimeout(r, 2000); });
-
-        return ui.div('space-y-4', deferredTarget)(
-            ui.div('grid grid-cols-5 gap-4')(
-                ui.Button()
-                    .Color(ui.Blue)
-                    .Class('rounded')
-                    .Click(ctx.Call(Deffered).Replace(deferredTarget))
-                    .Render('As default'),
-
-                ui.Button()
-                    .Color(ui.Blue)
-                    .Class('rounded')
-                    .Click(ctx.Call(Deffered, { as: 'component' }).Replace(deferredTarget))
-                    .Render('As component'),
-
-                ui.Button()
-                    .Color(ui.Blue)
-                    .Class('rounded')
-                    .Click(ctx.Call(Deffered, { as: 'list' }).Replace(deferredTarget))
-                    .Render('As list'),
-
-                ui.Button()
-                    .Color(ui.Blue)
-                    .Class('rounded')
-                    .Click(ctx.Call(Deffered, { as: 'page' }).Replace(deferredTarget))
-                    .Render('As page'),
-
-                ui.Button()
-                    .Color(ui.Blue)
-                    .Class('rounded')
-                    .Click(ctx.Call(Deffered, { as: 'form' }).Replace(deferredTarget))
-                    .Render('As form'),
-            ),
-
-            ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow border rounded p-4')(
-                ui.div('text-lg font-semibold')('Deferred content loaded'),
-                ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
-            )
-        )
-    });
+    ctx.Patch(deferredTarget, 'outline', Def);
 
     if (body.as === 'component')
         return Skeleton.Component(deferredTarget);
@@ -146,12 +140,12 @@ export function OthersContent(ctx: Context): string {
         ),
         ui.div('text-gray-600')('Miscellaneous demos: Hello, Counter, Login, and icon helpers.'),
 
-        // ui.div('bg-white p-6 rounded-lg shadow w-full')(
-        //     ui.div('text-lg font-bold')('Clock (SSE)'),
-        //     ui.div('text-gray-600 mb-3')('Updates every second via server-sent patches.'),
+        ui.div('bg-white p-6 rounded-lg shadow w-full')(
+            ui.div('text-lg font-bold')('Clock (SSE)'),
+            ui.div('text-gray-600 mb-3')('Updates every second via server-sent patches.'),
 
-        //     Clock(ctx),
-        // ),
+            Clock(ctx),
+        ),
 
         // deferred (SSE)
         ui.div('bg-white p-6 rounded-lg shadow w-full')(
@@ -161,9 +155,9 @@ export function OthersContent(ctx: Context): string {
             Deffered(ctx),
         ),
 
-        ui.div('flex flex-wrap')(
+        ui.div('grid grid-cols-2 gap-4')(
             // hello
-            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+            ui.div('bg-white p-6 rounded-lg shadow w-full')(
                 ui.div('text-lg font-bold mb-3')(
                     'Hello'
                 ),
@@ -171,7 +165,7 @@ export function OthersContent(ctx: Context): string {
             ),
 
             // counter
-            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+            ui.div('bg-white p-6 rounded-lg shadow w-full')(
                 ui.div('text-lg font-bold mb-3')(
                     'Counter'
                 ),
@@ -179,7 +173,7 @@ export function OthersContent(ctx: Context): string {
             ),
 
             // login
-            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+            ui.div('bg-white p-6 rounded-lg shadow w-full')(
                 ui.div('text-lg font-bold mb-3')(
                     'Login'
                 ),
@@ -187,7 +181,7 @@ export function OthersContent(ctx: Context): string {
             ),
 
             // icons
-            ui.div('bg-white p-6 rounded-lg shadow w-full max-w-sm mx-auto')(
+            ui.div('bg-white p-6 rounded-lg shadow w-full')(
                 ui.div('text-lg font-bold mb-3')('Icons'),
                 Icons()
             ),
