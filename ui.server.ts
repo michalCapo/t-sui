@@ -1,12 +1,30 @@
 // Typpescript server for server-side rendering using the combined UI library
 
 import http, { IncomingMessage, ServerResponse } from 'node:http';
-import ui, { Attr, Target } from './ui';
+import ui, { Attr, Target, Swap } from './ui';
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
 const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
+const REQ_QS = new WeakMap<IncomingMessage, string | undefined>();
 
-export type Swap = 'inline' | 'outline' | 'none';
+function parseQuery(qs: string): { [k: string]: string } {
+    const out: { [k: string]: string } = {};
+    if (!qs) { return out; }
+    const parts = qs.split('&');
+    for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (!p) { continue; }
+        const eq = p.indexOf('=');
+        let k = p;
+        let v = '';
+        if (eq >= 0) { k = p.slice(0, eq); v = p.slice(eq + 1); }
+        try { k = decodeURIComponent(k); } catch (_) { }
+        try { v = decodeURIComponent(v); } catch (_) { }
+        out[k] = v;
+    }
+    return out;
+}
+
 export type ActionType = 'POST' | 'FORM';
 
 export const GET = 'GET';
@@ -27,6 +45,39 @@ export class App {
     HTMLHead: string[];
     _clients: Set<ServerResponse> = new Set();
     _sseClients: Set<ServerResponse> = new Set();
+    _sessions: Map<string, { id: string; lastSeen: number }> = new Map();
+    _sessionTTLms: number = 60000;
+
+    _touchSession(id: string): void {
+        if (!id) { return; }
+        const now = Date.now();
+        const prev = this._sessions.get(id);
+        if (prev) { prev.lastSeen = now; }
+        else { this._sessions.set(id, { id: id, lastSeen: now }); }
+    }
+    _removeSession(id: string): void {
+        if (!id) { return; }
+        try { this._sessions.delete(id); } catch { /* noop */ }
+    }
+    _sweepSessions(): void {
+        try {
+            const now = Date.now();
+            const ttl = this._sessionTTLms;
+            const entries = this._sessions.entries();
+            while (true) {
+                const n = entries.next();
+                if (n.done) { break; }
+                const pair = n.value;
+                const sid = pair[0];
+                const rec = pair[1];
+                if (!rec) { continue; }
+                const age = now - rec.lastSeen;
+                if (age > ttl) {
+                    try { this._sessions.delete(sid); } catch { /* noop */ }
+                }
+            }
+        } catch { /* noop */ }
+    }
 
     // Dev: when enabled, injects client-side autoreload script
     HTMLBody(cls: string): string {
@@ -53,7 +104,7 @@ export class App {
             '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
             '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
             '<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css\" integrity=\"sha512-wnea99uKIC3TJF7v4eKk4Y+lMz2Mklv18+r4na2Gn1abDRPPOeef95xTzdwGD9e6zXJBteMIhZ1+68QC5byJZw==\" crossorigin=\"anonymous\" referrerpolicy=\"no-referrer\" />',
-            script([__stringify, __loader, __offline, __error, __post, __submit, __load, __sse, __theme]),
+            script([__session, __stringify, __loader, __offline, __error, __post, __submit, __load, __sse, __theme]),
         ];
         // Dark mode CSS overrides (after Tailwind link to take precedence)
         this.HTMLHead.push('<style id=\"tsui-dark-overrides\">\n' +
@@ -71,6 +122,11 @@ export class App {
             '  /* Common hover bg used in nav/examples */\n' +
             '  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n' +
             '</style>');
+
+        try {
+            const self = this;
+            setInterval(function() { self._sweepSessions(); }, 30000);
+        } catch { /* noop */ }
     }
 
     // Internal: broadcast a patch message to all SSE clients
@@ -111,7 +167,9 @@ export class App {
                         clearTimeout(offlineTimer);
                         offlineTimer = setTimeout(showOffline, 300);
                         try { var old = (window).__sruiES; if (old) { try { old.close(); } catch(_){} } } catch(_){}
-                        var es = new EventSource('/__live');
+                        var sid = '';
+                        try { sid = __sid.get(); } catch(_){}
+                        var es = new EventSource('/__live?sid=' + encodeURIComponent(sid));
                         try { (window).__sruiES = es; } catch(_){}
                         es.onopen = function(){ 
                             clearTimeout(offlineTimer);
@@ -130,6 +188,14 @@ export class App {
                             setTimeout(connect, 1000); 
                         };
                         window.addEventListener('beforeunload', function(){ try{ es.close(); } catch(_){} });
+                        try {
+                            setInterval(function(){
+                                try {
+                                    var sid2 = __sid.get();
+                                    fetch('/__ping?sid=' + encodeURIComponent(sid2), { method: 'GET', cache: 'no-store' }).catch(function(){});
+                                } catch(_){}
+                            }, 15000);
+                        } catch(_){ }
                     }
                     ready(connect);
                 } catch (_) { /* noop */ }
@@ -197,7 +263,24 @@ export class App {
             return 'Not found';
         }
 
-        const ctx = new Context(this, req, res, 'sess-' + Math.random().toString(36).slice(2));
+        let sid = '';
+        try {
+            const qs = REQ_QS.get(req) || '';
+            const query = parseQuery(qs);
+            if (query && query['sid']) { sid = String(query['sid']); }
+        } catch { /* noop */ }
+        if (!sid) {
+            try {
+                const b = REQ_BODY.get(req) || [];
+                for (let i = 0; i < b.length; i++) {
+                    const it = b[i];
+                    if (it && it.name === '__sid') { sid = String(it.value || ''); break; }
+                }
+            } catch { /* noop */ }
+        }
+        if (!sid) { sid = 'sess-' + Math.random().toString(36).slice(2); }
+        try { this._touchSession(sid); } catch { /* noop */ }
+        const ctx = new Context(this, req, res, sid);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
         let html = await callable(ctx);
@@ -213,6 +296,8 @@ export class App {
             try {
                 const url = req.url as string;
                 const path = url.split('?')[0];
+                const qs = url.indexOf('?') >= 0 ? url.slice(url.indexOf('?') + 1) : '';
+                REQ_QS.set(req, qs);
                 const method = (req.method as string) || GET;
 
                 if (path === '/__live') {
@@ -225,14 +310,31 @@ export class App {
                     });
                     res.write('event: ping\ndata: 1\n\n');
                     self._clients.add(res);
+                    try {
+                        const q = parseQuery(qs);
+                        const sid = String(q['sid'] || '');
+                        if (sid) { self._touchSession(sid); }
+                    } catch { /* noop */ }
                     const heartbeat = setInterval(function() {
-                        try { res.write('event: ping\ndata: 1\n\n'); } catch { /* noop */ }
+                        try { res.write('event: ping\ndata: 1\n\n'); }
+                        catch { try { clearInterval(heartbeat); } catch (_) { } try { res.end(); } catch (_) { } }
                     }, 15000);
                     req.on('close', function() {
                         clearInterval(heartbeat);
                         try { self._clients.delete(res); } catch { /* noop */ }
                         try { res.end(); } catch { /* noop */ }
                     });
+                    return;
+                }
+
+                if (path === '/__ping') {
+                    try {
+                        const q = parseQuery(qs);
+                        const sid = String(q['sid'] || '');
+                        if (sid) { self._touchSession(sid); }
+                        res.statusCode = 204;
+                        res.end();
+                    } catch { try { res.statusCode = 204; res.end(); } catch (_) { } }
                     return;
                 }
 
@@ -403,9 +505,9 @@ export class Context {
     //     } catch { /* noop */ }
     // }
 
-    Patch(target: Target, swap: Swap, method: Deferred): void {
-        method(this)
-            .then(html => this.app._sendPatch({ id: target.id, swap: swap, html: html }))
+    Patch(target: { id: string, swap: Swap }, html: string | Promise<string>): void {
+        Promise.resolve(html)
+            .then(html => this.app._sendPatch({ id: target.id, swap: target.swap, html: html }))
             .catch(err => console.error('Patch error:', err));
     }
 
@@ -559,7 +661,13 @@ export const __post = ui.Trim(`
         event.preventDefault();
         var L = __loader.start();
 
-        fetch(path, { method: 'POST', body: JSON.stringify(body)})
+        try { var sid = __sid.get(); } catch(_) { var sid = ''; }
+        try { body = body ? body.slice() : []; } catch(_) {}
+        try { if (sid) { body.push({ name: '__sid', type: 'string', value: sid }); } } catch(_){}
+        var url = path;
+        try { url = __sid.url(path); } catch(_){}
+
+        fetch(url, { method: 'POST', body: JSON.stringify(body)})
             .then(function (resp) { if (!resp.ok) { throw new Error('HTTP ' + resp.status); } return resp.text(); })
             .then(function (html) {
                 const parser = new DOMParser();
@@ -853,7 +961,12 @@ export const __submit = ui.Trim(`
                     }
                 }
                 var L = __loader.start();
-                fetch(path, { method: 'POST', body: JSON.stringify(body)})
+                try { var sid = __sid.get(); } catch(_) { var sid = ''; }
+                try { body = body ? body.slice() : []; } catch(_){}
+                try { if (sid) { body.push({ name: '__sid', type: 'string', value: sid }); } } catch(_){}
+                var url = path;
+                try { url = __sid.url(path); } catch(_){}
+                fetch(url, { method: 'POST', body: JSON.stringify(body)})
                     .then(function (resp) { if (!resp.ok) { throw new Error('HTTP ' + resp.status); } return resp.text(); })
                     .then(function (html) {
                         const parser = new DOMParser();
@@ -879,8 +992,9 @@ export const __load = ui.Trim(`
     function __load(href) {
         event.preventDefault();
         var L = __loader.start();
-
-        fetch(href, { method: 'GET' })
+        var url = href;
+        try { url = __sid.url(href); } catch(_){}
+        fetch(url, { method: 'GET' })
             .then(function (resp) { if (!resp.ok) { throw new Error('HTTP ' + resp.status); } return resp.text(); })
             .then(function (html) {
                 const parser = new DOMParser();
@@ -934,6 +1048,38 @@ export const __theme = ui.Trim(`
                     });
                 }
             } catch(_){ }
+        } catch(_){ }
+    })();
+`);
+
+// Session helper: persistent ID stored in localStorage and appended to requests
+export const __session = ui.Trim(`
+    (function(){
+        try {
+            if ((window).__tsuiSessionInit) { return; }
+            (window).__tsuiSessionInit = true;
+            function get(){
+                var k = '__tsui_sid';
+                try {
+                    var sid = localStorage.getItem(k);
+                    if (!sid) {
+                        sid = 'sess-' + Math.random().toString(36).slice(2);
+                        localStorage.setItem(k, sid);
+                    }
+                    return sid;
+                } catch(_){
+                    return 'sess-' + Math.random().toString(36).slice(2);
+                }
+            }
+            function url(href){
+                try {
+                    var sid = get();
+                    if (!sid) { return href; }
+                    if (href.indexOf('?') >= 0) { return href + '&sid=' + encodeURIComponent(sid); }
+                    return href + '?sid=' + encodeURIComponent(sid);
+                } catch(_){ return href; }
+            }
+            try { (window).__sid = { get: get, url: url }; } catch(_){ }
         } catch(_){ }
     })();
 `);

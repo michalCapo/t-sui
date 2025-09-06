@@ -35,6 +35,13 @@ There are two main modules:
 - `ui.ts`: HTML builder and components. Exports a default `ui` object with functions like `div`, `form`, `Button`, `IText`, `INumber`, `ISelect`, `SimpleTable`, etc.
 - `ui.server.ts`: Minimal HTTP server + routing + client helpers. Exposes `App`, `MakeApp`, and `Context` with methods for registering pages/actions and wiring partial updates.
 
+### Sessions (Online Clients)
+- The client stores a stable session id in `localStorage` and includes it with every request.
+- The autoreload client opens `GET /__live?sid=...` and periodically calls `GET /__ping?sid=...` to mark the session active.
+- The server tracks session last-seen timestamps and removes sessions if pings stop or the SSE stream fails.
+- The session id is also attached to POST/FORM helpers, so actions receive it.
+ - Sessions are pruned automatically if inactive for > 60s.
+
 Key ideas:
 
 - Build HTML by composing functions that return strings. Use Tailwind-like class names for styling.
@@ -222,6 +229,7 @@ Notes:
 - Coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
 
 - 2025-09-06: Internal cleanup to remove all `as any` casts and improve typing in `ui.ts` (no public API changes). This aligns with the Go-style formatting guide’s “Important” rules.
+- 2025-09-06: Add browser-stored session id, attach to all client requests, and track online clients via `__live` + `__ping`.
 
 ### Type Checking
 - Run `npm run typecheck` to type-check the project without emitting JS.

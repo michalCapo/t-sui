@@ -28,9 +28,7 @@ export function Clock(ctx: Context) {
     }
 
     function tick(): void {
-        ctx.Patch(clockTarget, 'outline', async function(_: Context) {
-            return Render(new Date());
-        });
+        ctx.Patch(clockTarget.Replace, Render(new Date()));
     }
 
     setInterval(function() { tick(); }, 1000);

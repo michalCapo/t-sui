@@ -1,5 +1,7 @@
 //Typescript server-side UI library (components + related utilities)
 
+export type Swap = 'inline' | 'outline' | 'none' | 'append' | 'prepend';
+
 export interface Attr {
     onclick?: string;
     onchange?: string;
@@ -35,7 +37,14 @@ export interface Attr {
 
 export interface AOption { id: string; value: string; }
 
-export interface Target { id: string; }
+export interface Target {
+    id: string;
+    Skeleton: (type?: Skeleton) => string;
+    Replace: { id: string, swap: Swap };
+    Append: { id: string, swap: Swap };
+    Prepend: { id: string, swap: Swap };
+    Render: { id: string, swap: Swap };
+}
 
 const re = /\s{4,}/g;
 const re2 = /[\t\n]+/g;
@@ -247,7 +256,33 @@ function renderAttrs(attr: Attr[]): string {
 }
 
 function makeId(): string { return 'i' + RandomString(15); }
-function Target(): Target { return { id: makeId() }; }
+function Target(): Target {
+    const id = makeId();
+
+    return {
+        id,
+        Skeleton(type?: Skeleton) {
+            if (type === 'list') {
+                return Skeleton.List(this, 5);
+            }
+            if (type === 'component') {
+                return Skeleton.Component(this);
+            }
+            if (type === 'page') {
+                return Skeleton.Page(this);
+            }
+            if (type === 'form') {
+                return Skeleton.Form(this);
+            }
+
+            return Skeleton.Default(this);
+        },
+        Replace: { id, swap: 'outline' },
+        Append: { id, swap: 'append' },
+        Prepend: { id, swap: 'prepend' },
+        Render: { id, swap: 'inline' },
+    };
+}
 
 // Theme switcher: single button that cycles Auto → Light → Dark
 // Uses global setTheme() and shows only the current state
@@ -779,6 +814,8 @@ function SimpleTable(cols: number, css = '') {
     };
     return api;
 }
+
+export type Skeleton = 'list' | 'component' | 'page' | 'form' | undefined;
 
 export const Skeleton = {
 

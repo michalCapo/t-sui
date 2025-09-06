@@ -1,47 +1,10 @@
-import ui, { Skeleton } from '../../ui';
+import ui, { Skeleton, Target } from '../../ui';
 import { Context } from '../../ui.server';
-import { Hello } from './hello';
-import { Counter } from './counter';
-import { Login } from './login';
 
-const deferredTarget = ui.Target();
-
-async function Def(ctx: Context) {
+async function LazyLoadData(ctx: Context, target: Target) {
     await new Promise(function(r) { setTimeout(r, 2000); });
 
-    return ui.div('space-y-4', deferredTarget)(
-        ui.div('grid grid-cols-5 gap-4')(
-            ui.Button()
-                .Color(ui.Blue)
-                .Class('rounded text-sm')
-                .Click(ctx.Call(Deffered).Replace(deferredTarget))
-                .Render('Default skeleton'),
-
-            ui.Button()
-                .Color(ui.Blue)
-                .Class('rounded text-sm')
-                .Click(ctx.Call(Deffered, { as: 'component' }).Replace(deferredTarget))
-                .Render('Component skeleton'),
-
-            ui.Button()
-                .Color(ui.Blue)
-                .Class('rounded text-sm')
-                .Click(ctx.Call(Deffered, { as: 'list' }).Replace(deferredTarget))
-                .Render('List skeleton'),
-
-            ui.Button()
-                .Color(ui.Blue)
-                .Class('rounded text-sm')
-                .Click(ctx.Call(Deffered, { as: 'page' }).Replace(deferredTarget))
-                .Render('Page skeleton'),
-
-            ui.Button()
-                .Color(ui.Blue)
-                .Class('rounded text-sm')
-                .Click(ctx.Call(Deffered, { as: 'form' }).Replace(deferredTarget))
-                .Render('Form skeleton'),
-        ),
-
+    return ui.div('space-y-4', target)(
         ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow border rounded p-4')(
             ui.div('text-lg font-semibold')('Deferred content loaded'),
             ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
@@ -49,25 +12,56 @@ async function Def(ctx: Context) {
     )
 }
 
+async function LazyMoreData(ctx: Context, target: Target) {
+    await new Promise(function(r) { setTimeout(r, 4000); });
+
+    return ui.div('grid grid-cols-5 gap-4')(
+        ui.Button()
+            .Color(ui.Blue)
+            .Class('rounded text-sm')
+            .Click(ctx.Call(Deffered).Replace(target))
+            .Render('Default skeleton'),
+
+        ui.Button()
+            .Color(ui.Blue)
+            .Class('rounded text-sm')
+            .Click(ctx.Call(Deffered, { as: 'component' }).Replace(target))
+            .Render('Component skeleton'),
+
+        ui.Button()
+            .Color(ui.Blue)
+            .Class('rounded text-sm')
+            .Click(ctx.Call(Deffered, { as: 'list' }).Replace(target))
+            .Render('List skeleton'),
+
+        ui.Button()
+            .Color(ui.Blue)
+            .Class('rounded text-sm')
+            .Click(ctx.Call(Deffered, { as: 'page' }).Replace(target))
+            .Render('Page skeleton'),
+
+        ui.Button()
+            .Color(ui.Blue)
+            .Class('rounded text-sm')
+            .Click(ctx.Call(Deffered, { as: 'form' }).Replace(target))
+            .Render('Form skeleton'),
+    )
+}
+
+const target = ui.Target();
+
 // Deferred block (SSE skeleton -> replace when ready)
 export function Deffered(ctx: Context): string {
-    const form = { as: '' }
+    const form: { as: Skeleton } = { as: undefined }
 
     // scans the body into form object
     ctx.Body(form);
-    ctx.Patch(deferredTarget, 'outline', Def);
 
-    if (form.as === 'component')
-        return Skeleton.Component(deferredTarget);
+    // replace the target when the data is loaded
+    ctx.Patch(target.Replace, LazyLoadData(ctx, target));
 
-    if (form.as === 'list')
-        return Skeleton.List(deferredTarget, 6);
+    // replace the target when more data is loaded
+    ctx.Patch(target.Append, LazyMoreData(ctx, target));
 
-    if (form.as === 'page')
-        return Skeleton.Page(deferredTarget);
-
-    if (form.as === 'form')
-        return Skeleton.Form(deferredTarget);
-
-    return Skeleton.Default(deferredTarget);
+    return target.Skeleton(form.as);
 }
