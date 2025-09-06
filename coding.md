@@ -11,7 +11,7 @@
 - when creating new object initialize its field with default values
 - always use tsx to run typescript files
 - never compile, when using typescript use tsx, when need to compile, remove javascript files
-- when using tsc, use --noEmit to check for type errors without compiling 
+- when using tsc, use --noEmit to check for type errors without compiling
 
 # Formatting
 
@@ -38,8 +38,8 @@
   - One space after keywords (`if`, `for`, `switch`, `function`, etc.).
   - No extra spaces inside parentheses or brackets:
     ```ts
-    foo(x, y);   // ✅
-    foo( x, y ); // ❌
+    foo(x, y); // ✅
+    foo(x, y); // ❌
     ```
   - Add a space around operators (`=`, `+`, `-`, `===`, etc.).
 
@@ -72,4 +72,3 @@
 - **Blank Lines**
   - Use blank lines to group related statements logically.
   - Avoid excessive vertical whitespace.
-

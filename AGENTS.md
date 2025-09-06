@@ -8,6 +8,7 @@ Use these rules consistently. Prefer clarity over cleverness.
 See the project overview and usage in `README.md`.
 
 ## Important
+
 - dont use `(<variable> as any)`
 - always update `readme.md` when you change the code
 - coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
@@ -39,16 +40,16 @@ See the project overview and usage in `README.md`.
 - Braces: opening `{` on the same line. Always use braces, even for single‑line blocks.
   ```ts
   if (x < y) {
-      foo();
+    foo();
   } else {
-      bar();
+    bar();
   }
   ```
 - Line length: target ≤ 100 chars. Break long expressions with a continued indent.
 - Spacing: one space after keywords; spaces around binary operators; no extra spaces inside `()`, `[]`, `{}`.
   ```ts
-  foo(x, y);   // ok
-  foo( x, y ); // avoid
+  foo(x, y); // ok
+  foo(x, y); // avoid
   ```
 - Blank lines: group related logic; avoid excessive vertical whitespace.
 - Trailing commas: allowed in multiline literals and imports to produce cleaner diffs.
@@ -63,15 +64,16 @@ See the project overview and usage in `README.md`.
 - One import per line; avoid combining unrelated names in a single statement.
 
 Example:
+
 ```ts
-import fs from 'node:fs';
-import path from 'node:path';
+import fs from "node:fs";
+import path from "node:path";
 
-import express from 'express';
-import helmet from 'helmet';
+import express from "express";
+import helmet from "helmet";
 
-import { start_admin } from './server/app.ts';
-import { logger } from './endpoint/lib/server.utils.ts';
+import { start_admin } from "./server/app.ts";
+import { logger } from "./endpoint/lib/server.utils.ts";
 ```
 
 ## Names
@@ -90,7 +92,7 @@ import { logger } from './endpoint/lib/server.utils.ts';
 - Initialize object literals with all fields, using explicit defaults.
   ```ts
   type Cfg = { host: string; port: number; secure: boolean };
-  const cfg: Cfg = { host: '', port: 0, secure: false };
+  const cfg: Cfg = { host: "", port: 0, secure: false };
   ```
 
 ## Control Flow
@@ -102,17 +104,19 @@ import { logger } from './endpoint/lib/server.utils.ts';
 ## Error Handling
 
 - Prefer explicit error values. For synchronous code, return a discriminated union:
+
   ```ts
   type Ok<T> = { ok: true; value: T };
   type Err<E = unknown> = { ok: false; error: E };
   type Result<T, E = unknown> = Ok<T> | Err<E>;
 
   function parseIntSafe(s: string): Result<number, string> {
-      const n = Number.parseInt(s, 10);
-      if (Number.isNaN(n)) return { ok: false, error: 'not a number' };
-      return { ok: true, value: n };
+    const n = Number.parseInt(s, 10);
+    if (Number.isNaN(n)) return { ok: false, error: "not a number" };
+    return { ok: true, value: n };
   }
   ```
+
 - For async code, either:
   - return `Promise<Result<T, E>>`, or
   - throw and catch at boundaries (routes, jobs) to translate into `Result` or HTTP errors.
@@ -130,7 +134,9 @@ import { logger } from './endpoint/lib/server.utils.ts';
 - Doc comments for exported items should start with the identifier name and describe behavior:
   ```ts
   // startAdmin launches the admin HTTP server on the configured port.
-  export function startAdmin(cfg: Cfg): void { /* ... */ }
+  export function startAdmin(cfg: Cfg): void {
+    /* ... */
+  }
   ```
 - Comments explain “why” more than “what”. Keep them up to date.
 
@@ -157,18 +163,22 @@ import { logger } from './endpoint/lib/server.utils.ts';
 ## Example (Before / After)
 
 Before (discouraged):
+
 ```ts
-import {readFileSync as r} from 'fs';import http from 'http';
-const f=(p)=>r(p,'utf8');const x=cond?A():B();
-``` 
+import { readFileSync as r } from "fs";
+import http from "http";
+const f = (p) => r(p, "utf8");
+const x = cond ? A() : B();
+```
 
 After (preferred):
+
 ```ts
-import fs from 'node:fs';
-import http from 'http';
+import fs from "node:fs";
+import http from "http";
 
 function readText(path: string): string {
-    return fs.readFileSync(path, 'utf8');
+  return fs.readFileSync(path, "utf8");
 }
 
 const value = cond ? /* avoid ternary */ A() : B(); // replace with if/else in real code
@@ -177,4 +187,3 @@ const value = cond ? /* avoid ternary */ A() : B(); // replace with if/else in r
 ---
 
 Back to project overview: [README.md](README.md)
-

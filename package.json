@@ -1,18 +1,19 @@
 {
-    "name": "go-ui-ts-port",
-    "version": "0.1.0",
-    "private": true,
-    "scripts": {
-        "typecheck": "tsc --noEmit",
-        "predev": "npm run typecheck",
-        "dev": "tsx examples/main.ts",
-        "dev:watch": "tsx examples/main.ts --watch"
-    },
-    "devDependencies": {
-        "@types/node": "^22.18.1",
-        "typescript": "^5.9.2"
-    },
-    "dependencies": {
-        "tsx": "^4.20.5"
-    }
+  "name": "go-ui-ts-port",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "predev": "npm run typecheck",
+    "dev": "tsx examples/main.ts",
+    "dev:watch": "tsx examples/main.ts --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.1",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "tsx": "^4.20.5"
+  }
 }

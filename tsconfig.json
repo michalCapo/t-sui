@@ -11,9 +11,5 @@
     "outDir": "../dist"
   },
   "include": ["./**/*.ts"],
-  "exclude": [
-    "./main.ts",
-    "./login.ts",
-    "./showcase.ts"
-  ]
+  "exclude": ["./main.ts", "./login.ts", "./showcase.ts"]
 }

@@ -36,11 +36,12 @@ There are two main modules:
 - `ui.server.ts`: Minimal HTTP server + routing + client helpers. Exposes `App`, `MakeApp`, and `Context` with methods for registering pages/actions and wiring partial updates.
 
 ### Sessions (Online Clients)
+
 - The client stores a stable session id in `localStorage` and includes it with every request.
 - The client opens a WebSocket to `/__ws?sid=...` for live updates and dev reloads.
 - The server tracks session last-seen timestamps at handshake and via app activity; idle sessions are swept.
 - The session id is also attached to POST/FORM helpers, so actions receive it.
- - Sessions are pruned automatically if inactive for > 60s.
+- Sessions are pruned automatically if inactive for > 60s.
 
 Key ideas:
 
@@ -53,20 +54,20 @@ Key ideas:
 
 ```ts
 // examples/minimal.ts
-import ui from './ui';
-import { MakeApp, Context } from './ui.server';
+import ui from "./ui";
+import { MakeApp, Context } from "./ui.server";
 
-const app = MakeApp('en');
+const app = MakeApp("en");
 
 function Home(_ctx: Context): string {
-  const body = ui.div('p-6 max-w-xl mx-auto bg-white rounded shadow')(
-    ui.div('text-xl font-bold')('Hello from t-sui'),
-    ui.div('text-gray-600')('Server-rendered UI without a client framework.')
+  const body = ui.div("p-6 max-w-xl mx-auto bg-white rounded shadow")(
+    ui.div("text-xl font-bold")("Hello from t-sui"),
+    ui.div("text-gray-600")("Server-rendered UI without a client framework."),
   );
-  return app.HTML('Home', 'bg-gray-100 min-h-screen', body);
+  return app.HTML("Home", "bg-gray-100 min-h-screen", body);
 }
 
-app.Page('/', Home);
+app.Page("/", Home);
 app.AutoReload(true);
 app.Listen(1422);
 ```
@@ -80,6 +81,7 @@ Run with `npx tsx examples/minimal.ts` and open `http://localhost:1422`.
 - Alternatively, trigger POSTs from buttons/links with `ctx.Call(handler).Render(target)` or `.Replace(target)`.
 
 Note:
+
 - When passing a `ui.Target()` object into an element helper (e.g., `ui.div('...', target)(...)`), only the `id` is rendered as an attribute. Internal control fields `Skeleton`, `Replace`, `Append`, `Prepend`, and `Render` are ignored during attribute rendering.
 - Swap semantics: `Render` swaps `innerHTML`, `Replace` swaps `outerHTML`, `Append` inserts at the end of the target element, and `Prepend` inserts at the beginning of the target element.
 
@@ -87,34 +89,44 @@ Example (copy‑paste to run):
 
 ```ts
 // examples/forms.ts
-import ui from './ui';
-import { MakeApp, Context } from './ui.server';
+import ui from "./ui";
+import { MakeApp, Context } from "./ui.server";
 
-const app = MakeApp('en');
+const app = MakeApp("en");
 
-class Model { Name = ''; }
+class Model {
+  Name = "";
+}
 const target = ui.Target();
 
 function Page(ctx: Context): string {
   const m = new Model();
-  return ctx.app.HTML('Form Demo', 'bg-gray-100 min-h-screen',
-    ui.div('max-w-xl mx-auto p-6', target)(
-      ui.form('bg-white p-4 rounded shadow space-y-4', ctx.Submit(Save).Replace(target))(
-        ui.IText('Name', m).Required().Render('Your name'),
-        ui.Button().Submit().Color(ui.Blue).Class('rounded').Render('Save')
-      )
-    )
+  return ctx.app.HTML(
+    "Form Demo",
+    "bg-gray-100 min-h-screen",
+    ui.div(
+      "max-w-xl mx-auto p-6",
+      target,
+    )(
+      ui.form(
+        "bg-white p-4 rounded shadow space-y-4",
+        ctx.Submit(Save).Replace(target),
+      )(
+        ui.IText("Name", m).Required().Render("Your name"),
+        ui.Button().Submit().Color(ui.Blue).Class("rounded").Render("Save"),
+      ),
+    ),
   );
 }
 
 function Save(ctx: Context): string {
   const m = new Model();
-  ctx.Body(m);              // populate from posted form values
-  ctx.Success('Saved!');    // enqueue a toast message
-  return Page(ctx);         // re-render into the same target (Replace)
+  ctx.Body(m); // populate from posted form values
+  ctx.Success("Saved!"); // enqueue a toast message
+  return Page(ctx); // re-render into the same target (Replace)
 }
 
-app.Page('/forms', Page);
+app.Page("/forms", Page);
 app.AutoReload(true);
 app.Listen(1422);
 ```
@@ -144,19 +156,21 @@ You can render a quick skeleton while the server prepares a heavier fragment, th
 
 ```ts
 // examples/deferred.ts
-import ui from './ui';
-import { MakeApp, Context } from './ui.server';
+import ui from "./ui";
+import { MakeApp, Context } from "./ui.server";
 
-const app = MakeApp('en');
+const app = MakeApp("en");
 
 function Page(ctx: Context): string {
   const target = ui.Target();
 
   async function RenderHeavy(c: Context): Promise<string> {
-    await new Promise(function (r) { setTimeout(r, 799); }); // simulate work
-    return ui.div('bg-white p-5 rounded shadow', target)(
-      ui.div('font-semibold')('Deferred content loaded'),
-      ui.div('text-gray-500 text-sm')('Replaced via WS patch')
+    await new Promise(function (r) {
+      setTimeout(r, 799);
+    }); // simulate work
+    return ui.div("bg-white p-5 rounded shadow", target)(
+      ui.div("font-semibold")("Deferred content loaded"),
+      ui.div("text-gray-500 text-sm")("Replaced via WS patch"),
     );
   }
 
@@ -164,20 +178,23 @@ function Page(ctx: Context): string {
   // and pushes a WS patch that swaps into the target when ready.
   const skeleton = ctx.Defer(RenderHeavy).SkeletonComponent().Replace(target);
 
-  return ctx.app.HTML('Deferred Demo', 'bg-gray-100 min-h-screen',
-    ui.div('max-w-xl mx-auto p-6')(
-      ui.div('text-xl font-bold mb-2')('Deferred fragment'),
-      skeleton
-    )
+  return ctx.app.HTML(
+    "Deferred Demo",
+    "bg-gray-100 min-h-screen",
+    ui.div("max-w-xl mx-auto p-6")(
+      ui.div("text-xl font-bold mb-2")("Deferred fragment"),
+      skeleton,
+    ),
   );
 }
 
-app.Page('/deferred', Page);
+app.Page("/deferred", Page);
 app.AutoReload(true);
 app.Listen(1422);
 ```
 
 Notes:
+
 - `ctx.Defer(fn)` returns a builder. Use `.Render(target)` to swap `innerHTML`, `.Replace(target)` to replace the element, or `.None()` for a fire‑and‑forget patch.
 - Each of `Render/Replace/None` accepts an optional `skeleton` string. If omitted, a default `ui.Skeleton(target.id)` is used when a target is provided.
 - You can preset a default via `.Skeleton(...)` or the convenience helpers `.SkeletonList(count)`, `.SkeletonComponent()`, `.SkeletonPage()`, `.SkeletonForm()`.
@@ -190,36 +207,40 @@ The `Others` page includes a live clock that re-renders every second via WS patc
 ```ts
 // inside a page handler
 // Use a stable id so reloads keep the same target
-const CLOCK_ID = 'others_clock';
+const CLOCK_ID = "others_clock";
 const clockTarget = { id: CLOCK_ID };
 
 function pad2(n: number): string {
-  if (n < 10) { return '0' + String(n); }
-  else { return String(n); }
+  if (n < 10) {
+    return "0" + String(n);
+  } else {
+    return String(n);
+  }
 }
 
 function ClockView(d: Date): string {
   const h = pad2(d.getHours());
   const m = pad2(d.getMinutes());
   const s = pad2(d.getSeconds());
-  return ui.div('font-mono text-3xl', clockTarget)(h + ':' + m + ':' + s);
+  return ui.div("font-mono text-3xl", clockTarget)(h + ":" + m + ":" + s);
 }
 
 async function StartClock(ctx: Context): Promise<string> {
-  ctx.EnsureInterval('clock', 1000, function(){
-    ctx.Patch({ id: CLOCK_ID, swap: 'outline' }, ClockView(new Date()));
+  ctx.EnsureInterval("clock", 1000, function () {
+    ctx.Patch({ id: CLOCK_ID, swap: "outline" }, ClockView(new Date()));
   });
-  return '';
+  return "";
 }
 
 // render once and start background updates
-ui.div('...')(
+ui.div("...")(
   ClockView(new Date()),
-  ctx.Defer(StartClock).Skeleton('<!-- clock -->').None()
-)
+  ctx.Defer(StartClock).Skeleton("<!-- clock -->").None(),
+);
 ```
 
 Notes:
+
 - Keep the target id stable across reloads to ensure patches land.
 - Guard the interval to avoid multiple timers after manual reloads.
 - Use `.None()` when you only need side-effects (pushing patches) and not an immediate swap. Provide a minimal skeleton like `'<!-- -->'` to avoid inserting a default placeholder.
@@ -233,8 +254,10 @@ Notes:
 - 2025-09-06: Replace SSE (`/__live`, `/__sse`) with native WebSocket server at `/__ws`; existing helpers now use WS. Sessions are still tracked via stored `sid`.
 - 2025-09-06: Auto-reload now triggers on WebSocket reconnect (e.g., after server restarts), ensuring pages refresh reliably when the dev server comes back.
 - 2025-09-06: Added WS heartbeats: server sends control Ping every 25s and expects Pong (75s timeout); client also sends JSON `{ "type": "ping" }` every 30s and the server replies with `{ "type": "pong" }`. Sessions are kept alive while the socket is open.
+- 2025-09-06: Removed experimental migration of per-request timers to WS sessions; sessions remain independent. Prefer stable target ids and `ctx.EnsureInterval(...)` with WS heartbeats to keep live updates running.
 
 ### Type Checking
+
 - Run `npm run typecheck` to type-check the project without emitting JS.
 - `npm run dev` runs a type-check first via `predev`.
 
