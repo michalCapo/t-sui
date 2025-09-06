@@ -26,6 +26,8 @@ Prereqs: Node 18+ recommended.
 
 The examples demonstrate components, form handling, partial updates, and client helpers.
 
+Note: Examples include a high‑contrast SVG favicon (blue rounded square with white “UI”) embedded as a data URL. To change it, edit `examples/main.ts:34` and adjust colors or text in `addFavicon()`.
+
 ## How It Works
 
 There are two main modules:

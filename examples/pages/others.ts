@@ -7,8 +7,6 @@ import { Login } from './login';
 // Stable clock target id and singleton guard
 const deferredTarget = ui.Target();
 
-let CLOCK_STARTED = false;
-
 function Icons(): string {
     const icon = ui.div('flex items-center gap-3 border rounded p-4')
 
