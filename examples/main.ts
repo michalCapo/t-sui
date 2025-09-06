@@ -30,20 +30,13 @@ const routes: Route[] = [
 ];
 
 const app = MakeApp('en');
+const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">' +
+    '<rect width="128" height="128" rx="24" ry="24" fill="#2563eb" stroke="#1e40af" stroke-width="6"/>' +
+    '<text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle"' +
+    ' font-size="80" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="#ffffff">UI</text>' +
+    '</svg>';
 
-// Add a simple, high‑contrast SVG favicon for examples via data URL (no static hosting needed)
-function addFavicon(): void {
-    // Blue rounded square + bold white "UI" for strong contrast at small sizes
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">' +
-        '<rect width="128" height="128" rx="24" ry="24" fill="#2563eb" stroke="#1e40af" stroke-width="6"/>' +
-        '<text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle"' +
-        ' font-size="80" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="#ffffff">UI</text>' +
-        '</svg>';
-    const href = 'data:image/svg+xml,' + encodeURIComponent(svg);
-    app.HTMLHead.push('<link rel="icon" type="image/svg+xml" sizes="any" href="' + href + '">');
-}
-
-addFavicon();
+app.HTMLHead.push('<link rel="icon" type="image/svg+xml" sizes="any" href="' + 'data:image/svg+xml,' + encodeURIComponent(svg) + '">');
 
 function layout(title: string, body: (ctx: Context) => string): Callable {
     return function(ctx: Context): string {

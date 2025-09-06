@@ -7,7 +7,7 @@ async function LazyLoadData(ctx: Context, target: Target) {
     return ui.div('space-y-4', target)(
         ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow border rounded p-4')(
             ui.div('text-lg font-semibold')('Deferred content loaded'),
-            ui.div('text-gray-600 text-sm')('This block replaced the skeleton via SSE.')
+            ui.div('text-gray-600 text-sm')('This block replaced the skeleton via WebSocket patch.')
         )
     )
 }
@@ -49,7 +49,7 @@ async function LazyMoreData(ctx: Context, target: Target) {
 }
 
 
-// Deferred block (SSE skeleton -> replace when ready)
+// Deferred block (WS skeleton -> replace when ready)
 export function Deffered(ctx: Context): string {
     const target = ui.Target();
     const form: { as: Skeleton } = { as: undefined }

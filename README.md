@@ -7,8 +7,8 @@ A tiny server-side UI toolkit in TypeScript that renders HTML strings and ships 
 - Tailwind-compatible class strings out of the box
 - Form helpers that serialize/deserialize values and post via `fetch`
 - Partial updates (replace or inner swap) by targeting elements
-- Dev autoreload via SSE
-- Deferred fragments via SSE with skeleton placeholders
+- Dev autoreload via WebSocket
+- Deferred fragments via WebSocket with skeleton placeholders
 
 License: MIT (see `LICENSE`).
 
@@ -37,8 +37,8 @@ There are two main modules:
 
 ### Sessions (Online Clients)
 - The client stores a stable session id in `localStorage` and includes it with every request.
-- The live channel opens `GET /__live?sid=...` (SSE) and periodically calls `GET /__live?sid=...&ping=1` to mark the session active.
-- The server tracks session last-seen timestamps and removes sessions if pings stop or the SSE stream fails.
+- The client opens a WebSocket to `/__ws?sid=...` for live updates and dev reloads.
+- The server tracks session last-seen timestamps at handshake and via app activity; idle sessions are swept.
 - The session id is also attached to POST/FORM helpers, so actions receive it.
  - Sessions are pruned automatically if inactive for > 60s.
 
@@ -47,7 +47,7 @@ Key ideas:
 - Build HTML by composing functions that return strings. Use Tailwind-like class names for styling.
 - Register pages with `app.Page(path, handler)` and start the server with `app.Listen(port)`.
 - Use `Context` helpers to post forms or call actions and update a target element inline or by replacing the element.
-- `AutoReload(true)` enables an SSE-based live-reload script in development.
+- `AutoReload(true)` enables a WebSocket-based live-reload flag in development.
 
 ## Minimal Example
 
@@ -138,9 +138,9 @@ See `examples/` for practical usage.
 - To keep skeleton placeholders visible on dark backgrounds, `bg-gray-200` is not overridden in dark mode. Containers such as `bg-white`, `bg-gray-50`, and `bg-gray-100` are mapped to a dark surface.
 - If you customize the theme, ensure skeleton shades retain contrast on dark backgrounds.
 
-## Deferred Fragments (SSE + Skeleton)
+## Deferred Fragments (WS + Skeleton)
 
-You can render a quick skeleton while the server prepares a heavier fragment, then swap it in via SSE when ready.
+You can render a quick skeleton while the server prepares a heavier fragment, then swap it in via a WS patch when ready.
 
 ```ts
 // examples/deferred.ts
@@ -156,12 +156,12 @@ function Page(ctx: Context): string {
     await new Promise(function (r) { setTimeout(r, 799); }); // simulate work
     return ui.div('bg-white p-5 rounded shadow', target)(
       ui.div('font-semibold')('Deferred content loaded'),
-      ui.div('text-gray-500 text-sm')('Replaced via SSE patch')
+      ui.div('text-gray-500 text-sm')('Replaced via WS patch')
     );
   }
 
   // Show a skeleton immediately; the callable runs asynchronously
-  // and pushes an SSE patch that swaps into the target when ready.
+  // and pushes a WS patch that swaps into the target when ready.
   const skeleton = ctx.Defer(RenderHeavy).SkeletonComponent().Replace(target);
 
   return ctx.app.HTML('Deferred Demo', 'bg-gray-100 min-h-screen',
@@ -183,9 +183,9 @@ Notes:
 - You can preset a default via `.Skeleton(...)` or the convenience helpers `.SkeletonList(count)`, `.SkeletonComponent()`, `.SkeletonPage()`, `.SkeletonForm()`.
 - For server-side updates at arbitrary times (e.g., from an action), call `ctx.Patch(target, html, swap)` to push a patch.
 
-## Live Updates Example (SSE Clock)
+## Live Updates Example (WS Clock)
 
-The `Others` page includes a live clock that re-renders every second via SSE patches. Pattern:
+The `Others` page includes a live clock that re-renders every second via WS patches. Pattern:
 
 ```ts
 // inside a page handler
@@ -230,7 +230,7 @@ Notes:
 - Coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
 
 - 2025-09-06: Internal cleanup to remove all `as any` casts and improve typing in `ui.ts` (no public API changes). This aligns with the Go-style formatting guide’s “Important” rules.
-- 2025-09-06: Add browser-stored session id, attach to all client requests, and track online clients via `__live` + `__ping`.
+- 2025-09-06: Replace SSE (`/__live`, `/__sse`) with native WebSocket server at `/__ws`; existing helpers now use WS. Sessions are still tracked via stored `sid`.
 
 ### Type Checking
 - Run `npm run typecheck` to type-check the project without emitting JS.

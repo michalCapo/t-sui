@@ -15,17 +15,17 @@ export function OthersContent(ctx: Context): string {
         ),
         ui.div('text-gray-600')('Miscellaneous demos: Hello, Counter, Login, and icon helpers.'),
 
-        // clock (SSE)
+        // clock (WS)
         ui.div('bg-white p-6 rounded-lg shadow w-full')(
-            ui.div('text-lg font-bold')('Clock (SSE)'),
+            ui.div('text-lg font-bold')('Clock (WS)'),
             ui.div('text-gray-600 mb-3')('Updates every second via server-sent patches.'),
 
             Clock(ctx),
         ),
 
-        // deferred (SSE)
+        // deferred (WS)
         ui.div('bg-white p-6 rounded-lg shadow w-full')(
-            ui.div('text-lg font-bold')('Deferred (SSE)'),
+            ui.div('text-lg font-bold')('Deferred (WS)'),
             ui.div('text-gray-600 mb-3')('Shows a skeleton that is replaced when the server finishes rendering.'),
 
             Deffered(ctx),

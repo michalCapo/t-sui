@@ -10,6 +10,8 @@ See the project overview and usage in `README.md`.
 ## Important
 - dont use `(<variable> as any)`
 - always update `readme.md` when you change the code
+- coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
+- use `tsc --noEmit` for type-checking.
 
 ## Philosophy
 

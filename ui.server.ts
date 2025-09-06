@@ -1,6 +1,8 @@
 // Typpescript server for server-side rendering using the combined UI library
 
 import http, { IncomingMessage, ServerResponse } from 'node:http';
+import crypto from 'node:crypto';
+import type { Socket } from 'node:net';
 import ui, { Attr, Target, Swap } from './ui';
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
@@ -43,8 +45,7 @@ export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
-    _clients: Set<ServerResponse> = new Set();
-    _sseClients: Set<ServerResponse> = new Set();
+    _wsClients: Set<{ socket: Socket; sid: string }> = new Set();
     _sessions: Map<string, { id: string; lastSeen: number; timers: Map<string, number> }> = new Map();
     _sessionTTLms: number = 60000;
 
@@ -57,48 +58,41 @@ export class App {
     }
     _removeSession(id: string): void {
         if (!id) { return; }
-        try {
-            const rec = this._sessions.get(id);
-            if (rec && rec.timers) {
-                const it = rec.timers.values();
-                while (true) {
-                    const n = it.next();
-                    if (n.done) { break; }
-                    try { clearInterval(n.value as unknown as number); } catch { /* noop */ }
-                }
+        const rec = this._sessions.get(id);
+        if (rec && rec.timers) {
+            const it = rec.timers.values();
+            while (true) {
+                const n = it.next();
+                if (n.done) { break; }
+                clearInterval(n.value as unknown as number);
             }
-        } catch { /* noop */ }
-        try { this._sessions.delete(id); } catch { /* noop */ }
+        }
+        this._sessions.delete(id);
     }
     _sweepSessions(): void {
-        try {
-            const now = Date.now();
-            const ttl = this._sessionTTLms;
-            const entries = this._sessions.entries();
-            while (true) {
-                const n = entries.next();
-                if (n.done) { break; }
-                const pair = n.value;
-                const sid = pair[0];
-                const rec = pair[1];
-                if (!rec) { continue; }
-                const age = now - rec.lastSeen;
-                if (age > ttl) {
-                    try {
-                        const timers = rec.timers;
-                        if (timers) {
-                            const vals = timers.values();
-                            while (true) {
-                                const t = vals.next();
-                                if (t.done) { break; }
-                                try { clearInterval(t.value as unknown as number); } catch { /* noop */ }
-                            }
-                        }
-                    } catch { /* noop */ }
-                    try { this._sessions.delete(sid); } catch { /* noop */ }
+        const now = Date.now();
+        const ttl = this._sessionTTLms;
+        const entries = this._sessions.entries();
+        while (true) {
+            const n = entries.next();
+            if (n.done) { break; }
+            const sid = n.value[0];
+            const rec = n.value[1];
+            if (!rec) { continue; }
+            const age = now - rec.lastSeen;
+            if (age > ttl) {
+                const timers = rec.timers;
+                if (timers) {
+                    const vals = timers.values();
+                    while (true) {
+                        const t = vals.next();
+                        if (t.done) { break; }
+                        clearInterval(t.value as unknown as number);
+                    }
                 }
+                this._sessions.delete(sid);
             }
-        } catch { /* noop */ }
+        }
     }
 
     // Dev: when enabled, injects client-side autoreload script
@@ -126,7 +120,7 @@ export class App {
             '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
             '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
             '<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css\" integrity=\"sha512-wnea99uKIC3TJF7v4eKk4Y+lMz2Mklv18+r4na2Gn1abDRPPOeef95xTzdwGD9e6zXJBteMIhZ1+68QC5byJZw==\" crossorigin=\"anonymous\" referrerpolicy=\"no-referrer\" />',
-            script([__session, __stringify, __loader, __offline, __error, __post, __submit, __load, __sse, __theme]),
+            script([__session, __stringify, __loader, __offline, __error, __post, __submit, __load, __ws, __theme]),
         ];
         // Dark mode CSS overrides (after Tailwind link to take precedence)
         this.HTMLHead.push('<style id=\"tsui-dark-overrides\">\n' +
@@ -151,15 +145,42 @@ export class App {
         } catch { /* noop */ }
     }
 
-    // Internal: broadcast a patch message to all SSE clients
+    // Internal: broadcast a patch message to all WS clients
     _sendPatch(payload: { id: string; swap: Swap; html: string }): void {
-        try {
-            const msg = { id: String(payload.id || ''), swap: String(payload.swap || 'outline'), html: ui.Trim(String(payload.html || '')) };
-            const data = 'event: patch\ndata: ' + JSON.stringify(msg) + '\n\n';
-            for (const res of this._sseClients) {
-                try { res.write(data); } catch { /* noop */ }
+        const msg = { type: 'patch', id: String(payload.id || ''), swap: String(payload.swap || 'outline'), html: ui.Trim(String(payload.html || '')) } as { type: string; id: string; swap: string; html: string };
+        const data = JSON.stringify(msg);
+        const it = this._wsClients.values();
+        while (true) {
+            const n = it.next();
+            if (n.done) { break; }
+            const c = n.value;
+            try {
+                wsSend(c.socket, data);
+            } catch (err) {
+                console.error('Failed to send to WebSocket client:', err);
             }
-        } catch { /* noop */ }
+        }
+    }
+
+    // Internal: broadcast a reload message to all WS clients
+    _sendReload(): void {
+        const msg = { type: 'reload' };
+        const data = JSON.stringify(msg);
+        console.log('Broadcasting reload to', this._wsClients.size, 'clients');
+        const it = this._wsClients.values();
+        let sent = 0;
+        while (true) {
+            const n = it.next();
+            if (n.done) { break; }
+            const c = n.value;
+            try {
+                wsSend(c.socket, data);
+                sent++;
+            } catch (err) {
+                console.error('Failed to send reload to WebSocket client:', err);
+            }
+        }
+        console.log('Sent reload to', sent, 'clients');
     }
 
     HTML(title: string, bodyClass: string, body: string): string {
@@ -170,57 +191,12 @@ export class App {
         return ui.Trim(html);
     }
 
-    // Enable development autoreload (SSE-based).
+    // Enable development autoreload (WebSocket-based).
     AutoReload(enable: boolean): void {
-        if (!enable) return;
-        // Inject a tiny client that reconnects after server restarts and reloads the page.
+        if (!enable) { return; }
         const client = ui.Trim(`
             (function(){
-                try { if (window) { /* noop */ } } catch(_){}
-                if ((window).__sruiReloadInit) { return; }
-                (window).__sruiReloadInit = true;
-                function ready(fn){ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn); } else { fn(); } }
-                try {
-                    var first = true;
-                    var offlineTimer;
-                    function showOffline(){ try { __offline.show(); } catch(_){} }
-                    function hideOffline(){ try { __offline.hide(); } catch(_){} }
-                    function connect(){
-                        clearTimeout(offlineTimer);
-                        offlineTimer = setTimeout(showOffline, 300);
-                        try { var old = (window).__sruiES; if (old) { try { old.close(); } catch(_){} } } catch(_){}
-                        var sid = '';
-                        try { sid = __sid.get(); } catch(_){}
-                        var es = new EventSource('/__live?sid=' + encodeURIComponent(sid));
-                        try { (window).__sruiES = es; } catch(_){}
-                        es.onopen = function(){ 
-                            clearTimeout(offlineTimer);
-                            hideOffline();
-                            if(!first){ 
-                                try{ location.reload(); } catch(_){} 
-                            }
-                            first = false; 
-                        };
-                        es.addEventListener('reload', function(){ 
-                            try{ location.reload(); } catch(_){} 
-                        });
-                        es.onerror = function(){ 
-                            showOffline();
-                            try{ es.close(); } catch(_){} 
-                            setTimeout(connect, 1000); 
-                        };
-                        window.addEventListener('beforeunload', function(){ try{ es.close(); } catch(_){} });
-                        try {
-                            setInterval(function(){
-                                try {
-                                    var sid2 = __sid.get();
-                                    fetch('/__live?sid=' + encodeURIComponent(sid2) + '&ping=1', { method: 'GET', cache: 'no-store' }).catch(function(){});
-                                } catch(_){}
-                            }, 15000);
-                        } catch(_){ }
-                    }
-                    ready(connect);
-                } catch (_) { /* noop */ }
+                try { (window).__tsuiReloadEnabled = true; } catch(_){ }
             })();
         `);
         this.HTMLHead.push('<script>' + client + '</script>');
@@ -286,22 +262,18 @@ export class App {
         }
 
         let sid = '';
-        try {
-            const qs = REQ_QS.get(req) || '';
-            const query = parseQuery(qs);
-            if (query && query['sid']) { sid = String(query['sid']); }
-        } catch { /* noop */ }
+        const qs = REQ_QS.get(req) || '';
+        const query = parseQuery(qs);
+        if (query && query['sid']) { sid = String(query['sid']); }
         if (!sid) {
-            try {
-                const b = REQ_BODY.get(req) || [];
-                for (let i = 0; i < b.length; i++) {
-                    const it = b[i];
-                    if (it && it.name === '__sid') { sid = String(it.value || ''); break; }
-                }
-            } catch { /* noop */ }
+            const b = REQ_BODY.get(req) || [];
+            for (let i = 0; i < b.length; i++) {
+                const it = b[i];
+                if (it && it.name === '__sid') { sid = String(it.value || ''); break; }
+            }
         }
         if (!sid) { sid = 'sess-' + Math.random().toString(36).slice(2); }
-        try { this._touchSession(sid); } catch { /* noop */ }
+        this._touchSession(sid);
         const ctx = new Context(this, req, res, sid);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
@@ -322,80 +294,21 @@ export class App {
                 REQ_QS.set(req, qs);
                 const method = (req.method as string) || GET;
 
-                if (path === '/__live') {
-                    try {
-                        const q = parseQuery(qs);
-                        const sid = String(q['sid'] || '');
-                        const ping = String(q['ping'] || '');
-                        if (sid) { self._touchSession(sid); }
-                        // Fast path: handle ping=1 as a 204 keepalive (no SSE stream)
-                        if (ping === '1' || ping === 'true') {
-                            try { res.statusCode = 204; res.end(); } catch { /* noop */ }
-                            return;
-                        }
-                    } catch { /* noop */ }
-
-                    try { req.socket.setTimeout(0); } catch { /* noop */ }
-                    res.writeHead(200, {
-                        'Content-Type': 'text/event-stream',
-                        'Cache-Control': 'no-cache',
-                        Connection: 'keep-alive',
-                        'Access-Control-Allow-Origin': '*',
-                    });
-                    res.write('event: ping\ndata: 1\n\n');
-                    self._clients.add(res);
-                    const heartbeat = setInterval(function() {
-                        try { res.write('event: ping\ndata: 1\n\n'); }
-                        catch { try { clearInterval(heartbeat); } catch (_) { } try { res.end(); } catch (_) { } }
-                    }, 15000);
-                    req.on('close', function() {
-                        clearInterval(heartbeat);
-                        try { self._clients.delete(res); } catch { /* noop */ }
-                        try { res.end(); } catch { /* noop */ }
-                    });
-                    return;
-                }
-
-                if (path === '/__sse') {
-                    try { req.socket.setTimeout(0); } catch { /* noop */ }
-                    res.writeHead(200, {
-                        'Content-Type': 'text/event-stream',
-                        'Cache-Control': 'no-cache',
-                        Connection: 'keep-alive',
-                        'Access-Control-Allow-Origin': '*',
-                    });
-                    res.write('event: hello\ndata: 1\n\n');
-                    self._sseClients.add(res);
-                    try {
-                        const q = parseQuery(qs);
-                        const sid = String(q['sid'] || '');
-                        if (sid) { self._touchSession(sid); }
-                    } catch { /* noop */ }
-                    const heartbeat2 = setInterval(function() {
-                        try { res.write('event: ping\ndata: 1\n\n'); } catch { /* noop */ }
-                    }, 15000);
-                    req.on('close', function() {
-                        clearInterval(heartbeat2);
-                        try { self._sseClients.delete(res); } catch { /* noop */ }
-                        try { res.end(); } catch { /* noop */ }
-                    });
-                    return;
-                }
+                if (path === '/__live') { res.statusCode = 410; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('SSE endpoint removed. Use /__ws WebSocket.'); return; }
+                if (path === '/__sse') { res.statusCode = 410; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('SSE endpoint removed. Use /__ws WebSocket.'); return; }
 
                 let body = '';
                 await new Promise(function(resolve) {
                     let done = false;
                     function finish() { if (done) return; done = true; resolve(undefined); }
-                    try {
-                        req.on('data', function(chunk: unknown) {
-                            try { body += String(chunk as string); } catch { /* noop */ }
-                            if (body.length > 1_000_000) { try { req.destroy(); } catch { /* noop */ } finish(); }
-                        });
-                        req.on('end', finish);
-                        req.on('aborted', finish);
-                        req.on('close', finish);
-                        setTimeout(finish, 10000);
-                    } catch { finish(); }
+                    req.on('data', function(chunk: unknown) {
+                        body += String(chunk as string);
+                        if (body.length > 1_000_000) { req.destroy(); finish(); }
+                    });
+                    req.on('end', finish);
+                    req.on('aborted', finish);
+                    req.on('close', finish);
+                    setTimeout(finish, 10000);
                 });
                 try {
                     let parsed: BodyItem[] | undefined = undefined;
@@ -409,22 +322,20 @@ export class App {
                 res.write(html);
                 res.end();
             } catch (err) {
-                try { console.error('Request handler error:', err); } catch { /* noop */ }
-                try {
-                    res.statusCode = 500;
-                    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                    const page = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Something went wrong…</title><style>html,body{height:100%}body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}.card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}.title{font-size:20px;font-weight:600;margin-bottom:6px}.sub{font-size:14px;color:#6b7280}</style></head><body><div class="card"><div class="title">Something went wrong…</div><div class="sub">Waiting for server changes. Page will refresh when ready.</div></div><script>(function(){try{var KEY="__tsui_last_error_reload";function shouldReload(){try{var v=sessionStorage.getItem(KEY);var last=v?parseInt(v,10):0;var now=Date.now();if(!last||now-last>2500){sessionStorage.setItem(KEY,String(now));return true;}return false;}catch(_){return true;}}function connect(){var es=new EventSource("/__live");es.onopen=function(){try{ if(shouldReload()){ location.reload(); } }catch(_){}};es.addEventListener("reload",function(){try{location.reload();}catch(_){}});es.onerror=function(){try{es.close();}catch(_){ } setTimeout(connect,1000);};}connect();}catch(_){ /* noop */ }})();</script></body></html>';
-                    res.end(page);
-                } catch { /* noop */ }
-                // Do not restart on per-request exceptions; keep the server running
+                console.error('Request handler error:', err);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                const page = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Something went wrong…</title><style>html,body{height:100%}body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}.card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}.title{font-size:20px;font-weight:600;margin-bottom:6px}.sub{font-size:14px;color:#6b7280}</style></head><body><div class="card"><div class="title">Something went wrong…</div><div class="sub">Waiting for server changes. Page will refresh when ready.</div></div><script>(function(){try{var KEY="__tsui_last_error_reload";function shouldReload(){try{var v=sessionStorage.getItem(KEY);var last=v?parseInt(v,10):0;var now=Date.now();if(!last||now-last>2500){sessionStorage.setItem(KEY,String(now));return true;}return false;}catch(_){return true;}}function connect(){var p=(location.protocol==="https:")?"wss://":"ws://";var ws=new WebSocket(p+location.host+"/__ws");ws.onopen=function(){try{ if(shouldReload()){ location.reload(); } }catch(_){}};ws.onclose=function(){ setTimeout(connect,1000); };ws.onerror=function(){ try{ws.close();}catch(_){ } };}connect();}catch(_){ /* noop */ }})();</script></body></html>';
+                res.end(page);
             }
         });
-        try { server.headersTimeout = 15000; } catch { /* noop */ }
-        try { server.requestTimeout = 30000; } catch { /* noop */ }
-        try { server.keepAliveTimeout = 5000; } catch { /* noop */ }
-        try { server.on('error', function(err: unknown) { try { console.error('Server error:', err); } catch { /* noop */ } }); } catch { /* noop */ }
+        server.headersTimeout = 15000;
+        server.requestTimeout = 30000;
+        server.keepAliveTimeout = 5000;
+        server.on('error', function(err: unknown) { console.error('Server error:', err); });
+        server.on('upgrade', function(req: IncomingMessage, socket: Socket) { handleUpgrade(self, req, socket); });
         server.listen(port, '0.0.0.0');
-        try { console.log('Listening on http://0.0.0.0:' + String(port)); } catch { /* noop */ }
+        console.log('Listening on http://0.0.0.0:' + String(port));
     }
 
 }
@@ -444,15 +355,11 @@ export class Context {
     }
 
     Body<T extends object>(output: T): void {
-        try {
-            const data = this.req ? REQ_BODY.get(this.req) : undefined;
-            if (!Array.isArray(data)) return;
-            for (let i = 0; i < data.length; i++) {
-                const item = data[i];
-                setPath(output as unknown as Record<string, unknown>, item.name, coerce(item.type, item.value));
-            }
-        } catch {
-            /* noop */
+        const data = this.req ? REQ_BODY.get(this.req) : undefined;
+        if (!Array.isArray(data)) return;
+        for (let i = 0; i < data.length; i++) {
+            const item = data[i];
+            setPath(output as unknown as Record<string, unknown>, item.name, coerce(item.type, item.value));
         }
     }
 
@@ -460,19 +367,17 @@ export class Context {
     Action(uid: string, action: Callable): Callable { return this.app.Action(uid, action); }
 
     // EnsureInterval starts a per-session interval only once (by name).
-    // Useful for SSE tickers that should not duplicate across reloads.
+    // Useful for WS tickers that should not duplicate across reloads.
     EnsureInterval(name: string, ms: number, fn: () => void): void {
-        try {
-            const sid = this.sessionID;
-            if (!sid) { return; }
-            this.app._touchSession(sid);
-            const rec = this.app._sessions.get(sid);
-            if (!rec) { return; }
-            if (!rec.timers) { rec.timers = new Map(); }
-            if (rec.timers.has(name)) { return; }
-            const h = setInterval(function() { try { fn(); } catch { /* noop */ } }, ms) as unknown as number;
-            rec.timers.set(name, h);
-        } catch { /* noop */ }
+        const sid = this.sessionID;
+        if (!sid) { return; }
+        this.app._touchSession(sid);
+        const rec = this.app._sessions.get(sid);
+        if (!rec) { return; }
+        if (!rec.timers) { rec.timers = new Map(); }
+        if (rec.timers.has(name)) { return; }
+        const h = setInterval(function() { fn(); }, ms) as unknown as number;
+        rec.timers.set(name, h);
     }
 
     Post(as: ActionType, swap: Swap, action: { method: Callable; target?: Attr; values?: any[] }): string {
@@ -737,44 +642,57 @@ export const __post = ui.Trim(`
     }
 `);
 
-export const __sse = ui.Trim(`
+export const __ws = ui.Trim(`
     (function(){
         try {
-            if ((window).__tsuiSSEInit) { return; }
-            (window).__tsuiSSEInit = true;
+            if ((window).__tsuiWSInit) { return; }
+            (window).__tsuiWSInit = true;
+            var first = true;
             function showOffline(){ try { __offline.show(); } catch(_){ } }
             function hideOffline(){ try { __offline.hide(); } catch(_){ } }
+            function handlePatch(msg){
+                try {
+                    var html = String(msg.html || '');
+                    try {
+                        var tpl = document.createElement('template');
+                        tpl.innerHTML = html;
+                        var scripts = Array.prototype.slice.call(tpl.content.querySelectorAll('script'));
+                        for (var i = 0; i < scripts.length; i++) {
+                            var newScript = document.createElement('script');
+                            newScript.textContent = scripts[i].textContent;
+                            document.body.appendChild(newScript);
+                        }
+                    } catch(_){ }
+                    var el = document.getElementById(String(msg.id || ''));
+                    if (!el) { return; }
+                    if (msg.swap === 'inline') { el.innerHTML = html; }
+                    else if (msg.swap === 'outline') { el.outerHTML = html; }
+                    else if (msg.swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
+                    else if (msg.swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
+                } catch(_){ }
+            }
             function connect(){
-                try { var old = (window).__tsuiES; if (old) { try { old.close(); } catch(_){ } } } catch(_){ }
+                try { var old = (window).__tsuiWS; if (old) { try { old.close(); } catch(_){ } } } catch(_){ }
                 var sid = '';
                 try { sid = __sid.get(); } catch(_){ }
-                var es = new EventSource('/__sse' + (sid?('?sid='+encodeURIComponent(sid)) : ''));
-                try { (window).__tsuiES = es; } catch(_){ }
-                es.onopen = function(){ hideOffline(); };
-                es.addEventListener('patch', function(ev){
+                var p = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+                var url = p + location.host + '/__ws' + (sid?('?sid='+encodeURIComponent(sid)) : '');
+                var ws = new WebSocket(url);
+                try { (window).__tsuiWS = ws; } catch(_){ }
+                ws.onopen = function(){ hideOffline(); };
+                ws.onmessage = function(ev){
                     try {
-                        var msg = JSON.parse(ev.data || '{}');
-                        var html = String(msg.html || '');
-                        try {
-                            var tpl = document.createElement('template');
-                            tpl.innerHTML = html;
-                            var scripts = Array.prototype.slice.call(tpl.content.querySelectorAll('script'));
-                            for (var i = 0; i < scripts.length; i++) {
-                                var newScript = document.createElement('script');
-                                newScript.textContent = scripts[i].textContent;
-                                document.body.appendChild(newScript);
-                            }
-                        } catch(_){ }
-                        var el = document.getElementById(String(msg.id || ''));
-                        if (!el) { return; }
-                        if (msg.swap === 'inline') { el.innerHTML = html; }
-                        else if (msg.swap === 'outline') { el.outerHTML = html; }
-                        else if (msg.swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
-                        else if (msg.swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
+                        var msg = {};
+                        try { msg = JSON.parse(String(ev.data || '{}')); } catch(_){ msg = {}; }
+                        var t = String(msg.type || '');
+                        if (t === 'patch') { handlePatch(msg); }
+                        else if (t === 'reload') { try { location.reload(); } catch(_){ } }
                     } catch(_){ }
-                });
-                es.onerror = function(){ try{ es.close(); } catch(_){ } showOffline(); setTimeout(connect, 1000); };
-                window.addEventListener('beforeunload', function(){ try{ es.close(); } catch(_){ } });
+                };
+                ws.onerror = function(){ try{ ws.close(); } catch(_){ } };
+                ws.onclose = function(){ showOffline(); setTimeout(connect, 2000); };
+                window.addEventListener('beforeunload', function(){ try{ ws.close(); } catch(_){ } });
+                first = false;
             }
             connect();
         } catch(_){ }
@@ -1159,3 +1077,134 @@ function normalizePath(p: string): string {
 }
 
 function routeKey(method: "GET" | "POST", path: string): string { return method + ' ' + path; }
+
+// Minimal WebSocket helpers (server-side) using native http 'upgrade'
+function sha1Base64(s: string): string {
+    try {
+        const h = crypto.createHash('sha1');
+        h.update(s);
+        return h.digest('base64');
+    } catch (_) {
+        return '';
+    }
+}
+
+function encodeLength(len: number): Buffer {
+    if (len < 126) { return Buffer.from([len]); }
+    if (len < 65536) { const b = Buffer.alloc(3); b[0] = 126; b.writeUInt16BE(len, 1); return b; }
+    const out = Buffer.alloc(9);
+    out[0] = 127;
+    const hi = Math.floor(len / 0x100000000);
+    const lo = len >>> 0;
+    out.writeUInt32BE(hi, 1);
+    out.writeUInt32BE(lo, 5);
+    return out;
+}
+
+function wsFrame(data: string): Buffer {
+    const payload = Buffer.from(data, 'utf8');
+    const header = Buffer.concat([Buffer.from([0x81]), encodeLength(payload.length)]);
+    return Buffer.concat([header, payload]);
+}
+
+function wsSend(socket: Socket, data: string): void {
+    if (!socket.writable) { return; }
+    try { socket.write(wsFrame(data)); } catch (e: any) { console.error(e); }
+}
+
+function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
+    const url = String(req.url || '/');
+    const path = url.split('?')[0];
+    if (path !== '/__ws') { socket.destroy(); return; }
+    const key = String((req.headers && (req.headers['sec-websocket-key'] as string)) || '');
+    if (!key) { socket.destroy(); return; }
+    const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+    const accept = sha1Base64(key + GUID);
+    const headers = [
+        'HTTP/1.1 101 Switching Protocols',
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        'Sec-WebSocket-Accept: ' + accept,
+        '\r\n',
+    ].join('\r\n');
+    socket.write(headers);
+    let sid = '';
+    const qs = String(url.indexOf('?') >= 0 ? url.slice(url.indexOf('?') + 1) : '');
+    const q = parseQuery(qs);
+    sid = String(q['sid'] || '');
+    if (sid) { app._touchSession(sid); }
+    app._wsClients.add({ socket: socket, sid: sid });
+    wsSend(socket, JSON.stringify({ type: 'hello', ok: true }));
+    socket.on('error', function() { socket.destroy(); });
+    socket.on('close', function() {
+        const it = app._wsClients.values();
+        while (true) {
+            const n = it.next();
+            if (n.done) { break; }
+            const c = n.value;
+            if (c.socket === socket) { app._wsClients.delete(c); }
+        }
+    });
+    socket.on('data', function(buf: Buffer) {
+        if (!buf || buf.length < 2) { return; }
+        const firstByte = buf[0];
+        const opcode = firstByte & 0x0f;
+        const masked = (buf[1] & 0x80) === 0x80;
+        let payloadLength = buf[1] & 0x7f;
+        let offset = 2;
+
+        // Handle extended payload length
+        if (payloadLength === 126) {
+            if (buf.length < 4) { return; }
+            payloadLength = buf.readUInt16BE(2);
+            offset = 4;
+        } else if (payloadLength === 127) {
+            if (buf.length < 10) { return; }
+            // For simplicity, we don't handle 64-bit lengths > 2^32
+            payloadLength = buf.readUInt32BE(6);
+            offset = 10;
+        }
+
+        // Handle masking key
+        let maskKey: Buffer | undefined;
+        if (masked) {
+            if (buf.length < offset + 4) { return; }
+            maskKey = buf.slice(offset, offset + 4);
+            offset += 4;
+        }
+
+        // Extract payload
+        if (buf.length < offset + payloadLength) { return; }
+        let payload = buf.slice(offset, offset + payloadLength);
+
+        // Unmask payload if needed
+        if (masked && maskKey) {
+            for (let i = 0; i < payload.length; i++) {
+                payload[i] ^= maskKey[i % 4];
+            }
+        }
+
+        // Handle different frame types
+        if (opcode === 0x8) {
+            // Close frame
+            socket.end();
+            return;
+        }
+        if (opcode === 0x9) {
+            // Ping frame - respond with pong
+            const pongFrame = Buffer.concat([
+                Buffer.from([0x8A]), // Pong opcode with FIN bit
+                Buffer.from([payload.length]), // Payload length (unmasked)
+                payload // Echo the ping payload
+            ]);
+            socket.write(pongFrame);
+            return;
+        }
+        if (opcode === 0xA) {
+            // Pong frame - ignore
+            return;
+        }
+        // For text/binary frames, we currently ignore client data
+        // but the parsing is now correct for future use
+    });
+}
