@@ -221,6 +221,12 @@ Notes:
 - Run TypeScript with `tsx` (no build step needed). Use `tsc --noEmit` only to type-check if desired.
 - Coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
 
+- 2025-09-06: Internal cleanup to remove all `as any` casts and improve typing in `ui.ts` (no public API changes). This aligns with the Go-style formatting guide’s “Important” rules.
+
+### Type Checking
+- Run `npm run typecheck` to type-check the project without emitting JS.
+- `npm run dev` runs a type-check first via `predev`.
+
 ## Project Structure
 
 - `ui.ts`: UI primitives and components

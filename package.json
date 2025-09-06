@@ -3,6 +3,8 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
+        "typecheck": "tsc --noEmit",
+        "predev": "npm run typecheck",
         "dev": "tsx examples/main.ts",
         "dev:watch": "tsx examples/main.ts --watch"
     },
