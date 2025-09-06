@@ -1,8 +1,12 @@
 import ui from '../../ui';
 import { Context } from '../../ui.server';
 
+// Per-session clock using session-aware interval management
+const CLOCK_ID = 'others_clock';
+
 export function Clock(ctx: Context) {
-    const target = ui.Target();
+    // Render into a stable target id so reloads keep the same element
+    const target = { id: CLOCK_ID };
 
     // Clock helpers
     function pad2(n: number): string {
@@ -27,9 +31,10 @@ export function Clock(ctx: Context) {
         );
     }
 
-    setInterval(function() {
-        ctx.Patch(target.Replace, Render(new Date()));
-    }, 1000);
+    // Start exactly one interval per session (auto-cleaned after session TTL)
+    ctx.EnsureInterval('clock', 1000, function() {
+        ctx.Patch({ id: CLOCK_ID, swap: 'outline' }, Render(new Date()));
+    });
 
     return Render(new Date());
 }

@@ -37,7 +37,7 @@ There are two main modules:
 
 ### Sessions (Online Clients)
 - The client stores a stable session id in `localStorage` and includes it with every request.
-- The autoreload client opens `GET /__live?sid=...` and periodically calls `GET /__ping?sid=...` to mark the session active.
+- The live channel opens `GET /__live?sid=...` (SSE) and periodically calls `GET /__live?sid=...&ping=1` to mark the session active.
 - The server tracks session last-seen timestamps and removes sessions if pings stop or the SSE stream fails.
 - The session id is also attached to POST/FORM helpers, so actions receive it.
  - Sessions are pruned automatically if inactive for > 60s.
@@ -126,6 +126,7 @@ app.Listen(1422);
 - Utilities: `Classes`, `Trim`, `Normalize`, `Map`, `For`, size presets `XS|SM|MD|ST|LG|XL`, color presets `Blue|Red|Green|...`
 - Server: `App`, `MakeApp(lang)`, `app.Page(path, fn)`, `app.Listen(port)`
 - Context: `ctx.Body(out)`, `ctx.Call(fn).Render/Replace(target)`, `ctx.Send(fn).Render/Replace(target)`, `ctx.Submit(fn).Render/Replace(target)`, `ctx.Defer(fn).Render/Replace/None(target?, skeleton?)`, `ctx.Load(href)`, `ctx.Success/Error/Info(msg)`
+- Session helpers: `ctx.EnsureInterval(name, ms, fn)` starts a per-session interval exactly once; cleared automatically when the session expires.
 - Skeletons: `ui.Skeleton(id?)`, `ui.SkeletonList(count)`, `ui.SkeletonComponent()`, `ui.SkeletonPage()`, `ui.SkeletonForm()`
   - Built using the same HTML builder primitives (no raw string concatenation)
 
@@ -191,7 +192,6 @@ The `Others` page includes a live clock that re-renders every second via SSE pat
 // Use a stable id so reloads keep the same target
 const CLOCK_ID = 'others_clock';
 const clockTarget = { id: CLOCK_ID };
-let CLOCK_STARTED = false;
 
 function pad2(n: number): string {
   if (n < 10) { return '0' + String(n); }
@@ -206,12 +206,9 @@ function ClockView(d: Date): string {
 }
 
 async function StartClock(ctx: Context): Promise<string> {
-  if (!CLOCK_STARTED) {
-    CLOCK_STARTED = true;
-    function tick(): void { ctx.Patch(CLOCK_ID, ClockView(new Date()), 'outline'); }
-    tick();
-    setInterval(function(){ tick(); }, 1000);
-  }
+  ctx.EnsureInterval('clock', 1000, function(){
+    ctx.Patch({ id: CLOCK_ID, swap: 'outline' }, ClockView(new Date()));
+  });
   return '';
 }
 

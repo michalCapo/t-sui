@@ -45,7 +45,7 @@ export class App {
     HTMLHead: string[];
     _clients: Set<ServerResponse> = new Set();
     _sseClients: Set<ServerResponse> = new Set();
-    _sessions: Map<string, { id: string; lastSeen: number }> = new Map();
+    _sessions: Map<string, { id: string; lastSeen: number; timers: Map<string, number> }> = new Map();
     _sessionTTLms: number = 60000;
 
     _touchSession(id: string): void {
@@ -53,10 +53,21 @@ export class App {
         const now = Date.now();
         const prev = this._sessions.get(id);
         if (prev) { prev.lastSeen = now; }
-        else { this._sessions.set(id, { id: id, lastSeen: now }); }
+        else { this._sessions.set(id, { id: id, lastSeen: now, timers: new Map() }); }
     }
     _removeSession(id: string): void {
         if (!id) { return; }
+        try {
+            const rec = this._sessions.get(id);
+            if (rec && rec.timers) {
+                const it = rec.timers.values();
+                while (true) {
+                    const n = it.next();
+                    if (n.done) { break; }
+                    try { clearInterval(n.value as unknown as number); } catch { /* noop */ }
+                }
+            }
+        } catch { /* noop */ }
         try { this._sessions.delete(id); } catch { /* noop */ }
     }
     _sweepSessions(): void {
@@ -73,6 +84,17 @@ export class App {
                 if (!rec) { continue; }
                 const age = now - rec.lastSeen;
                 if (age > ttl) {
+                    try {
+                        const timers = rec.timers;
+                        if (timers) {
+                            const vals = timers.values();
+                            while (true) {
+                                const t = vals.next();
+                                if (t.done) { break; }
+                                try { clearInterval(t.value as unknown as number); } catch { /* noop */ }
+                            }
+                        }
+                    } catch { /* noop */ }
                     try { this._sessions.delete(sid); } catch { /* noop */ }
                 }
             }
@@ -192,7 +214,7 @@ export class App {
                             setInterval(function(){
                                 try {
                                     var sid2 = __sid.get();
-                                    fetch('/__ping?sid=' + encodeURIComponent(sid2), { method: 'GET', cache: 'no-store' }).catch(function(){});
+                                    fetch('/__live?sid=' + encodeURIComponent(sid2) + '&ping=1', { method: 'GET', cache: 'no-store' }).catch(function(){});
                                 } catch(_){}
                             }, 15000);
                         } catch(_){ }
@@ -301,6 +323,18 @@ export class App {
                 const method = (req.method as string) || GET;
 
                 if (path === '/__live') {
+                    try {
+                        const q = parseQuery(qs);
+                        const sid = String(q['sid'] || '');
+                        const ping = String(q['ping'] || '');
+                        if (sid) { self._touchSession(sid); }
+                        // Fast path: handle ping=1 as a 204 keepalive (no SSE stream)
+                        if (ping === '1' || ping === 'true') {
+                            try { res.statusCode = 204; res.end(); } catch { /* noop */ }
+                            return;
+                        }
+                    } catch { /* noop */ }
+
                     try { req.socket.setTimeout(0); } catch { /* noop */ }
                     res.writeHead(200, {
                         'Content-Type': 'text/event-stream',
@@ -310,11 +344,6 @@ export class App {
                     });
                     res.write('event: ping\ndata: 1\n\n');
                     self._clients.add(res);
-                    try {
-                        const q = parseQuery(qs);
-                        const sid = String(q['sid'] || '');
-                        if (sid) { self._touchSession(sid); }
-                    } catch { /* noop */ }
                     const heartbeat = setInterval(function() {
                         try { res.write('event: ping\ndata: 1\n\n'); }
                         catch { try { clearInterval(heartbeat); } catch (_) { } try { res.end(); } catch (_) { } }
@@ -324,17 +353,6 @@ export class App {
                         try { self._clients.delete(res); } catch { /* noop */ }
                         try { res.end(); } catch { /* noop */ }
                     });
-                    return;
-                }
-
-                if (path === '/__ping') {
-                    try {
-                        const q = parseQuery(qs);
-                        const sid = String(q['sid'] || '');
-                        if (sid) { self._touchSession(sid); }
-                        res.statusCode = 204;
-                        res.end();
-                    } catch { try { res.statusCode = 204; res.end(); } catch (_) { } }
                     return;
                 }
 
@@ -348,6 +366,11 @@ export class App {
                     });
                     res.write('event: hello\ndata: 1\n\n');
                     self._sseClients.add(res);
+                    try {
+                        const q = parseQuery(qs);
+                        const sid = String(q['sid'] || '');
+                        if (sid) { self._touchSession(sid); }
+                    } catch { /* noop */ }
                     const heartbeat2 = setInterval(function() {
                         try { res.write('event: ping\ndata: 1\n\n'); } catch { /* noop */ }
                     }, 15000);
@@ -435,6 +458,22 @@ export class Context {
 
     Callable(method: Callable): Callable { return this.app.Callable(method); }
     Action(uid: string, action: Callable): Callable { return this.app.Action(uid, action); }
+
+    // EnsureInterval starts a per-session interval only once (by name).
+    // Useful for SSE tickers that should not duplicate across reloads.
+    EnsureInterval(name: string, ms: number, fn: () => void): void {
+        try {
+            const sid = this.sessionID;
+            if (!sid) { return; }
+            this.app._touchSession(sid);
+            const rec = this.app._sessions.get(sid);
+            if (!rec) { return; }
+            if (!rec.timers) { rec.timers = new Map(); }
+            if (rec.timers.has(name)) { return; }
+            const h = setInterval(function() { try { fn(); } catch { /* noop */ } }, ms) as unknown as number;
+            rec.timers.set(name, h);
+        } catch { /* noop */ }
+    }
 
     Post(as: ActionType, swap: Swap, action: { method: Callable; target?: Attr; values?: any[] }): string {
         const path = this.app.pathOf(action.method);
@@ -707,7 +746,9 @@ export const __sse = ui.Trim(`
             function hideOffline(){ try { __offline.hide(); } catch(_){ } }
             function connect(){
                 try { var old = (window).__tsuiES; if (old) { try { old.close(); } catch(_){ } } } catch(_){ }
-                var es = new EventSource('/__sse');
+                var sid = '';
+                try { sid = __sid.get(); } catch(_){ }
+                var es = new EventSource('/__sse' + (sid?('?sid='+encodeURIComponent(sid)) : ''));
                 try { (window).__tsuiES = es; } catch(_){ }
                 es.onopen = function(){ hideOffline(); };
                 es.addEventListener('patch', function(ev){
