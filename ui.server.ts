@@ -45,7 +45,7 @@ export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
-    _wsClients: Set<{ socket: Socket; sid: string }> = new Set();
+    _wsClients: Set<{ socket: Socket; sid: string; lastPong: number }> = new Set();
     _sessions: Map<string, { id: string; lastSeen: number; timers: Map<string, number> }> = new Map();
     _sessionTTLms: number = 60000;
 
@@ -567,6 +567,8 @@ export const __ws = ui.Trim(`
             if ((window).__tsuiWSInit) { return; }
             (window).__tsuiWSInit = true;
             var first = true;
+            var DEBUG = false; try { DEBUG = !!(window).__tsuiReloadEnabled; } catch(_){ }
+            var appPing = 0;
             function showOffline(){ try { __offline.show(); } catch(_){ } }
             function hideOffline(){ try { __offline.hide(); } catch(_){ } }
             function handlePatch(msg){
@@ -600,11 +602,27 @@ export const __ws = ui.Trim(`
                 try { (window).__tsuiWS = ws; } catch(_){ }
                 ws.onopen = function(){
                     hideOffline();
+                    if (DEBUG) { try { console.log('[tsui][ws] open'); } catch(_){ } }
                     if (first) {
                         first = false;
                     } else {
                         try { location.reload(); } catch(_){ }
                     }
+                    try { if (appPing) { clearInterval(appPing); appPing = 0; } } catch(_){ }
+                    try {
+                        var now0 = Date.now();
+                        if (DEBUG) { try { console.log('[tsui][ws] ping(immediate)', now0); } catch(_){ } }
+                        ws.send(JSON.stringify({ type: 'ping', t: now0 }));
+                    } catch(_){ }
+                    try {
+                        appPing = setInterval(function(){
+                            try {
+                                var now = Date.now();
+                                if (DEBUG) { try { console.log('[tsui][ws] ping', now); } catch(_){ } }
+                                ws.send(JSON.stringify({ type: 'ping', t: now }));
+                            } catch(_){ }
+                        }, 10000);
+                    } catch(_){ }
                 };
                 ws.onmessage = function(ev){
                     try {
@@ -613,10 +631,16 @@ export const __ws = ui.Trim(`
                         var t = String(msg.type || '');
                         if (t === 'patch') { handlePatch(msg); }
                         else if (t === 'reload') { try { location.reload(); } catch(_){ } }
+                        else if (t === 'pong') { /* ignore */ }
                     } catch(_){ }
                 };
                 ws.onerror = function(){ try{ ws.close(); } catch(_){ } };
-                ws.onclose = function(){ showOffline(); setTimeout(connect, 2000); };
+                ws.onclose = function(){
+                    if (DEBUG) { try { console.log('[tsui][ws] close'); } catch(_){ } }
+                    try { if (appPing) { clearInterval(appPing); appPing = 0; } } catch(_){ }
+                    showOffline();
+                    setTimeout(connect, 2000);
+                };
                 window.addEventListener('beforeunload', function(){ try{ ws.close(); } catch(_){ } });
             }
             connect();
@@ -1037,6 +1061,20 @@ function wsSend(socket: Socket, data: string): void {
     try { socket.write(wsFrame(data)); } catch (e: any) { console.error(e); }
 }
 
+// Send a WebSocket Ping (opcode 0x9). Browsers auto-respond with Pong.
+function wsPing(socket: Socket, payload?: string): void {
+    if (!socket || !socket.writable) { return; }
+    try {
+        let body = Buffer.alloc(0);
+        if (payload) {
+            body = Buffer.from(payload, 'utf8');
+            if (body.length > 125) { body = body.slice(0, 125); }
+        }
+        const header = Buffer.concat([Buffer.from([0x89]), encodeLength(body.length)]);
+        socket.write(Buffer.concat([header, body]));
+    } catch (_) { }
+}
+
 function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
     const url = String(req.url || '/');
     const path = url.split('?')[0];
@@ -1058,10 +1096,25 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
     const q = parseQuery(qs);
     sid = String(q['sid'] || '');
     if (sid) { app._touchSession(sid); }
-    app._wsClients.add({ socket: socket, sid: sid });
+    const record = { socket: socket, sid: sid, lastPong: Date.now() };
+    app._wsClients.add(record);
     wsSend(socket, JSON.stringify({ type: 'hello', ok: true }));
+    // Heartbeat: touch session + ping; drop if no pong within 75s
+    let heartbeat: any = 0;
+    try {
+        heartbeat = setInterval(function() {
+            try {
+                if (sid) { app._touchSession(sid); }
+                const now = Date.now();
+                const age = now - record.lastPong;
+                if (age > 75000) { try { socket.destroy(); } catch (_) { } return; }
+                wsPing(socket);
+            } catch (_) { }
+        }, 25000);
+    } catch (_) { }
     socket.on('error', function() { socket.destroy(); });
     socket.on('close', function() {
+        try { if (heartbeat) { clearInterval(heartbeat); heartbeat = 0; } } catch (_) { }
         const it = app._wsClients.values();
         while (true) {
             const n = it.next();
@@ -1126,10 +1179,23 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
             return;
         }
         if (opcode === 0xA) {
-            // Pong frame - ignore
+            // Pong frame - update last seen
+            try { record.lastPong = Date.now(); } catch (_) { }
             return;
         }
-        // For text/binary frames, we currently ignore client data
-        // but the parsing is now correct for future use
+        // Text frames: support app-level ping/pong
+        if (opcode === 0x1) {
+            try {
+                const text = payload.toString('utf8');
+                let msg: any = {};
+                try { msg = JSON.parse(text); } catch (_) { msg = {}; }
+                const t = String(msg && msg.type || '');
+                if (t === 'ping') {
+                    try { wsSend(socket, JSON.stringify({ type: 'pong', t: Date.now() })); } catch (_) { }
+                }
+            } catch (_) { }
+            return;
+        }
+        // Other frames ignored
     });
 }

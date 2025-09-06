@@ -30,6 +30,7 @@ export function Clock(ctx: Context) {
 
     // Start exactly one interval per session (auto-cleaned after session TTL)
     ctx.EnsureInterval('clock', 1000, function() {
+        console.log('Patching clock');
         ctx.Patch(target.Replace, Render(new Date()));
     });
 
