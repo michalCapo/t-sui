@@ -72,33 +72,33 @@ async function Def(ctx: Context) {
         ui.div('grid grid-cols-5 gap-4')(
             ui.Button()
                 .Color(ui.Blue)
-                .Class('rounded')
+                .Class('rounded text-sm')
                 .Click(ctx.Call(Deffered).Replace(deferredTarget))
-                .Render('As default'),
+                .Render('Default skeleton'),
 
             ui.Button()
                 .Color(ui.Blue)
-                .Class('rounded')
+                .Class('rounded text-sm')
                 .Click(ctx.Call(Deffered, { as: 'component' }).Replace(deferredTarget))
-                .Render('As component'),
+                .Render('Component skeleton'),
 
             ui.Button()
                 .Color(ui.Blue)
-                .Class('rounded')
+                .Class('rounded text-sm')
                 .Click(ctx.Call(Deffered, { as: 'list' }).Replace(deferredTarget))
-                .Render('As list'),
+                .Render('List skeleton'),
 
             ui.Button()
                 .Color(ui.Blue)
-                .Class('rounded')
+                .Class('rounded text-sm')
                 .Click(ctx.Call(Deffered, { as: 'page' }).Replace(deferredTarget))
-                .Render('As page'),
+                .Render('Page skeleton'),
 
             ui.Button()
                 .Color(ui.Blue)
-                .Class('rounded')
+                .Class('rounded text-sm')
                 .Click(ctx.Call(Deffered, { as: 'form' }).Replace(deferredTarget))
-                .Render('As form'),
+                .Render('Form skeleton'),
         ),
 
         ui.div('bg-gray-50 dark:bg-gray-900 p-4 rounded shadow border rounded p-4')(
@@ -110,21 +110,22 @@ async function Def(ctx: Context) {
 
 // Deferred block (SSE skeleton -> replace when ready)
 function Deffered(ctx: Context): string {
-    const body = { as: '' }
+    const form = { as: '' }
 
-    ctx.Body(body);
+    // scans the body into form object
+    ctx.Body(form);
     ctx.Patch(deferredTarget, 'outline', Def);
 
-    if (body.as === 'component')
+    if (form.as === 'component')
         return Skeleton.Component(deferredTarget);
 
-    if (body.as === 'list')
+    if (form.as === 'list')
         return Skeleton.List(deferredTarget, 6);
 
-    if (body.as === 'page')
+    if (form.as === 'page')
         return Skeleton.Page(deferredTarget);
 
-    if (body.as === 'form')
+    if (form.as === 'form')
         return Skeleton.Form(deferredTarget);
 
     return Skeleton.Default(deferredTarget);
@@ -138,6 +139,7 @@ export function OthersContent(ctx: Context): string {
         ),
         ui.div('text-gray-600')('Miscellaneous demos: Hello, Counter, Login, and icon helpers.'),
 
+        // clock (SSE)
         ui.div('bg-white p-6 rounded-lg shadow w-full')(
             ui.div('text-lg font-bold')('Clock (SSE)'),
             ui.div('text-gray-600 mb-3')('Updates every second via server-sent patches.'),
