@@ -2,7 +2,7 @@ import ui from '../../ui';
 import { Context } from '../../ui.server';
 
 export function Clock(ctx: Context) {
-    const clockTarget = ui.Target();
+    const target = ui.Target();
 
     // Clock helpers
     function pad2(n: number): string {
@@ -21,17 +21,15 @@ export function Clock(ctx: Context) {
     }
 
     function Render(d: Date): string {
-        return ui.div('flex items-baseline gap-3', clockTarget)(
+        return ui.div('flex items-baseline gap-3', target)(
             ui.div('text-4xl font-mono tracking-widest')(fmtTime(d)),
             ui.div('text-gray-500')('Live server time')
         );
     }
 
-    function tick(): void {
-        ctx.Patch(clockTarget.Replace, Render(new Date()));
-    }
-
-    setInterval(function() { tick(); }, 1000);
+    setInterval(function() {
+        ctx.Patch(target.Replace, Render(new Date()));
+    }, 1000);
 
     return Render(new Date());
 }

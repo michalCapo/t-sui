@@ -48,10 +48,10 @@ async function LazyMoreData(ctx: Context, target: Target) {
     )
 }
 
-const target = ui.Target();
 
 // Deferred block (SSE skeleton -> replace when ready)
 export function Deffered(ctx: Context): string {
+    const target = ui.Target();
     const form: { as: Skeleton } = { as: undefined }
 
     // scans the body into form object
