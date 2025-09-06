@@ -16,59 +16,59 @@
 # Formatting
 
 - **Indentation**
-  - Use **tabs** (or 2/4 spaces if project convention differs) for indentation, never mixed.
-  - Indent consistently for blocks (`if`, `for`, `switch`, functions, etc.).
+    - Use **tabs** (or 2/4 spaces if project convention differs) for indentation, never mixed.
+    - Indent consistently for blocks (`if`, `for`, `switch`, functions, etc.).
 
 - **Braces & Blocks**
-  - Opening brace `{` goes on the **same line** as the declaration.
-    ```ts
-    if (x < y) {
-      foo();
-    } else {
-      bar();
-    }
-    ```
-  - Always use braces, even for single-line statements (avoids ambiguity).
+    - Opening brace `{` goes on the **same line** as the declaration.
+        ```ts
+        if (x < y) {
+            foo();
+        } else {
+            bar();
+        }
+        ```
+    - Always use braces, even for single-line statements (avoids ambiguity).
 
 - **Line Length**
-  - Prefer lines ≤ **100 characters**.
-  - Break long expressions across multiple lines with indentation.
+    - Prefer lines ≤ **100 characters**.
+    - Break long expressions across multiple lines with indentation.
 
 - **Spacing**
-  - One space after keywords (`if`, `for`, `switch`, `function`, etc.).
-  - No extra spaces inside parentheses or brackets:
-    ```ts
-    foo(x, y); // ✅
-    foo(x, y); // ❌
-    ```
-  - Add a space around operators (`=`, `+`, `-`, `===`, etc.).
+    - One space after keywords (`if`, `for`, `switch`, `function`, etc.).
+    - No extra spaces inside parentheses or brackets:
+        ```ts
+        foo(x, y); // ✅
+        foo(x, y); // ❌
+        ```
+    - Add a space around operators (`=`, `+`, `-`, `===`, etc.).
 
 - **Imports**
-  - Group standard/builtin modules, then third-party, then local/project imports.
-  - Alphabetize within groups.
-  - Use single import lines (avoid multiple names per import).
+    - Group standard/builtin modules, then third-party, then local/project imports.
+    - Alphabetize within groups.
+    - Use single import lines (avoid multiple names per import).
 
 - **Declarations**
-  - One declaration per line (except closely related constants).
-  - Prefer `const` over `let`, and avoid `var`.
+    - One declaration per line (except closely related constants).
+    - Prefer `const` over `let`, and avoid `var`.
 
 - **Functions**
-  - Keep functions short and focused.
-  - Use explicit return types for clarity.
+    - Keep functions short and focused.
+    - Use explicit return types for clarity.
 
 - **Error Handling**
-  - In Go, errors are explicit; in TS, handle errors with `try/catch` or `Result`-like patterns.
-  - Don’t swallow errors silently.
+    - In Go, errors are explicit; in TS, handle errors with `try/catch` or `Result`-like patterns.
+    - Don’t swallow errors silently.
 
 - **Comments**
-  - Use `//` for single-line, `/** */` for doc comments.
-  - Comments should explain **why**, not just restate **what** the code does.
-  - Exported functions/types should have a doc comment starting with the name:
-    ```ts
-    // Greet prints a greeting message.
-    export function Greet(name: string): void { ... }
-    ```
+    - Use `//` for single-line, `/** */` for doc comments.
+    - Comments should explain **why**, not just restate **what** the code does.
+    - Exported functions/types should have a doc comment starting with the name:
+        ```ts
+        // Greet prints a greeting message.
+        export function Greet(name: string): void { ... }
+        ```
 
 - **Blank Lines**
-  - Use blank lines to group related statements logically.
-  - Avoid excessive vertical whitespace.
+    - Use blank lines to group related statements logically.
+    - Avoid excessive vertical whitespace.
