@@ -11,6 +11,7 @@ export interface Attr {
 	href?: string;
 	title?: string;
 	alt?: string;
+
 	type?: string;
 	class?: string;
 	style?: string;
@@ -454,12 +455,12 @@ function ThemeSwitcher(css = ""): string {
 
 	const container = [
 		'<button id="' +
-			id +
-			'" type="button" class="' +
-			"inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
-			"hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
-			css +
-			'">',
+		id +
+		'" type="button" class="' +
+		"inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
+		"hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
+		css +
+		'">',
 		'  <span class="icon">' + desktop + "</span>",
 		'  <span class="label">Auto</span>',
 		"</button>",
@@ -473,12 +474,12 @@ function ThemeSwitcher(css = ""): string {
 		'function setMode(mode){ try { if (typeof setTheme === "function") setTheme(mode); } catch(_){} }',
 		'function labelFor(mode){ return mode==="system"?"Auto":(mode.charAt(0).toUpperCase()+mode.slice(1)); }',
 		'function iconFor(effective){ if(effective==="dark"){ return ' +
-			JSON.stringify(moon) +
-			'; } if(effective==="light"){ return ' +
-			JSON.stringify(sun) +
-			"; } return " +
-			JSON.stringify(desktop) +
-			"; }",
+		JSON.stringify(moon) +
+		'; } if(effective==="light"){ return ' +
+		JSON.stringify(sun) +
+		"; } return " +
+		JSON.stringify(desktop) +
+		"; }",
 		'function render(){ var pref=getPref(); var eff=resolve(pref); var icon=iconFor(eff); var i=btn.querySelector(".icon"); if(i){ i.innerHTML=icon; } var l=btn.querySelector(".label"); if(l){ l.textContent=labelFor(pref); } }',
 		"render();",
 		'btn.addEventListener("click", function(){ var pref=getPref(); var idx=modes.indexOf(pref); var next=modes[(idx+1)%modes.length]; setMode(next); render(); });',
@@ -1297,9 +1298,9 @@ function IRadio(name: string, data?: any) {
 		Render: function (text: string): string {
 			const selected = state.data
 				? String(
-						(state.data as Record<string, unknown>)[state.name] ||
-							"",
-					)
+					(state.data as Record<string, unknown>)[state.name] ||
+					"",
+				)
 				: "";
 			const inputEl = input(Classes("hover:cursor-pointer"), {
 				type: "radio",
@@ -1360,9 +1361,9 @@ function IRadioButtons(name: string, data?: any) {
 		Render: function (text: string): string {
 			const selected = state.data
 				? String(
-						(state.data as Record<string, unknown>)[state.name] ||
-							"",
-					)
+					(state.data as Record<string, unknown>)[state.name] ||
+					"",
+				)
 				: "";
 			let items = "";
 			for (let i = 0; i < state.options.length; i++) {
