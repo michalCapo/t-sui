@@ -49,6 +49,7 @@ Key ideas:
 - Register pages with `app.Page(path, handler)` and start the server with `app.Listen(port)`.
 - Use `Context` helpers to post forms or call actions and update a target element inline or by replacing the element.
 - `AutoReload(true)` enables a WebSocket-based live-reload flag in development.
+- `app.debug(true)` enables server debug logs prefixed with `tsui:` (suppresses logs when `false`).
 
 ## Minimal Example
 
@@ -290,6 +291,18 @@ const h = setInterval(function() {
 
 - Run `npm run typecheck` to type-check the project without emitting JS.
 - `npm run dev` runs a type-check first via `predev`.
+
+### Debug Logging
+
+- Enable with `app.debug(true)` to print server logs prefixed with `tsui:`.
+- When disabled (default), `console.log` calls inside the server are ignored.
+
+Example:
+
+```ts
+const app = MakeApp("en");
+app.debug(true); // enable prefixed debug logs
+```
 
 ## Project Structure
 

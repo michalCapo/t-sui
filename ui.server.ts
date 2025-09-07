@@ -28,6 +28,7 @@ export class App {
     HTMLHead: string[];
     _wsClients: Set<{ socket: Socket; sid: string; lastPong: number }> =
         new Set();
+    _debugEnabled: boolean = false;
     _sessions: Map<
         string,
         {
@@ -48,7 +49,7 @@ export class App {
         if (prev) {
             prev.lastSeen = now;
         } else {
-            console.log("-- Setting session", id);
+            this._log("Setting session", id);
             this._sessions.set(id, {
                 id: id,
                 lastSeen: now,
@@ -91,7 +92,7 @@ export class App {
                     }
                 } catch (_) { }
 
-                console.log("-- Deleting session", sid);
+                this._log("Deleting session", sid);
                 this._sessions.delete(sid);
             }
         }
@@ -167,6 +168,43 @@ export class App {
         }
     }
 
+    // Enable or disable server debug logging.
+    // When enabled, messages are printed with a 'tsui:' prefix.
+    debug(enable: boolean): void {
+        this._debugEnabled = !!enable;
+    }
+
+    // Back-compat with examples using PascalCase.
+    Debug(enable: boolean): void {
+        this.debug(enable);
+    }
+
+    // Internal: conditional logger with consistent prefix and no spread usage.
+    private _log(a?: unknown, b?: unknown, c?: unknown, d?: unknown, e?: unknown): void {
+        if (!this._debugEnabled) {
+            return;
+        }
+        let out = "tsui -";
+        function add(part: unknown): void {
+            if (typeof part === "undefined") {
+                return;
+            }
+            try {
+                out += " " + String(part);
+            } catch (_) {
+                out += " [object]";
+            }
+        }
+        add(a);
+        add(b);
+        add(c);
+        add(d);
+        add(e);
+        try {
+            console.log(out);
+        } catch (_) { }
+    }
+
     // Internal: broadcast a patch message to all WS clients
     _sendPatch(payload: { id: string; swap: Swap; html: string }): void {
         const msg = {
@@ -195,7 +233,7 @@ export class App {
     _sendReload(): void {
         const msg = { type: "reload" };
         const data = JSON.stringify(msg);
-        console.log("Broadcasting reload to", this._wsClients.size, "clients");
+        this._log("Broadcasting reload to", this._wsClients.size, "clients");
         const it = this._wsClients.values();
         let sent = 0;
         while (true) {
@@ -214,7 +252,7 @@ export class App {
                 );
             }
         }
-        console.log("Sent reload to", sent, "clients");
+        this._log("Sent reload to", sent, "clients");
     }
 
     HTML(title: string, bodyClass: string, body: string): string {
@@ -247,7 +285,7 @@ export class App {
         if (this.stored.has(key))
             throw new Error("Path already registered: " + m + " " + p);
 
-        console.log("Registering path: " + m + " " + p);
+        this._log("Registering path:", m, p);
         this.stored.set(key, { path: p, method: m, callable: callable });
     }
 
@@ -470,6 +508,11 @@ export class App {
         server.listen(port, "0.0.0.0");
         console.log("Listening on http://0.0.0.0:" + String(port));
     }
+}
+
+// Debug control: enable or disable server logs. When enabled, logs are prefixed with 'tsui:'.
+export interface Debuggable {
+    debug(enable: boolean): void;
 }
 
 export class Context {
