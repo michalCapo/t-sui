@@ -145,8 +145,8 @@ app.Listen(1422);
 - Components: `Button`, `IText`, `IPassword`, `IArea`, `INumber`, `IDate`, `ITime`, `IDateTime`, `ISelect`, `ICheckbox`, `IRadio`, `IRadioButtons`, `SimpleTable`
 - Utilities: `Classes`, `Trim`, `Normalize`, `Map`, `For`, size presets `XS|SM|MD|ST|LG|XL`, color presets `Blue|Red|Green|...`
 - Server: `App`, `MakeApp(lang)`, `app.Page(path, fn)`, `app.Listen(port)`
-- Context: `ctx.Body(out)`, `ctx.Call(fn).Render/Replace(target)`, `ctx.Send(fn).Render/Replace(target)`, `ctx.Submit(fn).Render/Replace(target)`, `ctx.Defer(fn).Render/Replace/None(target?, skeleton?)`, `ctx.Load(href)`, `ctx.Success/Error/Info(msg)`
-- Session helpers: `ctx.EnsureInterval(name, ms, fn)` starts a per-session interval exactly once; cleared automatically when the session expires.
+- Context: `ctx.Body(out)`, `ctx.Call(fn).Render/Replace(target)`, `ctx.Send(fn).Render/Replace(target)`, `ctx.Submit(fn).Render/Replace(target)`, `ctx.Load(href)`, `ctx.Success/Error/Info(msg)`, `ctx.Patch(target, html, clear?)`
+ - Patching: `ctx.Patch(target, html|Promise<string>, clear?)` pushes a WS patch; optional `clear` runs when client reports the target id as missing.
 - Skeletons: `ui.Skeleton(id?)`, `ui.SkeletonList(count)`, `ui.SkeletonComponent()`, `ui.SkeletonPage()`, `ui.SkeletonForm()`
     - Built using the same HTML builder primitives (no raw string concatenation)
 
@@ -160,7 +160,7 @@ See `examples/` for practical usage.
 
 ## Deferred Fragments (WS + Skeleton)
 
-You can render a quick skeleton while the server prepares a heavier fragment, then swap it in via a WS patch when ready.
+Render a quick skeleton while the server prepares a heavier fragment, then swap it in via a WS patch when ready.
 
 ```ts
 // examples/deferred.ts
@@ -173,25 +173,26 @@ function Page(ctx: Context): string {
 	const target = ui.Target();
 
 	async function RenderHeavy(c: Context): Promise<string> {
-		await new Promise(function (r) {
-			setTimeout(r, 799);
-		}); // simulate work
+		await new Promise(function (r) { setTimeout(r, 799); }); // simulate work
 		return ui.div("bg-white p-5 rounded shadow", target)(
 			ui.div("font-semibold")("Deferred content loaded"),
 			ui.div("text-gray-500 text-sm")("Replaced via WS patch"),
 		);
 	}
 
-	// Show a skeleton immediately; the callable runs asynchronously
-	// and pushes a WS patch that swaps into the target when ready.
-	const skeleton = ctx.Defer(RenderHeavy).SkeletonComponent().Replace(target);
+	// Show a skeleton immediately; kick off async work that patches the target when ready.
+	setTimeout(function () {
+		RenderHeavy(ctx).then(function (html) {
+			ctx.Patch(target.Replace, html);
+		});
+	}, 0);
 
 	return ctx.app.HTML(
 		"Deferred Demo",
 		"bg-gray-100 min-h-screen",
 		ui.div("max-w-xl mx-auto p-6")(
 			ui.div("text-xl font-bold mb-2")("Deferred fragment"),
-			skeleton,
+			target.Skeleton("component"),
 		),
 	);
 }
@@ -203,10 +204,8 @@ app.Listen(1422);
 
 Notes:
 
-- `ctx.Defer(fn)` returns a builder. Use `.Render(target)` to swap `innerHTML`, `.Replace(target)` to replace the element, or `.None()` for a fire‑and‑forget patch.
-- Each of `Render/Replace/None` accepts an optional `skeleton` string. If omitted, a default `ui.Skeleton(target.id)` is used when a target is provided.
-- You can preset a default via `.Skeleton(...)` or the convenience helpers `.SkeletonList(count)`, `.SkeletonComponent()`, `.SkeletonPage()`, `.SkeletonForm()`.
-- For server-side updates at arbitrary times (e.g., from an action), call `ctx.Patch(target, html, swap)` to push a patch.
+- Use `target.Skeleton(...)` helpers to choose a placeholder style.
+- For server-side updates at arbitrary times (e.g., from an action or timer), call `ctx.Patch(target, html)` to push a patch.
 
 ## Live Updates Example (WS Clock)
 
@@ -214,9 +213,8 @@ The `Others` page includes a live clock that re-renders every second via WS patc
 
 ```ts
 // inside a page handler
-// Use a stable id so reloads keep the same target
-const CLOCK_ID = "others_clock";
-const clockTarget = {id: CLOCK_ID};
+// Use a unique id per render so old timers auto-cancel on reload
+const clockTarget = ui.Target();
 
 function pad2(n: number): string {
 	if (n < 10) {
@@ -234,23 +232,25 @@ function ClockView(d: Date): string {
 }
 
 async function StartClock(ctx: Context): Promise<string> {
-	ctx.EnsureInterval("clock", 1000, function () {
-		ctx.Patch({id: CLOCK_ID, swap: "outline"}, ClockView(new Date()));
-	});
+	const h = setInterval(function () {
+		ctx.Patch({ id: clockTarget.id, swap: "outline" }, ClockView(new Date()), function stop() {
+			try { clearInterval(h); } catch(_){}
+		});
+	}, 1000);
 	return "";
 }
 
 // render once and start background updates
+setTimeout(function () { StartClock(ctx); }, 0);
 ui.div("...")(
 	ClockView(new Date()),
-	ctx.Defer(StartClock).Skeleton("<!-- clock -->").None(),
+	clockTarget.Skeleton("component"),
 );
 ```
 
 Notes:
 
-- Keep the target id stable across reloads to ensure patches land.
-- Guard the interval to avoid multiple timers after manual reloads.
+- Prefer a fresh `ui.Target()` per render so previous timers stop automatically when the old id disappears from the DOM (the `clear` callback runs via invalid-target reports).
 - Use `.None()` when you only need side-effects (pushing patches) and not an immediate swap. Provide a minimal skeleton like `'<!-- -->'` to avoid inserting a default placeholder.
 
 ### Patch Cancellation (Invalid Targets)
@@ -266,11 +266,11 @@ Example:
 const target = ui.Target();
 const h = setInterval(function() {
     function stop() { try { clearInterval(h); } catch(_){} }
-    ctx.Patch(target.Replace, renderNow(), stop);
+    ctx.Patch({ id: target.id, swap: target.swap }, renderNow(), stop);
 }, 1000);
 ```
 
-- You can also pair this with `ctx.EnsureInterval(name, ms, fn)` and stop via `ctx.ClearInterval(name)` in your `clear` function.
+ 
 
 ## Development Notes
 
@@ -285,7 +285,7 @@ const h = setInterval(function() {
 - 2025-09-06: Replace SSE (`/__live`, `/__sse`) with native WebSocket server at `/__ws`; existing helpers now use WS. Sessions are still tracked via stored `sid`.
 - 2025-09-06: Auto-reload now triggers on WebSocket reconnect (e.g., after server restarts), ensuring pages refresh reliably when the dev server comes back.
 - 2025-09-06: Added WS heartbeats: server sends control Ping every 25s and expects Pong (75s timeout); client also sends JSON `{ "type": "ping" }` every 30s and the server replies with `{ "type": "pong" }`. Sessions are kept alive while the socket is open.
-- 2025-09-06: Removed experimental migration of per-request timers to WS sessions; sessions remain independent. Prefer stable target ids and `ctx.EnsureInterval(...)` with WS heartbeats to keep live updates running.
+- 2025-09-06: Removed experimental migration of per-request timers to WS sessions; sessions remain independent. The EnsureInterval/ClearInterval helpers were removed — manage timers yourself and pass a `clear` callback to `ctx.Patch(...)` so old timers are stopped when targets disappear.
 
 ### Type Checking
 
