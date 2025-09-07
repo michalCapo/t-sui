@@ -1,9 +1,9 @@
 // Typpescript server for server-side rendering using the combined UI library
 
-import http, {IncomingMessage, ServerResponse} from "node:http";
+import http, { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
-import type {Socket} from "node:net";
-import ui, {Attr, Target, Swap} from "./ui";
+import type { Socket } from "node:net";
+import ui, { Attr, Target, Swap } from "./ui";
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
 const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
@@ -26,7 +26,7 @@ export class App {
 	contentId: Target;
 	Language: string;
 	HTMLHead: string[];
-	_wsClients: Set<{socket: Socket; sid: string; lastPong: number}> =
+	_wsClients: Set<{ socket: Socket; sid: string; lastPong: number }> =
 		new Set();
 	_debugEnabled: boolean = false;
 	_sessions: Map<
@@ -116,7 +116,7 @@ export class App {
 	// private stored = new Map<Callable, { path: string, method: "GET" | "POST" }>();
 	private stored = new Map<
 		string,
-		{path: string; method: "GET" | "POST"; callable: Callable}
+		{ path: string; method: "GET" | "POST"; callable: Callable }
 	>();
 
 	constructor(defaultLanguage: string) {
@@ -212,13 +212,13 @@ export class App {
 	}
 
 	// Internal: broadcast a patch message to all WS clients
-	_sendPatch(payload: {id: string; swap: Swap; html: string}): void {
+	_sendPatch(payload: { id: string; swap: Swap; html: string }): void {
 		const msg = {
 			type: "patch",
 			id: String(payload.id || ""),
 			swap: String(payload.swap || "outline"),
 			html: ui.Trim(String(payload.html || "")),
-		} as {type: string; id: string; swap: string; html: string};
+		} as { type: string; id: string; swap: string; html: string };
 		const data = JSON.stringify(msg);
 		const it = this._wsClients.values();
 		while (true) {
@@ -237,7 +237,7 @@ export class App {
 
 	// Internal: broadcast a reload message to all WS clients
 	_sendReload(): void {
-		const msg = {type: "reload"};
+		const msg = { type: "reload" };
 		const data = JSON.stringify(msg);
 		this._log("Broadcasting reload to", this._wsClients.size, "clients");
 		const it = this._wsClients.values();
@@ -296,7 +296,7 @@ export class App {
 			throw new Error("Path already registered: " + m + " " + p);
 
 		this._log("Registering path:", m, p);
-		this.stored.set(key, {path: p, method: m, callable: callable});
+		this.stored.set(key, { path: p, method: m, callable: callable });
 	}
 
 	Page(path: string, component: Callable): Callable {
@@ -574,7 +574,7 @@ export class Context {
 	Post(
 		as: ActionType,
 		swap: Swap,
-		action: {method: Callable; target?: Attr; values?: any[]},
+		action: { method: Callable; target?: Attr; values?: any[] },
 	): string {
 		const path = this.app.pathOf(action.method);
 		if (!path) throw new Error("Function not registered.");
@@ -764,7 +764,7 @@ export class Context {
 	}
 
 	Load(href: string): Attr {
-		return {onclick: ui.Normalize('__load(\"' + href + '\")')};
+		return { onclick: ui.Normalize('__load(\"' + href + '\")') };
 	}
 	Reload(): string {
 		return ui.Normalize("<script>window.location.reload();</script>");
@@ -786,7 +786,7 @@ export class Context {
 	}
 
 	Patch(
-		target: {id: string; swap: Swap},
+		target: { id: string; swap: Swap },
 		html: string | Promise<string>,
 		clear?: () => void,
 	): void {
@@ -1384,8 +1384,8 @@ function isSecure(req: IncomingMessage): boolean {
 	return false;
 }
 
-function parseCookies(header: string): {[k: string]: string} {
-	const out: {[k: string]: string} = {};
+function parseCookies(header: string): { [k: string]: string } {
+	const out: { [k: string]: string } = {};
 	if (!header) {
 		return out;
 	}
@@ -1547,9 +1547,9 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
 	lines.push("\r\n");
 	const headers = lines.join("\r\n");
 	socket.write(headers);
-	const record = {socket: socket, sid: sid, lastPong: Date.now()};
+	const record = { socket: socket, sid: sid, lastPong: Date.now() };
 	app._wsClients.add(record);
-	wsSend(socket, JSON.stringify({type: "hello", ok: true}));
+	wsSend(socket, JSON.stringify({ type: "hello", ok: true }));
 	// Heartbeat: touch session + ping; drop if no pong within 75s
 	let heartbeat: any = 0;
 	try {
@@ -1679,7 +1679,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
 					try {
 						wsSend(
 							socket,
-							JSON.stringify({type: "pong", t: Date.now()}),
+							JSON.stringify({ type: "pong", t: Date.now() }),
 						);
 					} catch (_) {}
 				} else if (t === "invalid") {

@@ -1,32 +1,32 @@
 import ui from "../ui";
-import {Callable, Context, MakeApp} from "../ui.server";
-import {ButtonContent} from "./pages/button";
-import {TextContent} from "./pages/text";
-import {PasswordContent} from "./pages/password";
-import {NumberContent} from "./pages/number";
-import {DateContent} from "./pages/date";
-import {AreaContent} from "./pages/area";
-import {SelectContent} from "./pages/select";
-import {CheckboxContent} from "./pages/checkbox";
-import {RadioContent} from "./pages/radio";
-import {TableContent} from "./pages/table";
-import {ShowcaseContent} from "./pages/showcase";
-import {OthersContent} from "./pages/others";
+import { Callable, Context, MakeApp } from "../ui.server";
+import { ButtonContent } from "./pages/button";
+import { TextContent } from "./pages/text";
+import { PasswordContent } from "./pages/password";
+import { NumberContent } from "./pages/number";
+import { DateContent } from "./pages/date";
+import { AreaContent } from "./pages/area";
+import { SelectContent } from "./pages/select";
+import { CheckboxContent } from "./pages/checkbox";
+import { RadioContent } from "./pages/radio";
+import { TableContent } from "./pages/table";
+import { ShowcaseContent } from "./pages/showcase";
+import { OthersContent } from "./pages/others";
 
-type Route = {Path: string; Title: string};
+type Route = { Path: string; Title: string };
 const routes: Route[] = [
-	{Path: "/", Title: "Showcase"},
-	{Path: "/button", Title: "Button"},
-	{Path: "/text", Title: "Text"},
-	{Path: "/password", Title: "Password"},
-	{Path: "/number", Title: "Number"},
-	{Path: "/date", Title: "Date & Time"},
-	{Path: "/area", Title: "Textarea"},
-	{Path: "/select", Title: "Select"},
-	{Path: "/checkbox", Title: "Checkbox"},
-	{Path: "/radio", Title: "Radio"},
-	{Path: "/table", Title: "Table"},
-	{Path: "/others", Title: "Others"},
+	{ Path: "/", Title: "Showcase" },
+	{ Path: "/button", Title: "Button" },
+	{ Path: "/text", Title: "Text" },
+	{ Path: "/password", Title: "Password" },
+	{ Path: "/number", Title: "Number" },
+	{ Path: "/date", Title: "Date & Time" },
+	{ Path: "/area", Title: "Textarea" },
+	{ Path: "/select", Title: "Select" },
+	{ Path: "/checkbox", Title: "Checkbox" },
+	{ Path: "/radio", Title: "Radio" },
+	{ Path: "/table", Title: "Table" },
+	{ Path: "/others", Title: "Others" },
 ];
 
 const app = MakeApp("en");
@@ -60,7 +60,7 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
 					" bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500"
 				: baseCls +
 					" text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700";
-			const a = ui.a(cls, {href: route.Path}, ctx.Load(route.Path));
+			const a = ui.a(cls, { href: route.Path }, ctx.Load(route.Path));
 
 			if (links.length > 0) links += " ";
 

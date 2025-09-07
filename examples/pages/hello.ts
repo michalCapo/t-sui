@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 function sayHello(ctx: Context) {
 	ctx.Success("Hello");

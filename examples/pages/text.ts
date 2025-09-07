@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function TextContent(_ctx: Context): string {
 	function card(title: string, body: string): string {
@@ -9,8 +9,8 @@ export function TextContent(_ctx: Context): string {
 		);
 	}
 
-	type TextData = {Name: string};
-	const data: TextData = {Name: "John Doe"};
+	type TextData = { Name: string };
+	const data: TextData = { Name: "John Doe" };
 
 	// Basics and states
 	const basics = ui.div("flex flex-col gap-2")(

@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function TableContent(ctx: Context): string {
 	const table = ui.SimpleTable(4, "w-full table-auto");

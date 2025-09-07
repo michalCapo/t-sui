@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function NumberContent(_ctx: Context): string {
 	function card(title: string, body: string): string {
@@ -9,8 +9,8 @@ export function NumberContent(_ctx: Context): string {
 		);
 	}
 
-	type NumberData = {Age: number; Price: number};
-	const data: NumberData = {Age: 30, Price: 19.9};
+	type NumberData = { Age: number; Price: number };
+	const data: NumberData = { Age: 30, Price: 19.9 };
 
 	const basics = ui.div("flex flex-col gap-2")(
 		row(

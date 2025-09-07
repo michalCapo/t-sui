@@ -1,5 +1,5 @@
-import ui, {Skeleton, Target} from "../../ui";
-import {Context} from "../../ui.server";
+import ui, { Skeleton, Target } from "../../ui";
+import { Context } from "../../ui.server";
 
 async function LazyLoadData(ctx: Context, target: Target) {
 	await new Promise(function (r) {
@@ -38,28 +38,28 @@ async function LazyMoreData(ctx: Context, target: Target) {
 			.Button()
 			.Color(ui.Blue)
 			.Class("rounded text-sm")
-			.Click(ctx.Call(Deffered, {as: "component"}).Replace(target))
+			.Click(ctx.Call(Deffered, { as: "component" }).Replace(target))
 			.Render("Component skeleton"),
 
 		ui
 			.Button()
 			.Color(ui.Blue)
 			.Class("rounded text-sm")
-			.Click(ctx.Call(Deffered, {as: "list"}).Replace(target))
+			.Click(ctx.Call(Deffered, { as: "list" }).Replace(target))
 			.Render("List skeleton"),
 
 		ui
 			.Button()
 			.Color(ui.Blue)
 			.Class("rounded text-sm")
-			.Click(ctx.Call(Deffered, {as: "page"}).Replace(target))
+			.Click(ctx.Call(Deffered, { as: "page" }).Replace(target))
 			.Render("Page skeleton"),
 
 		ui
 			.Button()
 			.Color(ui.Blue)
 			.Class("rounded text-sm")
-			.Click(ctx.Call(Deffered, {as: "form"}).Replace(target))
+			.Click(ctx.Call(Deffered, { as: "form" }).Replace(target))
 			.Render("Form skeleton"),
 	);
 }
@@ -67,7 +67,7 @@ async function LazyMoreData(ctx: Context, target: Target) {
 // Deferred block (WS skeleton -> replace when ready)
 export function Deffered(ctx: Context): string {
 	const target = ui.Target();
-	const form: {as: Skeleton} = {as: undefined};
+	const form: { as: Skeleton } = { as: undefined };
 
 	// scans the body into form object
 	ctx.Body(form);

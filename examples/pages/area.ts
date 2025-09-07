@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function AreaContent(_ctx: Context): string {
 	function card(title: string, body: string): string {
@@ -9,8 +9,8 @@ export function AreaContent(_ctx: Context): string {
 		);
 	}
 
-	type AreaData = {Bio: string};
-	const data: AreaData = {Bio: "Short text"};
+	type AreaData = { Bio: string };
+	const data: AreaData = { Bio: "Short text" };
 
 	const basics = ui.div("flex flex-col gap-2")(
 		row("Default", ui.IArea("Bio", data).Rows(3).Render("Bio")),

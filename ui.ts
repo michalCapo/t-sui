@@ -43,10 +43,10 @@ export interface AOption {
 export interface Target {
 	id: string;
 	Skeleton: (type?: Skeleton) => string;
-	Replace: {id: string; swap: Swap};
-	Append: {id: string; swap: Swap};
-	Prepend: {id: string; swap: Swap};
-	Render: {id: string; swap: Swap};
+	Replace: { id: string; swap: Swap };
+	Append: { id: string; swap: Swap };
+	Prepend: { id: string; swap: Swap };
+	Render: { id: string; swap: Swap };
 }
 
 const re = /\s{4,}/g;
@@ -261,7 +261,7 @@ function open(tag: string) {
 			for (let i = 0; i < attr.length; i++) {
 				final.push(attr[i]);
 			}
-			final.push({class: Classes(css)});
+			final.push({ class: Classes(css) });
 			const attrsStr = renderAttrs(final);
 			return (
 				"<" +
@@ -284,7 +284,7 @@ function closed(tag: string) {
 		for (let i = 0; i < attr.length; i++) {
 			final.push(attr[i]);
 		}
-		final.push({class: Classes(css)});
+		final.push({ class: Classes(css) });
 		const attrsStr = renderAttrs(final);
 		return "<" + tag + " " + attrsStr + "/>";
 	};
@@ -433,10 +433,10 @@ function Target(): Target {
 
 			return Skeleton.Default(this);
 		},
-		Replace: {id, swap: "outline"},
-		Append: {id, swap: "append"},
-		Prepend: {id, swap: "prepend"},
-		Render: {id, swap: "inline"},
+		Replace: { id, swap: "outline" },
+		Append: { id, swap: "append" },
+		Prepend: { id, swap: "prepend" },
+		Render: { id, swap: "inline" },
 	};
 }
 
@@ -511,12 +511,12 @@ function Button(...attrs: Attr[]) {
 	const api = {
 		Submit() {
 			state.as = "button";
-			state.extra.push({type: "submit"});
+			state.extra.push({ type: "submit" });
 			return api;
 		},
 		Reset() {
 			state.as = "button";
-			state.extra.push({type: "reset"});
+			state.extra.push({ type: "reset" });
 			return api;
 		},
 		If(v: boolean) {
@@ -545,7 +545,7 @@ function Button(...attrs: Attr[]) {
 		},
 		Href(v: string) {
 			state.as = "a";
-			state.extra.push({href: v});
+			state.extra.push({ href: v });
 			return api;
 		},
 		Render(text: string): string {
@@ -564,7 +564,7 @@ function Button(...attrs: Attr[]) {
 				merged.push(state.extra[i]);
 			}
 			if (state.as === "a") {
-				merged.push({id: state.target.id, class: cls});
+				merged.push({ id: state.target.id, class: cls });
 				return "<a " + renderAttrs(merged) + ">" + text + "</a>";
 			}
 			if (state.as === "div") {
@@ -1149,14 +1149,14 @@ function ISelect<T = unknown>(name: string, data?: T) {
 			const selected = String(current || "");
 			const opts: string[] = [];
 			if (state.placeholder) {
-				opts.push(option("", {value: ""})(state.placeholder));
+				opts.push(option("", { value: "" })(state.placeholder));
 			}
 			if (state.empty) {
-				opts.push(option("", {value: ""})(state.emptyText));
+				opts.push(option("", { value: "" })(state.emptyText));
 			}
 			for (let i = 0; i < state.options.length; i++) {
 				const o = state.options[i];
-				const at: Attr = {value: o.id};
+				const at: Attr = { value: o.id };
 				if (selected === o.id) {
 					at.selected = "selected";
 				}
@@ -1574,7 +1574,7 @@ export type Skeleton = "list" | "component" | "page" | "form" | undefined;
 
 export const Skeleton = {
 	Default(target: Target): string {
-		return div("animate-pulse", {id: target.id})(
+		return div("animate-pulse", { id: target.id })(
 			div("bg-gray-200 h-5 rounded w-5/6 mb-2")(),
 			div("bg-gray-200 h-5 rounded w-2/3 mb-2")(),
 			div("bg-gray-200 h-5 rounded w-4/6")(),
@@ -1596,11 +1596,11 @@ export const Skeleton = {
 			items += row;
 		}
 
-		return div("animate-pulse", {id: target.id})(items);
+		return div("animate-pulse", { id: target.id })(items);
 	},
 
 	Component(target: Target): string {
-		return div("animate-pulse", {id: target.id})(
+		return div("animate-pulse", { id: target.id })(
 			div("bg-gray-200 h-6 rounded w-2/5 mb-4")(),
 			div("bg-gray-200 h-4 rounded w-full mb-2")(),
 			div("bg-gray-200 h-4 rounded w-5/6 mb-2")(),
@@ -1617,7 +1617,7 @@ export const Skeleton = {
 				div("bg-gray-200 h-4 rounded w-4/6")(),
 			);
 		};
-		return div("animate-pulse", {id: target.id})(
+		return div("animate-pulse", { id: target.id })(
 			div("bg-gray-200 h-8 rounded w-1/3 mb-6")(),
 			card(),
 			card(),
@@ -1643,7 +1643,7 @@ export const Skeleton = {
 				div("bg-gray-200 h-10 rounded w-32")(),
 			);
 		};
-		return div("animate-pulse", {id: target.id})(
+		return div("animate-pulse", { id: target.id })(
 			div("bg-white rounded-lg p-4 shadow")(
 				div("bg-gray-200 h-6 rounded w-2/5 mb-5")(),
 				div("grid grid-cols-1 md:grid-cols-2 gap-4")(

@@ -1,11 +1,11 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
-import {Hello} from "./hello";
-import {Counter} from "./counter";
-import {Login} from "./login";
-import {Deffered} from "./deffered";
-import {Icons} from "./icons";
-import {Clock} from "./clock";
+import { Context } from "../../ui.server";
+import { Hello } from "./hello";
+import { Counter } from "./counter";
+import { Login } from "./login";
+import { Deffered } from "./deffered";
+import { Icons } from "./icons";
+import { Clock } from "./clock";
 
 export function OthersContent(ctx: Context): string {
 	return ui.div("max-w-full sm:max-w-6xl mx-auto flex flex-col gap-6 w-full")(

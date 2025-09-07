@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 class DemoForm {
 	Name = "";
@@ -35,19 +35,19 @@ function render(ctx: Context, f: DemoForm, err?: Error): string {
 	}
 
 	const rawCountries = ["", "USA", "Slovakia", "Germany", "Japan"];
-	const countries: {id: string; value: string}[] = [];
+	const countries: { id: string; value: string }[] = [];
 	for (let i = 0; i < rawCountries.length; i++) {
 		const x = rawCountries[i];
 		let val = "Select...";
 		if (x !== "") {
 			val = x;
 		}
-		countries.push({id: x, value: val});
+		countries.push({ id: x, value: val });
 	}
 	const genders = [
-		{id: "male", value: "Male"},
-		{id: "female", value: "Female"},
-		{id: "other", value: "Other"},
+		{ id: "male", value: "Male" },
+		{ id: "female", value: "Female" },
+		{ id: "other", value: "Other" },
 	];
 
 	return ui.div(

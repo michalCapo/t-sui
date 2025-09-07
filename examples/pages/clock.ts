@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function Clock(ctx: Context) {
 	// Render into a stable target id so reloads keep the same element

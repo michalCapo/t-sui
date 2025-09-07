@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function ButtonContent(_ctx: Context): string {
 	function row(title: string, content: string): string {
@@ -17,31 +17,31 @@ export function ButtonContent(_ctx: Context): string {
 	}
 
 	const sizes = [
-		{k: ui.XS, t: "Extra small"},
-		{k: ui.SM, t: "Small"},
-		{k: ui.MD, t: "Medium (default)"},
-		{k: ui.ST, t: "Standard"},
-		{k: ui.LG, t: "Large"},
-		{k: ui.XL, t: "Extra large"},
+		{ k: ui.XS, t: "Extra small" },
+		{ k: ui.SM, t: "Small" },
+		{ k: ui.MD, t: "Medium (default)" },
+		{ k: ui.ST, t: "Standard" },
+		{ k: ui.LG, t: "Large" },
+		{ k: ui.XL, t: "Extra large" },
 	];
 
 	const solid = [
-		{c: ui.Blue, t: "Blue"},
-		{c: ui.Green, t: "Green"},
-		{c: ui.Red, t: "Red"},
-		{c: ui.Purple, t: "Purple"},
-		{c: ui.Yellow, t: "Yellow"},
-		{c: ui.Gray, t: "Gray"},
-		{c: ui.White, t: "White"},
+		{ c: ui.Blue, t: "Blue" },
+		{ c: ui.Green, t: "Green" },
+		{ c: ui.Red, t: "Red" },
+		{ c: ui.Purple, t: "Purple" },
+		{ c: ui.Yellow, t: "Yellow" },
+		{ c: ui.Gray, t: "Gray" },
+		{ c: ui.White, t: "White" },
 	];
 	const outline = [
-		{c: ui.BlueOutline, t: "Blue (outline)"},
-		{c: ui.GreenOutline, t: "Green (outline)"},
-		{c: ui.RedOutline, t: "Red (outline)"},
-		{c: ui.PurpleOutline, t: "Purple (outline)"},
-		{c: ui.YellowOutline, t: "Yellow (outline)"},
-		{c: ui.GrayOutline, t: "Gray (outline)"},
-		{c: ui.WhiteOutline, t: "White (outline)"},
+		{ c: ui.BlueOutline, t: "Blue (outline)" },
+		{ c: ui.GreenOutline, t: "Green (outline)" },
+		{ c: ui.RedOutline, t: "Red (outline)" },
+		{ c: ui.PurpleOutline, t: "Purple (outline)" },
+		{ c: ui.YellowOutline, t: "Yellow (outline)" },
+		{ c: ui.GrayOutline, t: "Gray (outline)" },
+		{ c: ui.WhiteOutline, t: "White (outline)" },
 	];
 
 	let colorsGrid = "";

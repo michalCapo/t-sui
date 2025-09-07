@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function SelectContent(ctx: Context): string {
 	function row(title: string, content: string): string {
@@ -16,17 +16,17 @@ export function SelectContent(ctx: Context): string {
 	}
 
 	const opts = [
-		{id: "", value: "Select..."},
-		{id: "one", value: "One"},
-		{id: "two", value: "Two"},
-		{id: "three", value: "Three"},
+		{ id: "", value: "Select..." },
+		{ id: "one", value: "One" },
+		{ id: "two", value: "Two" },
+		{ id: "three", value: "Three" },
 	];
-	type SelectData = {Country: string};
-	const data: SelectData = {Country: ""};
+	type SelectData = { Country: string };
+	const data: SelectData = { Country: "" };
 	const optsNoPlaceholder = [
-		{id: "one", value: "One"},
-		{id: "two", value: "Two"},
-		{id: "three", value: "Three"},
+		{ id: "one", value: "One" },
+		{ id: "two", value: "Two" },
+		{ id: "three", value: "Three" },
 	];
 	const target = ui.Target();
 	function OnCountryChange(inner: Context): string {

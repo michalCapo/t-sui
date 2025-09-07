@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function DateContent(_ctx: Context): string {
 	function card(title: string, body: string): string {
@@ -9,8 +9,8 @@ export function DateContent(_ctx: Context): string {
 		);
 	}
 
-	type DateData = {Birth: Date};
-	const data: DateData = {Birth: new Date()};
+	type DateData = { Birth: Date };
+	const data: DateData = { Birth: new Date() };
 
 	const basics = ui.div("flex flex-col gap-2")(
 		row("Date", ui.IDate("Birth", data).Render("Birth date")),

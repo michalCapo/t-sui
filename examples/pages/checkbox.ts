@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function CheckboxContent(_ctx: Context): string {
 	function row(title: string, content: string): string {
@@ -15,8 +15,8 @@ export function CheckboxContent(_ctx: Context): string {
 		);
 	}
 
-	type CheckboxData = {Agree: boolean};
-	const data: CheckboxData = {Agree: true};
+	type CheckboxData = { Agree: boolean };
+	const data: CheckboxData = { Agree: true };
 
 	const basics = ui.div("flex flex-col gap-2")(
 		ex("Default", ui.ICheckbox("Agree", data).Render("I agree")),

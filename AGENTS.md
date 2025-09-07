@@ -73,8 +73,8 @@ import path from "node:path";
 import express from "express";
 import helmet from "helmet";
 
-import {start_admin} from "./server/app.ts";
-import {logger} from "./endpoint/lib/server.utils.ts";
+import { start_admin } from "./server/app.ts";
+import { logger } from "./endpoint/lib/server.utils.ts";
 ```
 
 ## Names
@@ -92,8 +92,8 @@ import {logger} from "./endpoint/lib/server.utils.ts";
 - Always provide explicit return types for exported functions; local inference is acceptable.
 - Initialize object literals with all fields, using explicit defaults.
     ```ts
-    type Cfg = {host: string; port: number; secure: boolean};
-    const cfg: Cfg = {host: "", port: 0, secure: false};
+    type Cfg = { host: string; port: number; secure: boolean };
+    const cfg: Cfg = { host: "", port: 0, secure: false };
     ```
 
 ## Control Flow
@@ -107,14 +107,14 @@ import {logger} from "./endpoint/lib/server.utils.ts";
 - Prefer explicit error values. For synchronous code, return a discriminated union:
 
     ```ts
-    type Ok<T> = {ok: true; value: T};
-    type Err<E = unknown> = {ok: false; error: E};
+    type Ok<T> = { ok: true; value: T };
+    type Err<E = unknown> = { ok: false; error: E };
     type Result<T, E = unknown> = Ok<T> | Err<E>;
 
     function parseIntSafe(s: string): Result<number, string> {
     	const n = Number.parseInt(s, 10);
-    	if (Number.isNaN(n)) return {ok: false, error: "not a number"};
-    	return {ok: true, value: n};
+    	if (Number.isNaN(n)) return { ok: false, error: "not a number" };
+    	return { ok: true, value: n };
     }
     ```
 
@@ -166,7 +166,7 @@ import {logger} from "./endpoint/lib/server.utils.ts";
 Before (discouraged):
 
 ```ts
-import {readFileSync as r} from "fs";
+import { readFileSync as r } from "fs";
 import http from "http";
 const f = (p) => r(p, "utf8");
 const x = cond ? A() : B();

@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function RadioContent(_ctx: Context): string {
 	function card(title: string, body: string): string {
@@ -10,13 +10,13 @@ export function RadioContent(_ctx: Context): string {
 	}
 
 	const genders = [
-		{id: "male", value: "Male"},
-		{id: "female", value: "Female"},
-		{id: "other", value: "Other"},
+		{ id: "male", value: "Male" },
+		{ id: "female", value: "Female" },
+		{ id: "other", value: "Other" },
 	];
 
-	type RadioData = {Gender: string};
-	const selected: RadioData = {Gender: "male"};
+	type RadioData = { Gender: string };
+	const selected: RadioData = { Gender: "male" };
 
 	const singleRadios = ui.div("flex flex-col gap-2")(
 		ui.IRadio("Gender", selected).Value("male").Render("Male"),
@@ -28,7 +28,7 @@ export function RadioContent(_ctx: Context): string {
 		.IRadioButtons("Group")
 		.Options(genders)
 		.Render("Gender");
-	const group2: {Group2: string} = {Group2: "female"};
+	const group2: { Group2: string } = { Group2: "female" };
 	const radiosWithSelected = ui
 		.IRadioButtons("Group2", group2)
 		.Options(genders)

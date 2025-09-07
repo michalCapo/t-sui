@@ -56,7 +56,7 @@ Key ideas:
 ```ts
 // examples/minimal.ts
 import ui from "./ui";
-import {MakeApp, Context} from "./ui.server";
+import { MakeApp, Context } from "./ui.server";
 
 const app = MakeApp("en");
 
@@ -93,7 +93,7 @@ Example (copy‑paste to run):
 ```ts
 // examples/forms.ts
 import ui from "./ui";
-import {MakeApp, Context} from "./ui.server";
+import { MakeApp, Context } from "./ui.server";
 
 const app = MakeApp("en");
 
@@ -165,7 +165,7 @@ Render a quick skeleton while the server prepares a heavier fragment, then swap 
 ```ts
 // examples/deferred.ts
 import ui from "./ui";
-import {MakeApp, Context} from "./ui.server";
+import { MakeApp, Context } from "./ui.server";
 
 const app = MakeApp("en");
 
@@ -236,7 +236,7 @@ function ClockView(d: Date): string {
 async function StartClock(ctx: Context): Promise<string> {
 	const h = setInterval(function () {
 		ctx.Patch(
-			{id: clockTarget.id, swap: "outline"},
+			{ id: clockTarget.id, swap: "outline" },
 			ClockView(new Date()),
 			function stop() {
 				try {
@@ -277,7 +277,7 @@ const h = setInterval(function () {
 			clearInterval(h);
 		} catch (_) {}
 	}
-	ctx.Patch({id: target.id, swap: target.swap}, renderNow(), stop);
+	ctx.Patch({ id: target.id, swap: target.swap }, renderNow(), stop);
 }, 1000);
 ```
 

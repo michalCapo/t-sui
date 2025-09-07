@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import {Context} from "../../ui.server";
+import { Context } from "../../ui.server";
 
 export function PasswordContent(_ctx: Context): string {
 	function card(title: string, body: string): string {
