@@ -41,9 +41,9 @@ See the project overview and usage in `README.md`.
 - Braces: opening `{` on the same line. Always use braces, even for single‑line blocks.
     ```ts
     if (x < y) {
-    	foo();
+        foo();
     } else {
-    	bar();
+        bar();
     }
     ```
 - Line length: target ≤ 100 chars. Break long expressions with a continued indent.
@@ -112,9 +112,9 @@ import {logger} from "./endpoint/lib/server.utils.ts";
     type Result<T, E = unknown> = Ok<T> | Err<E>;
 
     function parseIntSafe(s: string): Result<number, string> {
-    	const n = Number.parseInt(s, 10);
-    	if (Number.isNaN(n)) return {ok: false, error: "not a number"};
-    	return {ok: true, value: n};
+        const n = Number.parseInt(s, 10);
+        if (Number.isNaN(n)) return {ok: false, error: "not a number"};
+        return {ok: true, value: n};
     }
     ```
 
@@ -136,7 +136,7 @@ import {logger} from "./endpoint/lib/server.utils.ts";
     ```ts
     // startAdmin launches the admin HTTP server on the configured port.
     export function startAdmin(cfg: Cfg): void {
-    	/* ... */
+        /* ... */
     }
     ```
 - Comments explain “why” more than “what”. Keep them up to date.
@@ -179,7 +179,7 @@ import fs from "node:fs";
 import http from "http";
 
 function readText(path: string): string {
-	return fs.readFileSync(path, "utf8");
+    return fs.readFileSync(path, "utf8");
 }
 
 const value = cond ? /* avoid ternary */ A() : B(); // replace with if/else in real code

@@ -1,32 +1,32 @@
 import ui from "../ui";
-import { Callable, Context, MakeApp } from "../ui.server";
-import { ButtonContent } from "./pages/button";
-import { TextContent } from "./pages/text";
-import { PasswordContent } from "./pages/password";
-import { NumberContent } from "./pages/number";
-import { DateContent } from "./pages/date";
-import { AreaContent } from "./pages/area";
-import { SelectContent } from "./pages/select";
-import { CheckboxContent } from "./pages/checkbox";
-import { RadioContent } from "./pages/radio";
-import { TableContent } from "./pages/table";
-import { ShowcaseContent } from "./pages/showcase";
-import { OthersContent } from "./pages/others";
+import {Callable, Context, MakeApp} from "../ui.server";
+import {ButtonContent} from "./pages/button";
+import {TextContent} from "./pages/text";
+import {PasswordContent} from "./pages/password";
+import {NumberContent} from "./pages/number";
+import {DateContent} from "./pages/date";
+import {AreaContent} from "./pages/area";
+import {SelectContent} from "./pages/select";
+import {CheckboxContent} from "./pages/checkbox";
+import {RadioContent} from "./pages/radio";
+import {TableContent} from "./pages/table";
+import {ShowcaseContent} from "./pages/showcase";
+import {OthersContent} from "./pages/others";
 
-type Route = { Path: string; Title: string };
+type Route = {Path: string; Title: string};
 const routes: Route[] = [
-    { Path: "/", Title: "Showcase" },
-    { Path: "/button", Title: "Button" },
-    { Path: "/text", Title: "Text" },
-    { Path: "/password", Title: "Password" },
-    { Path: "/number", Title: "Number" },
-    { Path: "/date", Title: "Date & Time" },
-    { Path: "/area", Title: "Textarea" },
-    { Path: "/select", Title: "Select" },
-    { Path: "/checkbox", Title: "Checkbox" },
-    { Path: "/radio", Title: "Radio" },
-    { Path: "/table", Title: "Table" },
-    { Path: "/others", Title: "Others" },
+    {Path: "/", Title: "Showcase"},
+    {Path: "/button", Title: "Button"},
+    {Path: "/text", Title: "Text"},
+    {Path: "/password", Title: "Password"},
+    {Path: "/number", Title: "Number"},
+    {Path: "/date", Title: "Date & Time"},
+    {Path: "/area", Title: "Textarea"},
+    {Path: "/select", Title: "Select"},
+    {Path: "/checkbox", Title: "Checkbox"},
+    {Path: "/radio", Title: "Radio"},
+    {Path: "/table", Title: "Table"},
+    {Path: "/others", Title: "Others"},
 ];
 
 const app = MakeApp("en");
@@ -39,12 +39,12 @@ const svg =
 
 app.HTMLHead.push(
     '<link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,' +
-    encodeURIComponent(svg) +
-    '">',
+        encodeURIComponent(svg) +
+        '">',
 );
 
 function layout(title: string, body: (ctx: Context) => string): Callable {
-    return function(ctx: Context): string {
+    return function (ctx: Context): string {
         const currentPath = (ctx.req && ctx.req.url ? String(ctx.req.url) : "/")
             .split("?")[0]
             .toLowerCase();
@@ -57,10 +57,10 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
             const isActive = (route.Path || "").toLowerCase() === currentPath;
             const cls = isActive
                 ? baseCls +
-                " bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500"
+                  " bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500"
                 : baseCls +
-                " text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700";
-            const a = ui.a(cls, { href: route.Path }, ctx.Load(route.Path));
+                  " text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700";
+            const a = ui.a(cls, {href: route.Path}, ctx.Load(route.Path));
 
             if (links.length > 0) links += " ";
 
@@ -98,7 +98,6 @@ app.Page("/checkbox", layout("Checkbox", CheckboxContent));
 app.Page("/radio", layout("Radio", RadioContent));
 app.Page("/table", layout("Table", TableContent));
 app.Page("/others", layout("Others", OthersContent));
-
 
 app.Debug(true);
 app.AutoReload(true);

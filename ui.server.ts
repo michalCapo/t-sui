@@ -1,9 +1,9 @@
 // Typpescript server for server-side rendering using the combined UI library
 
-import http, { IncomingMessage, ServerResponse } from "node:http";
+import http, {IncomingMessage, ServerResponse} from "node:http";
 import crypto from "node:crypto";
-import type { Socket } from "node:net";
-import ui, { Attr, Target, Swap } from "./ui";
+import type {Socket} from "node:net";
+import ui, {Attr, Target, Swap} from "./ui";
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
 const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
@@ -26,7 +26,7 @@ export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
-    _wsClients: Set<{ socket: Socket; sid: string; lastPong: number }> =
+    _wsClients: Set<{socket: Socket; sid: string; lastPong: number}> =
         new Set();
     _debugEnabled: boolean = false;
     _sessions: Map<
@@ -90,7 +90,7 @@ export class App {
                     if (rec.targets) {
                         rec.targets.clear();
                     }
-                } catch (_) { }
+                } catch (_) {}
 
                 this._log("Deleting session", sid);
                 this._sessions.delete(sid);
@@ -107,8 +107,8 @@ export class App {
             '<html lang="' + this.Language + '" class="' + cls + '">',
             "  <head>__head__</head>",
             '  <body id="' +
-            this.contentId.id +
-            '" class="relative">__body__</body>',
+                this.contentId.id +
+                '" class="relative">__body__</body>',
             "</html>",
         ].join(" ");
     }
@@ -116,7 +116,7 @@ export class App {
     // private stored = new Map<Callable, { path: string, method: "GET" | "POST" }>();
     private stored = new Map<
         string,
-        { path: string; method: "GET" | "POST"; callable: Callable }
+        {path: string; method: "GET" | "POST"; callable: Callable}
     >();
 
     constructor(defaultLanguage: string) {
@@ -142,25 +142,25 @@ export class App {
         // Dark mode CSS overrides (after Tailwind link to take precedence)
         this.HTMLHead.push(
             '<style id=\"tsui-dark-overrides\">\n' +
-            "  html.dark{ color-scheme: dark; }\n" +
-            "  /* Override backgrounds commonly used by components and examples.\n" +
-            "     Do not override bg-gray-200 so skeleton placeholders remain visible. */\n" +
-            "  html.dark.bg-white, html.dark.bg-gray-100 { background-color:#111827 !important; }\n" +
-            "  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-50 { background-color:#111827 !important; }\n" +
-            "  /* Text color overrides */\n" +
-            "  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n" +
-            "  /* Borders and placeholders for form controls */\n" +
-            "  .dark .border-gray-300 { border-color:#374151 !important; }\n" +
-            "  .dark input, .dark select, .dark textarea { color:#e5e7eb !important; background-color:#1f2937 !important; }\n" +
-            "  .dark input::placeholder, .dark textarea::placeholder { color:#9ca3af !important; }\n" +
-            "  /* Common hover bg used in nav/examples */\n" +
-            "  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n" +
-            "</style>",
+                "  html.dark{ color-scheme: dark; }\n" +
+                "  /* Override backgrounds commonly used by components and examples.\n" +
+                "     Do not override bg-gray-200 so skeleton placeholders remain visible. */\n" +
+                "  html.dark.bg-white, html.dark.bg-gray-100 { background-color:#111827 !important; }\n" +
+                "  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-50 { background-color:#111827 !important; }\n" +
+                "  /* Text color overrides */\n" +
+                "  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n" +
+                "  /* Borders and placeholders for form controls */\n" +
+                "  .dark .border-gray-300 { border-color:#374151 !important; }\n" +
+                "  .dark input, .dark select, .dark textarea { color:#e5e7eb !important; background-color:#1f2937 !important; }\n" +
+                "  .dark input::placeholder, .dark textarea::placeholder { color:#9ca3af !important; }\n" +
+                "  /* Common hover bg used in nav/examples */\n" +
+                "  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n" +
+                "</style>",
         );
 
         try {
             const self = this;
-            setInterval(function() {
+            setInterval(function () {
                 self._sweepSessions();
             }, 30000);
         } catch {
@@ -180,7 +180,13 @@ export class App {
     }
 
     // Internal: conditional logger with consistent prefix and no spread usage.
-    private _log(a?: unknown, b?: unknown, c?: unknown, d?: unknown, e?: unknown): void {
+    private _log(
+        a?: unknown,
+        b?: unknown,
+        c?: unknown,
+        d?: unknown,
+        e?: unknown,
+    ): void {
         if (!this._debugEnabled) {
             return;
         }
@@ -202,17 +208,17 @@ export class App {
         add(e);
         try {
             console.log(out);
-        } catch (_) { }
+        } catch (_) {}
     }
 
     // Internal: broadcast a patch message to all WS clients
-    _sendPatch(payload: { id: string; swap: Swap; html: string }): void {
+    _sendPatch(payload: {id: string; swap: Swap; html: string}): void {
         const msg = {
             type: "patch",
             id: String(payload.id || ""),
             swap: String(payload.swap || "outline"),
             html: ui.Trim(String(payload.html || "")),
-        } as { type: string; id: string; swap: string; html: string };
+        } as {type: string; id: string; swap: string; html: string};
         const data = JSON.stringify(msg);
         const it = this._wsClients.values();
         while (true) {
@@ -231,7 +237,7 @@ export class App {
 
     // Internal: broadcast a reload message to all WS clients
     _sendReload(): void {
-        const msg = { type: "reload" };
+        const msg = {type: "reload"};
         const data = JSON.stringify(msg);
         this._log("Broadcasting reload to", this._wsClients.size, "clients");
         const it = this._wsClients.values();
@@ -276,7 +282,11 @@ export class App {
         this.HTMLHead.push("<script>" + client + "</script>");
     }
 
-    private register(method: "GET" | "POST", path: string, callable: Callable): void {
+    private register(
+        method: "GET" | "POST",
+        path: string,
+        callable: Callable,
+    ): void {
         if (!path) throw new Error("Path cannot be empty");
         const m = normalizeMethod(method);
         const p = normalizePath(path);
@@ -286,7 +296,7 @@ export class App {
             throw new Error("Path already registered: " + m + " " + p);
 
         this._log("Registering path:", m, p);
-        this.stored.set(key, { path: p, method: m, callable: callable });
+        this.stored.set(key, {path: p, method: m, callable: callable});
     }
 
     Page(path: string, component: Callable): Callable {
@@ -323,7 +333,7 @@ export class App {
     pathOf(callable: Callable): string | undefined {
         if (callable == null) return undefined;
 
-        const found = Array.from(this.stored.values()).find(function(item: {
+        const found = Array.from(this.stored.values()).find(function (item: {
             path: string;
             method: "GET" | "POST";
             callable: Callable;
@@ -353,10 +363,12 @@ export class App {
         // Resolve session id from cookie `tsui__sid`; create if missing and set cookie
         let sid = "";
         try {
-            const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
+            const cookieHeader = String(
+                (req.headers && (req.headers["cookie"] as string)) || "",
+            );
             const cookies = parseCookies(cookieHeader);
             sid = String(cookies["tsui__sid"] || "");
-        } catch (_) { }
+        } catch (_) {}
 
         let shouldSetCookie = false;
         if (!sid) {
@@ -367,8 +379,13 @@ export class App {
         this._touchSession(sid);
         if (shouldSetCookie) {
             try {
-                let v = "tsui__sid=" + encodeURIComponent(sid) + "; Path=/; HttpOnly; SameSite=Lax";
-                if (isSecure(req)) { v += "; Secure"; }
+                let v =
+                    "tsui__sid=" +
+                    encodeURIComponent(sid) +
+                    "; Path=/; HttpOnly; SameSite=Lax";
+                if (isSecure(req)) {
+                    v += "; Secure";
+                }
                 const prev = res.getHeader("Set-Cookie");
                 if (Array.isArray(prev)) {
                     res.setHeader("Set-Cookie", prev.concat([v]));
@@ -377,7 +394,7 @@ export class App {
                 } else {
                     res.setHeader("Set-Cookie", v);
                 }
-            } catch (_) { }
+            } catch (_) {}
         }
         const ctx = new Context(this, req, res, sid);
         res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -390,7 +407,7 @@ export class App {
 
     Listen(port = 1422): void {
         const self = this;
-        const server = http.createServer(async function(
+        const server = http.createServer(async function (
             req: IncomingMessage,
             res: ServerResponse,
         ) {
@@ -404,14 +421,14 @@ export class App {
                 const method = (req.method as string) || GET;
 
                 let body = "";
-                await new Promise(function(resolve) {
+                await new Promise(function (resolve) {
                     let done = false;
                     function finish() {
                         if (done) return;
                         done = true;
                         resolve(undefined);
                     }
-                    req.on("data", function(chunk: unknown) {
+                    req.on("data", function (chunk: unknown) {
                         body += String(chunk as string);
                         if (body.length > 1_000_000) {
                             req.destroy();
@@ -441,68 +458,68 @@ export class App {
                 res.statusCode = 500;
                 res.setHeader("Content-Type", "text/html; charset=utf-8");
                 const page =
-                    '<!DOCTYPE html>\n' +
+                    "<!DOCTYPE html>\n" +
                     '<html lang="en">\n' +
-                    '<head>\n' +
+                    "<head>\n" +
                     '  <meta charset="UTF-8">\n' +
                     '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-                    '  <title>Something went wrong…</title>\n' +
-                    '  <style>\n' +
-                    '    html,body{height:100%}\n' +
-                    '    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n' +
-                    '    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n' +
-                    '    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n' +
-                    '    .sub{font-size:14px;color:#6b7280}\n' +
-                    '  </style>\n' +
-                    '</head>\n' +
-                    '<body>\n' +
+                    "  <title>Something went wrong…</title>\n" +
+                    "  <style>\n" +
+                    "    html,body{height:100%}\n" +
+                    "    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n" +
+                    "    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n" +
+                    "    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n" +
+                    "    .sub{font-size:14px;color:#6b7280}\n" +
+                    "  </style>\n" +
+                    "</head>\n" +
+                    "<body>\n" +
                     '  <div class="card">\n' +
                     '    <div class="title">Something went wrong…</div>\n' +
                     '    <div class="sub">Waiting for server changes. Page will refresh when ready.</div>\n' +
-                    '  </div>\n' +
-                    '  <script>\n' +
-                    '    (function(){\n' +
-                    '      try {\n' +
+                    "  </div>\n" +
+                    "  <script>\n" +
+                    "    (function(){\n" +
+                    "      try {\n" +
                     '        var KEY="__tsui_last_error_reload";\n' +
-                    '        function shouldReload() {\n' +
-                    '          try {\n' +
-                    '            var v=sessionStorage.getItem(KEY);\n' +
-                    '            var last=v?parseInt(v,10):0;\n' +
-                    '            var now=Date.now();\n' +
-                    '            if(!last||now-last>2500){\n' +
-                    '              sessionStorage.setItem(KEY,String(now));\n' +
-                    '              return true;\n' +
-                    '            }\n' +
-                    '            return false;\n' +
-                    '          } catch(_){\n' +
-                    '            return true;\n' +
-                    '          }\n' +
-                    '        }\n' +
-                    '        function connect() {\n' +
+                    "        function shouldReload() {\n" +
+                    "          try {\n" +
+                    "            var v=sessionStorage.getItem(KEY);\n" +
+                    "            var last=v?parseInt(v,10):0;\n" +
+                    "            var now=Date.now();\n" +
+                    "            if(!last||now-last>2500){\n" +
+                    "              sessionStorage.setItem(KEY,String(now));\n" +
+                    "              return true;\n" +
+                    "            }\n" +
+                    "            return false;\n" +
+                    "          } catch(_){\n" +
+                    "            return true;\n" +
+                    "          }\n" +
+                    "        }\n" +
+                    "        function connect() {\n" +
                     '          var p=(location.protocol==="https:")?"wss://":"ws://";\n' +
                     '          var ws=new WebSocket(p+location.host+"/__ws");\n' +
-                    '          ws.onopen=function(){\n' +
-                    '            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n' +
-                    '          };\n' +
-                    '          ws.onclose=function(){ setTimeout(connect,1000); };\n' +
-                    '          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n' +
-                    '        }\n' +
-                    '        connect();\n' +
-                    '      } catch(_){ /* noop */ }\n' +
-                    '    })();\n' +
-                    '  </script>\n' +
-                    '</body>\n' +
-                    '</html>\n'
+                    "          ws.onopen=function(){\n" +
+                    "            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n" +
+                    "          };\n" +
+                    "          ws.onclose=function(){ setTimeout(connect,1000); };\n" +
+                    "          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n" +
+                    "        }\n" +
+                    "        connect();\n" +
+                    "      } catch(_){ /* noop */ }\n" +
+                    "    })();\n" +
+                    "  </script>\n" +
+                    "</body>\n" +
+                    "</html>\n";
                 res.end(page);
             }
         });
         server.headersTimeout = 15000;
         server.requestTimeout = 30000;
         server.keepAliveTimeout = 5000;
-        server.on("error", function(err: unknown) {
+        server.on("error", function (err: unknown) {
             console.error("Server error:", err);
         });
-        server.on("upgrade", function(req: IncomingMessage, socket: Socket) {
+        server.on("upgrade", function (req: IncomingMessage, socket: Socket) {
             handleUpgrade(self, req, socket);
         });
         server.listen(port, "0.0.0.0");
@@ -557,7 +574,7 @@ export class Context {
     Post(
         as: ActionType,
         swap: Swap,
-        action: { method: Callable; target?: Attr; values?: any[] },
+        action: {method: Callable; target?: Attr; values?: any[]},
     ): string {
         const path = this.app.pathOf(action.method);
         if (!path) throw new Error("Function not registered.");
@@ -588,28 +605,28 @@ export class Context {
         if (as === "FORM") {
             return ui.Normalize(
                 '__submit(event, \"' +
+                    swap +
+                    '\", \"' +
+                    (action.target && action.target.id
+                        ? action.target.id
+                        : "") +
+                    '\", \"' +
+                    path +
+                    '\", ' +
+                    valuesStr +
+                    ") ",
+            );
+        }
+        return ui.Normalize(
+            '__post(event, \"' +
                 swap +
                 '\", \"' +
-                (action.target && action.target.id
-                    ? action.target.id
-                    : "") +
+                (action.target && action.target.id ? action.target.id : "") +
                 '\", \"' +
                 path +
                 '\", ' +
                 valuesStr +
                 ") ",
-            );
-        }
-        return ui.Normalize(
-            '__post(event, \"' +
-            swap +
-            '\", \"' +
-            (action.target && action.target.id ? action.target.id : "") +
-            '\", \"' +
-            path +
-            '\", ' +
-            valuesStr +
-            ") ",
         );
     }
 
@@ -617,35 +634,35 @@ export class Context {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function(target: Attr) {
+            Render: function (target: Attr) {
                 return self.Post("FORM", "inline", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            Replace: function(target: Attr) {
+            Replace: function (target: Attr) {
                 return self.Post("FORM", "outline", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            Append: function(target: Attr) {
+            Append: function (target: Attr) {
                 return self.Post("FORM", "append", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            Prepend: function(target: Attr) {
+            Prepend: function (target: Attr) {
                 return self.Post("FORM", "prepend", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            None: function() {
+            None: function () {
                 return self.Post("FORM", "none", {
                     method: callable,
                     values: values,
@@ -658,35 +675,35 @@ export class Context {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function(target: Attr) {
+            Render: function (target: Attr) {
                 return self.Post("POST", "inline", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            Replace: function(target: Attr) {
+            Replace: function (target: Attr) {
                 return self.Post("POST", "outline", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            Append: function(target: Attr) {
+            Append: function (target: Attr) {
                 return self.Post("POST", "append", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            Prepend: function(target: Attr) {
+            Prepend: function (target: Attr) {
                 return self.Post("POST", "prepend", {
                     method: callable,
                     target: target,
                     values: values,
                 });
             },
-            None: function() {
+            None: function () {
                 return self.Post("POST", "none", {
                     method: callable,
                     values: values,
@@ -699,7 +716,7 @@ export class Context {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function(target: Attr): Attr {
+            Render: function (target: Attr): Attr {
                 return {
                     onsubmit: self.Post("FORM", "inline", {
                         method: callable,
@@ -708,7 +725,7 @@ export class Context {
                     }),
                 };
             },
-            Replace: function(target: Attr): Attr {
+            Replace: function (target: Attr): Attr {
                 return {
                     onsubmit: self.Post("FORM", "outline", {
                         method: callable,
@@ -717,7 +734,7 @@ export class Context {
                     }),
                 };
             },
-            Append: function(target: Attr): Attr {
+            Append: function (target: Attr): Attr {
                 return {
                     onsubmit: self.Post("FORM", "append", {
                         method: callable,
@@ -726,7 +743,7 @@ export class Context {
                     }),
                 };
             },
-            Prepend: function(target: Attr): Attr {
+            Prepend: function (target: Attr): Attr {
                 return {
                     onsubmit: self.Post("FORM", "prepend", {
                         method: callable,
@@ -735,7 +752,7 @@ export class Context {
                     }),
                 };
             },
-            None: function(): Attr {
+            None: function (): Attr {
                 return {
                     onsubmit: self.Post("FORM", "none", {
                         method: callable,
@@ -747,7 +764,7 @@ export class Context {
     }
 
     Load(href: string): Attr {
-        return { onclick: ui.Normalize('__load(\"' + href + '\")') };
+        return {onclick: ui.Normalize('__load(\"' + href + '\")')};
     }
     Reload(): string {
         return ui.Normalize("<script>window.location.reload();</script>");
@@ -768,7 +785,11 @@ export class Context {
         displayMessage(this, message, "bg-blue-700 text-white");
     }
 
-    Patch(target: { id: string; swap: Swap; }, html: string | Promise<string>, clear?: () => void): void {
+    Patch(
+        target: {id: string; swap: Swap},
+        html: string | Promise<string>,
+        clear?: () => void,
+    ): void {
         // Track the target id for this session so the server can react to client-reported invalid targets.
         try {
             const sid = this.sessionID;
@@ -782,19 +803,27 @@ export class Context {
                     rec.targets.set(String(target.id || ""), clear);
                 }
             }
-        } catch (_) { }
+        } catch (_) {}
 
         var self = this;
         Promise.resolve(html)
-            .then(function(resolved: string) { return resolved; })
-            .then(function(resolved: string) {
+            .then(function (resolved: string) {
+                return resolved;
+            })
+            .then(function (resolved: string) {
                 try {
-                    self.app._sendPatch({ id: target.id, swap: target.swap, html: resolved });
+                    self.app._sendPatch({
+                        id: target.id,
+                        swap: target.swap,
+                        html: resolved,
+                    });
                 } catch (err) {
                     console.error("Patch send error:", err);
                 }
             })
-            .catch(function(err: unknown) { console.error("Patch error:", err); });
+            .catch(function (err: unknown) {
+                console.error("Patch error:", err);
+            });
     }
 }
 
@@ -810,10 +839,10 @@ function displayMessage(ctx: Context, message: string, color: string) {
         'n.style.minHeight="44px";n.style.minWidth="340px";n.style.maxWidth="340px";',
         'n.style.boxShadow="0 6px 18px rgba(0,0,0,0.08)";n.style.border="1px solid";',
         "var isGreen=(" +
-        JSON.stringify(color) +
-        ').indexOf("green")>=0;var isRed=(' +
-        JSON.stringify(color) +
-        ').indexOf("red")>=0;',
+            JSON.stringify(color) +
+            ').indexOf("green")>=0;var isRed=(' +
+            JSON.stringify(color) +
+            ').indexOf("red")>=0;',
         'var accent=isGreen?"#16a34a":(isRed?"#dc2626":"#4f46e5");',
         'if(isGreen){n.style.background="#dcfce7";n.style.color="#166534";n.style.borderColor="#bbf7d0";}else if(isRed){n.style.background="#fee2e2";n.style.color="#991b1b";n.style.borderColor="#fecaca";}else{n.style.background="#eef2ff";n.style.color="#3730a3";n.style.borderColor="#e0e7ff";}',
         'n.style.borderLeft="4px solid "+accent;',
@@ -1344,17 +1373,19 @@ function isSecure(req: IncomingMessage): boolean {
         if (enc) {
             return true;
         }
-        const xf = String((req.headers && (req.headers["x-forwarded-proto"] as string)) || "");
+        const xf = String(
+            (req.headers && (req.headers["x-forwarded-proto"] as string)) || "",
+        );
         if (xf) {
             const first = xf.split(",")[0].trim().toLowerCase();
             return first === "https";
         }
-    } catch (_) { }
+    } catch (_) {}
     return false;
 }
 
-function parseCookies(header: string): { [k: string]: string } {
-    const out: { [k: string]: string } = {};
+function parseCookies(header: string): {[k: string]: string} {
+    const out: {[k: string]: string} = {};
     if (!header) {
         return out;
     }
@@ -1364,14 +1395,18 @@ function parseCookies(header: string): { [k: string]: string } {
         if (!p) {
             continue;
         }
-        try { p = p.trim(); } catch (_) { }
+        try {
+            p = p.trim();
+        } catch (_) {}
         const eq = p.indexOf("=");
         if (eq < 0) {
             continue;
         }
         const k = p.slice(0, eq).trim();
         let v = p.slice(eq + 1);
-        try { v = decodeURIComponent(v); } catch (_) { }
+        try {
+            v = decodeURIComponent(v);
+        } catch (_) {}
         out[k] = v;
     }
     return out;
@@ -1462,7 +1497,7 @@ function wsPing(socket: Socket, payload?: string): void {
             encodeLength(body.length),
         ]);
         socket.write(Buffer.concat([header, body]));
-    } catch (_) { }
+    } catch (_) {}
 }
 
 function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
@@ -1482,14 +1517,20 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
     // Resolve sid from cookies; generate if missing
     let sid = "";
     try {
-        const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
+        const cookieHeader = String(
+            (req.headers && (req.headers["cookie"] as string)) || "",
+        );
         const cookies = parseCookies(cookieHeader);
         sid = String(cookies["tsui__sid"] || "");
-    } catch (_) { }
+    } catch (_) {}
     let setCookieHeader = "";
     if (!sid) {
         sid = "sess-" + Math.random().toString(36).slice(2);
-        setCookieHeader = "Set-Cookie: tsui__sid=" + encodeURIComponent(sid) + "; Path=/; HttpOnly; SameSite=Lax" + (isSecure(req) ? "; Secure" : "");
+        setCookieHeader =
+            "Set-Cookie: tsui__sid=" +
+            encodeURIComponent(sid) +
+            "; Path=/; HttpOnly; SameSite=Lax" +
+            (isSecure(req) ? "; Secure" : "");
     }
     app._touchSession(sid);
     const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -1500,17 +1541,19 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
         "Connection: Upgrade",
         "Sec-WebSocket-Accept: " + accept,
     ];
-    if (setCookieHeader) { lines.push(setCookieHeader); }
+    if (setCookieHeader) {
+        lines.push(setCookieHeader);
+    }
     lines.push("\r\n");
     const headers = lines.join("\r\n");
     socket.write(headers);
-    const record = { socket: socket, sid: sid, lastPong: Date.now() };
+    const record = {socket: socket, sid: sid, lastPong: Date.now()};
     app._wsClients.add(record);
-    wsSend(socket, JSON.stringify({ type: "hello", ok: true }));
+    wsSend(socket, JSON.stringify({type: "hello", ok: true}));
     // Heartbeat: touch session + ping; drop if no pong within 75s
     let heartbeat: any = 0;
     try {
-        heartbeat = setInterval(function() {
+        heartbeat = setInterval(function () {
             try {
                 if (sid) {
                     app._touchSession(sid);
@@ -1520,23 +1563,23 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                 if (age > 75000) {
                     try {
                         socket.destroy();
-                    } catch (_) { }
+                    } catch (_) {}
                     return;
                 }
                 wsPing(socket);
-            } catch (_) { }
+            } catch (_) {}
         }, 25000);
-    } catch (_) { }
-    socket.on("error", function() {
+    } catch (_) {}
+    socket.on("error", function () {
         socket.destroy();
     });
-    socket.on("close", function() {
+    socket.on("close", function () {
         try {
             if (heartbeat) {
                 clearInterval(heartbeat);
                 heartbeat = 0;
             }
-        } catch (_) { }
+        } catch (_) {}
         const it = app._wsClients.values();
         while (true) {
             const n = it.next();
@@ -1549,7 +1592,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
             }
         }
     });
-    socket.on("data", function(buf: Buffer) {
+    socket.on("data", function (buf: Buffer) {
         if (!buf || buf.length < 2) {
             return;
         }
@@ -1618,7 +1661,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
             // Pong frame - update last seen
             try {
                 record.lastPong = Date.now();
-            } catch (_) { }
+            } catch (_) {}
             return;
         }
         // Text frames: support app-level ping/pong and invalid-target notices
@@ -1636,9 +1679,9 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                     try {
                         wsSend(
                             socket,
-                            JSON.stringify({ type: "pong", t: Date.now() }),
+                            JSON.stringify({type: "pong", t: Date.now()}),
                         );
-                    } catch (_) { }
+                    } catch (_) {}
                 } else if (t === "invalid") {
                     try {
                         const id = String((msg && msg.id) || "");
@@ -1649,14 +1692,18 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                             if (rec2 && rec2.targets) {
                                 const fn = rec2.targets.get(id);
                                 if (typeof fn === "function") {
-                                    try { fn(); } catch (_) { }
+                                    try {
+                                        fn();
+                                    } catch (_) {}
                                 }
-                                try { rec2.targets.delete(id); } catch (_) { }
+                                try {
+                                    rec2.targets.delete(id);
+                                } catch (_) {}
                             }
                         }
-                    } catch (_) { }
+                    } catch (_) {}
                 }
-            } catch (_) { }
+            } catch (_) {}
             return;
         }
         // Other frames ignored

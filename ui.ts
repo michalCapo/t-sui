@@ -43,10 +43,10 @@ export interface AOption {
 export interface Target {
     id: string;
     Skeleton: (type?: Skeleton) => string;
-    Replace: { id: string; swap: Swap };
-    Append: { id: string; swap: Swap };
-    Prepend: { id: string; swap: Swap };
-    Render: { id: string; swap: Swap };
+    Replace: {id: string; swap: Swap};
+    Append: {id: string; swap: Swap};
+    Prepend: {id: string; swap: Swap};
+    Render: {id: string; swap: Swap};
 }
 
 const re = /\s{4,}/g;
@@ -73,7 +73,7 @@ function If(cond: boolean, value: () => string): string {
 }
 
 function Iff(cond: boolean) {
-    return function(...value: string[]) {
+    return function (...value: string[]) {
         if (cond) {
             return value.join(" ");
         }
@@ -255,13 +255,13 @@ function attributes(...attrs: Attr[]): string {
 }
 
 function open(tag: string) {
-    return function(css: string, ...attr: Attr[]) {
-        return function(...elements: string[]) {
+    return function (css: string, ...attr: Attr[]) {
+        return function (...elements: string[]) {
             const final: Attr[] = [];
             for (let i = 0; i < attr.length; i++) {
                 final.push(attr[i]);
             }
-            final.push({ class: Classes(css) });
+            final.push({class: Classes(css)});
             const attrsStr = renderAttrs(final);
             return (
                 "<" +
@@ -279,12 +279,12 @@ function open(tag: string) {
 }
 
 function closed(tag: string) {
-    return function(css: string, ...attr: Attr[]) {
+    return function (css: string, ...attr: Attr[]) {
         const final: Attr[] = [];
         for (let i = 0; i < attr.length; i++) {
             final.push(attr[i]);
         }
-        final.push({ class: Classes(css) });
+        final.push({class: Classes(css)});
         const attrsStr = renderAttrs(final);
         return "<" + tag + " " + attrsStr + "/>";
     };
@@ -354,7 +354,7 @@ function IconEnd(css: string, text: string): string {
 }
 
 function Label(css: string, ...attr: Attr[]) {
-    return function(text: string) {
+    return function (text: string) {
         return (
             '<label class=\"' +
             css +
@@ -433,10 +433,10 @@ function Target(): Target {
 
             return Skeleton.Default(this);
         },
-        Replace: { id, swap: "outline" },
-        Append: { id, swap: "append" },
-        Prepend: { id, swap: "prepend" },
-        Render: { id, swap: "inline" },
+        Replace: {id, swap: "outline"},
+        Append: {id, swap: "append"},
+        Prepend: {id, swap: "prepend"},
+        Render: {id, swap: "inline"},
     };
 }
 
@@ -454,12 +454,12 @@ function ThemeSwitcher(css = ""): string {
 
     const container = [
         '<button id="' +
-        id +
-        '" type="button" class="' +
-        "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
-        "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
-        css +
-        '">',
+            id +
+            '" type="button" class="' +
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
+            "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
+            css +
+            '">',
         '  <span class="icon">' + desktop + "</span>",
         '  <span class="label">Auto</span>',
         "</button>",
@@ -473,12 +473,12 @@ function ThemeSwitcher(css = ""): string {
         'function setMode(mode){ try { if (typeof setTheme === "function") setTheme(mode); } catch(_){} }',
         'function labelFor(mode){ return mode==="system"?"Auto":(mode.charAt(0).toUpperCase()+mode.slice(1)); }',
         'function iconFor(effective){ if(effective==="dark"){ return ' +
-        JSON.stringify(moon) +
-        '; } if(effective==="light"){ return ' +
-        JSON.stringify(sun) +
-        "; } return " +
-        JSON.stringify(desktop) +
-        "; }",
+            JSON.stringify(moon) +
+            '; } if(effective==="light"){ return ' +
+            JSON.stringify(sun) +
+            "; } return " +
+            JSON.stringify(desktop) +
+            "; }",
         'function render(){ var pref=getPref(); var eff=resolve(pref); var icon=iconFor(eff); var i=btn.querySelector(".icon"); if(i){ i.innerHTML=icon; } var l=btn.querySelector(".label"); if(l){ l.textContent=labelFor(pref); } }',
         "render();",
         'btn.addEventListener("click", function(){ var pref=getPref(); var idx=modes.indexOf(pref); var next=modes[(idx+1)%modes.length]; setMode(next); render(); });',
@@ -500,7 +500,7 @@ function Button(...attrs: Attr[]) {
         target: {} as Attr,
         visible: true,
         disabled: false,
-        extra: (function() {
+        extra: (function () {
             const out: Attr[] = [];
             for (let i = 0; i < attrs.length; i++) {
                 out.push(attrs[i]);
@@ -511,12 +511,12 @@ function Button(...attrs: Attr[]) {
     const api = {
         Submit() {
             state.as = "button";
-            state.extra.push({ type: "submit" });
+            state.extra.push({type: "submit"});
             return api;
         },
         Reset() {
             state.as = "button";
-            state.extra.push({ type: "reset" });
+            state.extra.push({type: "reset"});
             return api;
         },
         If(v: boolean) {
@@ -545,7 +545,7 @@ function Button(...attrs: Attr[]) {
         },
         Href(v: string) {
             state.as = "a";
-            state.extra.push({ href: v });
+            state.extra.push({href: v});
             return api;
         },
         Render(text: string): string {
@@ -564,7 +564,7 @@ function Button(...attrs: Attr[]) {
                 merged.push(state.extra[i]);
             }
             if (state.as === "a") {
-                merged.push({ id: state.target.id, class: cls });
+                merged.push({id: state.target.id, class: cls});
                 return "<a " + renderAttrs(merged) + ">" + text + "</a>";
             }
             if (state.as === "div") {
@@ -612,71 +612,71 @@ function createBase(
         readonly: false,
     };
     const api: any = {
-        Class: function(...v: string[]) {
+        Class: function (...v: string[]) {
             state.css = v.join(" ");
             return api;
         },
-        ClassLabel: function(...v: string[]) {
+        ClassLabel: function (...v: string[]) {
             state.cssLabel = v.join(" ");
             return api;
         },
-        ClassInput: function(...v: string[]) {
+        ClassInput: function (...v: string[]) {
             state.cssInput = v.join(" ");
             return api;
         },
-        Size: function(v: string) {
+        Size: function (v: string) {
             state.size = v;
             return api;
         },
-        Placeholder: function(v: string) {
+        Placeholder: function (v: string) {
             state.placeholder = v;
             return api;
         },
-        Pattern: function(v: string) {
+        Pattern: function (v: string) {
             state.pattern = v;
             return api;
         },
-        Autocomplete: function(v: string) {
+        Autocomplete: function (v: string) {
             state.autocomplete = v;
             return api;
         },
-        Required: function(v = true) {
+        Required: function (v = true) {
             state.required = v;
             return api;
         },
-        Readonly: function(v = true) {
+        Readonly: function (v = true) {
             state.readonly = v;
             return api;
         },
-        Disabled: function(v = true) {
+        Disabled: function (v = true) {
             state.disabled = v;
             return api;
         },
-        Type: function(v: string) {
+        Type: function (v: string) {
             state.as = v;
             return api;
         },
-        Rows: function(v: number) {
+        Rows: function (v: number) {
             state.target.rows = v;
             return api;
         },
-        Value: function(v: string) {
+        Value: function (v: string) {
             state.value = v;
             return api;
         },
-        Change: function(code: string) {
+        Change: function (code: string) {
             state.onchange = code;
             return api;
         },
-        Click: function(code: string) {
+        Click: function (code: string) {
             state.onclick = code;
             return api;
         },
-        If: function(v: boolean) {
+        If: function (v: boolean) {
             state.visible = v;
             return api;
         },
-        _resolveValue: function(): string {
+        _resolveValue: function (): string {
             if (!state.data) {
                 return state.value;
             }
@@ -710,7 +710,7 @@ function createBase(
 function IText(name: string, data?: any) {
     const base: any = createBase(name, data, "text");
     return Object.assign(base, {
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -749,7 +749,7 @@ function IText(name: string, data?: any) {
 function IPassword(name: string, data?: any) {
     const base: any = createBase(name, data, "password");
     return Object.assign(base, {
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -785,7 +785,7 @@ function IPassword(name: string, data?: any) {
 function IArea(name: string, data?: any) {
     const base: any = createBase(name, data, "text");
     return Object.assign(base, {
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -833,17 +833,17 @@ function INumber(name: string, data?: any) {
         valueFormat: "%v",
     };
     return Object.assign(base, {
-        Numbers: function(min?: number, max?: number, step?: number) {
+        Numbers: function (min?: number, max?: number, step?: number) {
             local.min = min;
             local.max = max;
             local.step = step;
             return this;
         },
-        Format: function(fmt: string) {
+        Format: function (fmt: string) {
             local.valueFormat = fmt;
             return this;
         },
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -906,12 +906,12 @@ function IDate(name: string, data?: any) {
         max: undefined as Date | undefined,
     };
     return Object.assign(base, {
-        Dates: function(min?: Date, max?: Date) {
+        Dates: function (min?: Date, max?: Date) {
             local.min = min;
             local.max = max;
             return this;
         },
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -963,12 +963,12 @@ function ITime(name: string, data?: any) {
         max: undefined as Date | undefined,
     };
     return Object.assign(base, {
-        Dates: function(min?: Date, max?: Date) {
+        Dates: function (min?: Date, max?: Date) {
             local.min = min;
             local.max = max;
             return this;
         },
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -1018,12 +1018,12 @@ function IDateTime(name: string, data?: any) {
         max: undefined as Date | undefined,
     };
     return Object.assign(base, {
-        Dates: function(min?: Date, max?: Date) {
+        Dates: function (min?: Date, max?: Date) {
             local.min = min;
             local.max = max;
             return this;
         },
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!base._state.visible) {
                 return "";
             }
@@ -1086,60 +1086,60 @@ function ISelect<T = unknown>(name: string, data?: T) {
         error: false,
     };
     const api = {
-        Class: function(...v: string[]) {
+        Class: function (...v: string[]) {
             state.css = v.join(" ");
             return api;
         },
-        ClassLabel: function(...v: string[]) {
+        ClassLabel: function (...v: string[]) {
             state.cssLabel = v.join(" ");
             return api;
         },
-        ClassInput: function(...v: string[]) {
+        ClassInput: function (...v: string[]) {
             state.cssInput = v.join(" ");
             return api;
         },
-        Size: function(v: string) {
+        Size: function (v: string) {
             state.size = v;
             return api;
         },
-        Required: function(v = true) {
+        Required: function (v = true) {
             state.required = v;
             return api;
         },
-        Disabled: function(v = true) {
+        Disabled: function (v = true) {
             state.disabled = v;
             return api;
         },
-        Options: function(values: AOption[]) {
+        Options: function (values: AOption[]) {
             state.options = values;
             return api;
         },
-        Placeholder: function(v: string) {
+        Placeholder: function (v: string) {
             state.placeholder = v;
             return api;
         },
-        Change: function(code: string) {
+        Change: function (code: string) {
             state.onchange = code;
             return api;
         },
-        Empty: function() {
+        Empty: function () {
             state.empty = true;
             return api;
         },
-        EmptyText: function(v: string) {
+        EmptyText: function (v: string) {
             state.emptyText = v;
             state.empty = true;
             return api;
         },
-        If: function(v: boolean) {
+        If: function (v: boolean) {
             state.visible = v;
             return api;
         },
-        Error: function(v = true) {
+        Error: function (v = true) {
             state.error = v;
             return api;
         },
-        Render: function(label: string): string {
+        Render: function (label: string): string {
             if (!state.visible) {
                 return "";
             }
@@ -1149,14 +1149,14 @@ function ISelect<T = unknown>(name: string, data?: T) {
             const selected = String(current || "");
             const opts: string[] = [];
             if (state.placeholder) {
-                opts.push(option("", { value: "" })(state.placeholder));
+                opts.push(option("", {value: ""})(state.placeholder));
             }
             if (state.empty) {
-                opts.push(option("", { value: "" })(state.emptyText));
+                opts.push(option("", {value: ""})(state.emptyText));
             }
             for (let i = 0; i < state.options.length; i++) {
                 const o = state.options[i];
-                const at: Attr = { value: o.id };
+                const at: Attr = {value: o.id};
                 if (selected === o.id) {
                     at.selected = "selected";
                 }
@@ -1206,27 +1206,27 @@ function ICheckbox(name: string, data?: any) {
         error: false,
     };
     const api = {
-        Class: function(...v: string[]) {
+        Class: function (...v: string[]) {
             state.css = v.join(" ");
             return api;
         },
-        Size: function(v: string) {
+        Size: function (v: string) {
             state.size = v;
             return api;
         },
-        Required: function(v = true) {
+        Required: function (v = true) {
             state.required = v;
             return api;
         },
-        Disabled: function(v = true) {
+        Disabled: function (v = true) {
             state.disabled = v;
             return api;
         },
-        Error: function(v = true) {
+        Error: function (v = true) {
             state.error = v;
             return api;
         },
-        Render: function(text: string): string {
+        Render: function (text: string): string {
             const isChecked = state.data
                 ? Boolean((state.data as Record<string, unknown>)[state.name])
                 : false;
@@ -1266,40 +1266,39 @@ function IRadio(name: string, data?: any) {
         error: false,
     };
     const api = {
-        Class: function(...v: string[]) {
+        Class: function (...v: string[]) {
             state.css = v.join(" ");
             return api;
         },
-        ClassLabel: function(...v: string[]) {
+        ClassLabel: function (...v: string[]) {
             state.cssLabel = v.join(" ");
             return api;
         },
-        Size: function(v: string) {
+        Size: function (v: string) {
             state.size = v;
             return api;
         },
-        Value: function(v: string) {
+        Value: function (v: string) {
             state.valueSet = v;
             return api;
         },
-        Disabled: function(v = true) {
+        Disabled: function (v = true) {
             state.disabled = v;
             return api;
         },
-        Required: function(v = true) {
+        Required: function (v = true) {
             state.required = v;
             return api;
         },
-        Error: function(v = true) {
+        Error: function (v = true) {
             state.error = v;
             return api;
         },
-        Render: function(text: string): string {
+        Render: function (text: string): string {
             const selected = state.data
                 ? String(
-                    (state.data as Record<string, unknown>)[state.name] ||
-                    "",
-                )
+                      (state.data as Record<string, unknown>)[state.name] || "",
+                  )
                 : "";
             const inputEl = input(Classes("hover:cursor-pointer"), {
                 type: "radio",
@@ -1337,32 +1336,31 @@ function IRadioButtons(name: string, data?: any) {
         error: false,
     };
     const api = {
-        Options: function(v: AOption[]) {
+        Options: function (v: AOption[]) {
             state.options = v;
             return api;
         },
-        Class: function(...v: string[]) {
+        Class: function (...v: string[]) {
             state.css = v.join(" ");
             return api;
         },
-        Required: function(v = true) {
+        Required: function (v = true) {
             state.required = v;
             return api;
         },
-        Disabled: function(v = true) {
+        Disabled: function (v = true) {
             state.disabled = v;
             return api;
         },
-        Error: function(v = true) {
+        Error: function (v = true) {
             state.error = v;
             return api;
         },
-        Render: function(text: string): string {
+        Render: function (text: string): string {
             const selected = state.data
                 ? String(
-                    (state.data as Record<string, unknown>)[state.name] ||
-                    "",
-                )
+                      (state.data as Record<string, unknown>)[state.name] || "",
+                  )
                 : "";
             let items = "";
             for (let i = 0; i < state.options.length; i++) {
@@ -1412,16 +1410,16 @@ function SimpleTable(cols: number, css = "") {
     }
 
     const api = {
-        Class: function(col: number, ...classes: string[]) {
+        Class: function (col: number, ...classes: string[]) {
             if (col >= 0 && col < state.cols) {
                 state.colClasses[col] = Classes(...classes);
             }
             return api;
         },
-        Empty: function() {
+        Empty: function () {
             return api.Field("");
         },
-        Field: function(value: string, ...cls: string[]) {
+        Field: function (value: string, ...cls: string[]) {
             if (
                 state.rows.length === 0 ||
                 state.rows[state.rows.length - 1].length === state.cols ||
@@ -1439,7 +1437,7 @@ function SimpleTable(cols: number, css = "") {
             state.cellAttrs[state.cellAttrs.length - 1].push("");
             return api;
         },
-        Attr: function(attrs: string) {
+        Attr: function (attrs: string) {
             if (
                 state.cellAttrs.length > 0 &&
                 state.cellAttrs[state.cellAttrs.length - 1].length > 0
@@ -1491,7 +1489,7 @@ function SimpleTable(cols: number, css = "") {
             }
             return api;
         },
-        Render: function(): string {
+        Render: function (): string {
             let rowsHtml = "";
             const colspanRe = /colspan=['"]?(\d+)['"]?/;
             for (let rowIndex = 0; rowIndex < state.rows.length; rowIndex++) {
@@ -1574,7 +1572,7 @@ export type Skeleton = "list" | "component" | "page" | "form" | undefined;
 
 export const Skeleton = {
     Default(target: Target): string {
-        return div("animate-pulse", { id: target.id })(
+        return div("animate-pulse", {id: target.id})(
             div("bg-gray-200 h-5 rounded w-5/6 mb-2")(),
             div("bg-gray-200 h-5 rounded w-2/3 mb-2")(),
             div("bg-gray-200 h-5 rounded w-4/6")(),
@@ -1596,11 +1594,11 @@ export const Skeleton = {
             items += row;
         }
 
-        return div("animate-pulse", { id: target.id })(items);
+        return div("animate-pulse", {id: target.id})(items);
     },
 
     Component(target: Target): string {
-        return div("animate-pulse", { id: target.id })(
+        return div("animate-pulse", {id: target.id})(
             div("bg-gray-200 h-6 rounded w-2/5 mb-4")(),
             div("bg-gray-200 h-4 rounded w-full mb-2")(),
             div("bg-gray-200 h-4 rounded w-5/6 mb-2")(),
@@ -1609,7 +1607,7 @@ export const Skeleton = {
     },
 
     Page(target: Target): string {
-        const card = function(): string {
+        const card = function (): string {
             return div("bg-white rounded-lg p-4 shadow mb-4")(
                 div("bg-gray-200 h-5 rounded w-2/5 mb-3")(),
                 div("bg-gray-200 h-4 rounded w-full mb-2")(),
@@ -1617,7 +1615,7 @@ export const Skeleton = {
                 div("bg-gray-200 h-4 rounded w-4/6")(),
             );
         };
-        return div("animate-pulse", { id: target.id })(
+        return div("animate-pulse", {id: target.id})(
             div("bg-gray-200 h-8 rounded w-1/3 mb-6")(),
             card(),
             card(),
@@ -1625,25 +1623,25 @@ export const Skeleton = {
     },
 
     Form(target: Target): string {
-        const fieldShort = function(): string {
+        const fieldShort = function (): string {
             return div("")(
                 div("bg-gray-200 h-4 rounded w-3/6 mb-2")(),
                 div("bg-gray-200 h-10 rounded w-full")(),
             );
         };
-        const fieldArea = function(): string {
+        const fieldArea = function (): string {
             return div("")(
                 div("bg-gray-200 h-4 rounded w-2/6 mb-2")(),
                 div("bg-gray-200 h-24 rounded w-full")(),
             );
         };
-        const actions = function(): string {
+        const actions = function (): string {
             return div("flex justify-end gap-3 mt-6")(
                 div("bg-gray-200 h-10 rounded w-24")(),
                 div("bg-gray-200 h-10 rounded w-32")(),
             );
         };
-        return div("animate-pulse", { id: target.id })(
+        return div("animate-pulse", {id: target.id})(
             div("bg-white rounded-lg p-4 shadow")(
                 div("bg-gray-200 h-6 rounded w-2/5 mb-5")(),
                 div("grid grid-cols-1 md:grid-cols-2 gap-4")(

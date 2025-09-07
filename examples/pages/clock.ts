@@ -1,5 +1,5 @@
 import ui from "../../ui";
-import { Context } from "../../ui.server";
+import {Context} from "../../ui.server";
 
 export function Clock(ctx: Context) {
     // Render into a stable target id so reloads keep the same element
@@ -28,9 +28,9 @@ export function Clock(ctx: Context) {
         );
     }
 
-    const stop = ui.Interval(1000, function() {
+    const stop = ui.Interval(1000, function () {
         ctx.Patch(target.Replace, Render(new Date()), stop);
-    })
+    });
 
     return Render(new Date());
 }
