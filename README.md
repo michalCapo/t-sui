@@ -30,10 +30,11 @@ Note: Examples include a high‑contrast SVG favicon (blue rounded square with w
 
 ## How It Works
 
-There are two main modules:
+There are two main modules (plus optional data helpers):
 
 - `ui.ts`: HTML builder and components. Exports a default `ui` object with functions like `div`, `form`, `Button`, `IText`, `INumber`, `ISelect`, `SimpleTable`, etc.
 - `ui.server.ts`: Minimal HTTP server + routing + client helpers. Exposes `App`, `MakeApp`, and `Context` with methods for registering pages/actions and wiring partial updates.
+- `ui.data.ts`: Optional Go‑style data collation helpers (search/sort/filter/paging) built on top of `ui` and `Context`.
 
 ### Sessions (Online Clients)
 
@@ -151,6 +152,55 @@ app.Listen(1422);
     - Built using the same HTML builder primitives (no raw string concatenation)
 
 See `examples/` for practical usage.
+
+## Data Collation (ui.data.ts)
+
+`ui.data.ts` adds Go‑style helpers for building list pages with consistent search, sort, filter, and paging controls.
+
+- `Collate<T>` orchestrates query state and renders header controls, rows, and pager.
+- `NormalizeForSearch(s)` lowercases and removes common diacritics for user‑friendly matching.
+- Types: `TQuery`, `TField`, `TCollateResult<T>` describe the query and results.
+
+Basic usage:
+
+```ts
+import ui from "./ui";
+import { Context } from "./ui.server";
+import { Collate, TQuery, TField, BOOL, SELECT } from "./ui.data";
+
+type Row = { id: number; name: string; email: string };
+
+export function ListPage(ctx: Context): string {
+  const init: TQuery = { Limit: 10, Offset: 0, Order: "name asc", Search: "", Filter: [] };
+  const c = new Collate<Row>({
+    init,
+    onRow: function (r: Row): string {
+      return ui.div("bg-white rounded p-3 border")(
+        ui.div("font-bold")(r.name),
+        ui.div("text-gray-600 text-sm")(r.email),
+      );
+    },
+    loader: function (_q: TQuery) {
+      // Replace with your data source
+      return { total: 0, filtered: 0, data: [] };
+    },
+  });
+
+  // Optional controls
+  const searchFields: TField[] = [
+    { DB: "name", Field: "name", Text: "Name", Value: "", As: SELECT, Condition: "", Options: [], Bool: false, Dates: { From: new Date(0), To: new Date(0) } },
+  ];
+  const sortFields: TField[] = [
+    { DB: "name", Field: "name", Text: "Name", Value: "", As: BOOL, Condition: "", Options: [], Bool: false, Dates: { From: new Date(0), To: new Date(0) } },
+  ];
+  c.Search(searchFields);
+  c.Sort(sortFields);
+
+  return ui.div("p-4")(ui.div("text-2xl font-bold")("List"), c.Render(ctx));
+}
+```
+
+Note: The XLS export button is stubbed (shows a small info toast). Provide an `onExcel` callback and add server plumbing if you need downloadable files.
 
 ## Dark Mode
 
