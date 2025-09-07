@@ -28,10 +28,9 @@ export function Clock(ctx: Context) {
         );
     }
 
-    const clear = () => clearInterval(interval)
-    const interval = setInterval(() => {
-        ctx.Patch(target.Replace, Render(new Date()), clear);
-    }, 1000)
+    const stop = ui.Interval(1000, function() {
+        ctx.Patch(target.Replace, Render(new Date()), stop);
+    })
 
     return Render(new Date());
 }
