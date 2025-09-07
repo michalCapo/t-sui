@@ -12,6 +12,7 @@
 - always use tsx to run typescript files
 - never compile, when using typescript use tsx, when need to compile, remove javascript files
 - when using tsc, use --noEmit to check for type errors without compiling
+- use `prettier` for formatting.
 
 # Formatting
 

@@ -37,10 +37,10 @@ There are two main modules:
 
 ### Sessions (Online Clients)
 
-- The client stores a stable session id in `localStorage` and includes it with every request.
-- The client opens a WebSocket to `/__ws?sid=...` for live updates and dev reloads.
+- The server assigns a session id and stores it in a cookie `tsui__sid` (SameSite=Lax, Path=/; adds Secure on HTTPS/wss).
+- The client uses cookies only; no `sid` URL params or hidden fields are sent.
+- WebSocket connects to `/__ws` (no query). Browsers include cookies in the WS handshake.
 - The server tracks session last-seen timestamps at handshake and via app activity; idle sessions are swept.
-- The session id is also attached to POST/FORM helpers, so actions receive it.
 - Sessions are pruned automatically if inactive for > 60s.
 
 Key ideas:
