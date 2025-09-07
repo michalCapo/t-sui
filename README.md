@@ -55,18 +55,18 @@ Key ideas:
 ```ts
 // examples/minimal.ts
 import ui from "./ui";
-import { MakeApp, Context } from "./ui.server";
+import {MakeApp, Context} from "./ui.server";
 
 const app = MakeApp("en");
 
 function Home(_ctx: Context): string {
-    const body = ui.div("p-6 max-w-xl mx-auto bg-white rounded shadow")(
-        ui.div("text-xl font-bold")("Hello from t-sui"),
-        ui.div("text-gray-600")(
-            "Server-rendered UI without a client framework.",
-        ),
-    );
-    return app.HTML("Home", "bg-gray-100 min-h-screen", body);
+	const body = ui.div("p-6 max-w-xl mx-auto bg-white rounded shadow")(
+		ui.div("text-xl font-bold")("Hello from t-sui"),
+		ui.div("text-gray-600")(
+			"Server-rendered UI without a client framework.",
+		),
+	);
+	return app.HTML("Home", "bg-gray-100 min-h-screen", body);
 }
 
 app.Page("/", Home);
@@ -92,45 +92,45 @@ Example (copy‑paste to run):
 ```ts
 // examples/forms.ts
 import ui from "./ui";
-import { MakeApp, Context } from "./ui.server";
+import {MakeApp, Context} from "./ui.server";
 
 const app = MakeApp("en");
 
 class Model {
-    Name = "";
+	Name = "";
 }
 const target = ui.Target();
 
 function Page(ctx: Context): string {
-    const m = new Model();
-    return ctx.app.HTML(
-        "Form Demo",
-        "bg-gray-100 min-h-screen",
-        ui.div(
-            "max-w-xl mx-auto p-6",
-            target,
-        )(
-            ui.form(
-                "bg-white p-4 rounded shadow space-y-4",
-                ctx.Submit(Save).Replace(target),
-            )(
-                ui.IText("Name", m).Required().Render("Your name"),
-                ui
-                    .Button()
-                    .Submit()
-                    .Color(ui.Blue)
-                    .Class("rounded")
-                    .Render("Save"),
-            ),
-        ),
-    );
+	const m = new Model();
+	return ctx.app.HTML(
+		"Form Demo",
+		"bg-gray-100 min-h-screen",
+		ui.div(
+			"max-w-xl mx-auto p-6",
+			target,
+		)(
+			ui.form(
+				"bg-white p-4 rounded shadow space-y-4",
+				ctx.Submit(Save).Replace(target),
+			)(
+				ui.IText("Name", m).Required().Render("Your name"),
+				ui
+					.Button()
+					.Submit()
+					.Color(ui.Blue)
+					.Class("rounded")
+					.Render("Save"),
+			),
+		),
+	);
 }
 
 function Save(ctx: Context): string {
-    const m = new Model();
-    ctx.Body(m); // populate from posted form values
-    ctx.Success("Saved!"); // enqueue a toast message
-    return Page(ctx); // re-render into the same target (Replace)
+	const m = new Model();
+	ctx.Body(m); // populate from posted form values
+	ctx.Success("Saved!"); // enqueue a toast message
+	return Page(ctx); // re-render into the same target (Replace)
 }
 
 app.Page("/forms", Page);
@@ -164,35 +164,35 @@ You can render a quick skeleton while the server prepares a heavier fragment, th
 ```ts
 // examples/deferred.ts
 import ui from "./ui";
-import { MakeApp, Context } from "./ui.server";
+import {MakeApp, Context} from "./ui.server";
 
 const app = MakeApp("en");
 
 function Page(ctx: Context): string {
-    const target = ui.Target();
+	const target = ui.Target();
 
-    async function RenderHeavy(c: Context): Promise<string> {
-        await new Promise(function (r) {
-            setTimeout(r, 799);
-        }); // simulate work
-        return ui.div("bg-white p-5 rounded shadow", target)(
-            ui.div("font-semibold")("Deferred content loaded"),
-            ui.div("text-gray-500 text-sm")("Replaced via WS patch"),
-        );
-    }
+	async function RenderHeavy(c: Context): Promise<string> {
+		await new Promise(function (r) {
+			setTimeout(r, 799);
+		}); // simulate work
+		return ui.div("bg-white p-5 rounded shadow", target)(
+			ui.div("font-semibold")("Deferred content loaded"),
+			ui.div("text-gray-500 text-sm")("Replaced via WS patch"),
+		);
+	}
 
-    // Show a skeleton immediately; the callable runs asynchronously
-    // and pushes a WS patch that swaps into the target when ready.
-    const skeleton = ctx.Defer(RenderHeavy).SkeletonComponent().Replace(target);
+	// Show a skeleton immediately; the callable runs asynchronously
+	// and pushes a WS patch that swaps into the target when ready.
+	const skeleton = ctx.Defer(RenderHeavy).SkeletonComponent().Replace(target);
 
-    return ctx.app.HTML(
-        "Deferred Demo",
-        "bg-gray-100 min-h-screen",
-        ui.div("max-w-xl mx-auto p-6")(
-            ui.div("text-xl font-bold mb-2")("Deferred fragment"),
-            skeleton,
-        ),
-    );
+	return ctx.app.HTML(
+		"Deferred Demo",
+		"bg-gray-100 min-h-screen",
+		ui.div("max-w-xl mx-auto p-6")(
+			ui.div("text-xl font-bold mb-2")("Deferred fragment"),
+			skeleton,
+		),
+	);
 }
 
 app.Page("/deferred", Page);
@@ -215,34 +215,34 @@ The `Others` page includes a live clock that re-renders every second via WS patc
 // inside a page handler
 // Use a stable id so reloads keep the same target
 const CLOCK_ID = "others_clock";
-const clockTarget = { id: CLOCK_ID };
+const clockTarget = {id: CLOCK_ID};
 
 function pad2(n: number): string {
-    if (n < 10) {
-        return "0" + String(n);
-    } else {
-        return String(n);
-    }
+	if (n < 10) {
+		return "0" + String(n);
+	} else {
+		return String(n);
+	}
 }
 
 function ClockView(d: Date): string {
-    const h = pad2(d.getHours());
-    const m = pad2(d.getMinutes());
-    const s = pad2(d.getSeconds());
-    return ui.div("font-mono text-3xl", clockTarget)(h + ":" + m + ":" + s);
+	const h = pad2(d.getHours());
+	const m = pad2(d.getMinutes());
+	const s = pad2(d.getSeconds());
+	return ui.div("font-mono text-3xl", clockTarget)(h + ":" + m + ":" + s);
 }
 
 async function StartClock(ctx: Context): Promise<string> {
-    ctx.EnsureInterval("clock", 1000, function () {
-        ctx.Patch({ id: CLOCK_ID, swap: "outline" }, ClockView(new Date()));
-    });
-    return "";
+	ctx.EnsureInterval("clock", 1000, function () {
+		ctx.Patch({id: CLOCK_ID, swap: "outline"}, ClockView(new Date()));
+	});
+	return "";
 }
 
 // render once and start background updates
 ui.div("...")(
-    ClockView(new Date()),
-    ctx.Defer(StartClock).Skeleton("<!-- clock -->").None(),
+	ClockView(new Date()),
+	ctx.Defer(StartClock).Skeleton("<!-- clock -->").None(),
 );
 ```
 
@@ -256,6 +256,10 @@ Notes:
 
 - Run TypeScript with `tsx` (no build step needed). Use `tsc --noEmit` only to type-check if desired.
 - Coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
+- Formatting: Prettier is configured for the Go-style rules. Tabs, width 4, `printWidth` 100,
+  trailing commas, and no spaces inside object braces. Run `npx prettier --write .` to format.
+  Import grouping/order and language constraints (no arrows/spread/ternary/destructuring) are
+  manual per `coding.md`.
 
 - 2025-09-06: Internal cleanup to remove all `as any` casts and improve typing in `ui.ts` (no public API changes). This aligns with the Go-style formatting guide’s “Important” rules.
 - 2025-09-06: Replace SSE (`/__live`, `/__sse`) with native WebSocket server at `/__ws`; existing helpers now use WS. Sessions are still tracked via stored `sid`.
