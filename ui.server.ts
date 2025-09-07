@@ -30,7 +30,12 @@ export class App {
         new Set();
     _sessions: Map<
         string,
-        { id: string; lastSeen: number; timers: Map<string, number> }
+        {
+            id: string;
+            lastSeen: number;
+            timers: Map<string, number>;
+            targets: Map<string, (() => void) | undefined>;
+        }
     > = new Map();
     _sessionTTLms: number = 60000;
 
@@ -48,6 +53,7 @@ export class App {
                 id: id,
                 lastSeen: now,
                 timers: new Map(),
+                targets: new Map(),
             });
         }
     }
@@ -79,6 +85,11 @@ export class App {
                         clearInterval(t.value as unknown as number);
                     }
                 }
+                try {
+                    if (rec.targets) {
+                        rec.targets.clear();
+                    }
+                } catch (_) { }
 
                 console.log("-- Deleting session", sid);
                 this._sessions.delete(sid);
@@ -500,30 +511,6 @@ export class Context {
         return this.app.Action(uid, action);
     }
 
-    // EnsureInterval starts a per-session interval only once (by name).
-    // Useful for WS tickers that should not duplicate across reloads.
-    EnsureInterval(name: string, ms: number, fn: () => void): void {
-        const sid = this.sessionID;
-        if (!sid) {
-            return;
-        }
-        this.app._touchSession(sid);
-        const rec = this.app._sessions.get(sid);
-        if (!rec) {
-            return;
-        }
-        if (!rec.timers) {
-            rec.timers = new Map();
-        }
-        if (rec.timers.has(name)) {
-            return;
-        }
-        const h = setInterval(function() {
-            fn();
-        }, ms) as unknown as number;
-        rec.timers.set(name, h);
-    }
-
     Post(
         as: ActionType,
         swap: Swap,
@@ -738,19 +725,33 @@ export class Context {
         displayMessage(this, message, "bg-blue-700 text-white");
     }
 
-    Patch(
-        target: { id: string; swap: Swap },
-        html: string | Promise<string>,
-    ): void {
+    Patch(target: { id: string; swap: Swap; }, html: string | Promise<string>, clear?: () => void): void {
+        // Track the target id for this session so the server can react to client-reported invalid targets.
+        try {
+            const sid = this.sessionID;
+            if (sid) {
+                this.app._touchSession(sid);
+                const rec = this.app._sessions.get(sid);
+                if (rec) {
+                    if (!rec.targets) {
+                        rec.targets = new Map();
+                    }
+                    rec.targets.set(String(target.id || ""), clear);
+                }
+            }
+        } catch (_) { }
+
+        var self = this;
         Promise.resolve(html)
-            .then((html) =>
-                this.app._sendPatch({
-                    id: target.id,
-                    swap: target.swap,
-                    html: html,
-                }),
-            )
-            .catch((err) => console.error("Patch error:", err));
+            .then(function(resolved: string) { return resolved; })
+            .then(function(resolved: string) {
+                try {
+                    self.app._sendPatch({ id: target.id, swap: target.swap, html: resolved });
+                } catch (err) {
+                    console.error("Patch send error:", err);
+                }
+            })
+            .catch(function(err: unknown) { console.error("Patch error:", err); });
     }
 }
 
@@ -892,7 +893,15 @@ export const __ws = ui.Trim(`
                         }
                     } catch(_){ }
                     var el = document.getElementById(String(msg.id || ''));
-                    if (!el) { return; }
+                    if (!el) {
+                        try {
+                            var ws2 = (window).__tsuiWS;
+                            if (ws2 && ws2.readyState === 1) {
+                                ws2.send(JSON.stringify({ type: 'invalid', id: String(msg.id || '') }));
+                            }
+                        } catch(_){ }
+                        return;
+                    }
                     if (msg.swap === 'inline') { el.innerHTML = html; }
                     else if (msg.swap === 'outline') { el.outerHTML = html; }
                     else if (msg.swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
@@ -1569,7 +1578,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
             } catch (_) { }
             return;
         }
-        // Text frames: support app-level ping/pong
+        // Text frames: support app-level ping/pong and invalid-target notices
         if (opcode === 0x1) {
             try {
                 const text = payload.toString("utf8");
@@ -1586,6 +1595,22 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                             socket,
                             JSON.stringify({ type: "pong", t: Date.now() }),
                         );
+                    } catch (_) { }
+                } else if (t === "invalid") {
+                    try {
+                        const id = String((msg && msg.id) || "");
+                        const sid2 = String(record.sid || "");
+                        if (sid2) {
+                            app._touchSession(sid2);
+                            const rec2 = app._sessions.get(sid2);
+                            if (rec2 && rec2.targets) {
+                                const fn = rec2.targets.get(id);
+                                if (typeof fn === "function") {
+                                    try { fn(); } catch (_) { }
+                                }
+                                try { rec2.targets.delete(id); } catch (_) { }
+                            }
+                        }
                     } catch (_) { }
                 }
             } catch (_) { }

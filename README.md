@@ -252,6 +252,25 @@ Notes:
 - Guard the interval to avoid multiple timers after manual reloads.
 - Use `.None()` when you only need side-effects (pushing patches) and not an immediate swap. Provide a minimal skeleton like `'<!-- -->'` to avoid inserting a default placeholder.
 
+### Patch Cancellation (Invalid Targets)
+
+- When the server sends a patch for a target id that does not exist in the browser DOM, the client reports `{ type: "invalid", id }` over the WebSocket.
+- The server keeps track of all ids passed to `ctx.Patch(...)` per-session. If you provide a third argument `clear: () => void`, it runs when that id is reported invalid. Afterwards the id is unregistered.
+- Typical usage is to stop a timer or background job that was driving updates for that target.
+
+Example:
+
+```ts
+// Inside a page or action
+const target = ui.Target();
+const h = setInterval(function() {
+    function stop() { try { clearInterval(h); } catch(_){} }
+    ctx.Patch(target.Replace, renderNow(), stop);
+}, 1000);
+```
+
+- You can also pair this with `ctx.EnsureInterval(name, ms, fn)` and stop via `ctx.ClearInterval(name)` in your `clear` function.
+
 ## Development Notes
 
 - Run TypeScript with `tsx` (no build step needed). Use `tsc --noEmit` only to type-check if desired.

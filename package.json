@@ -5,8 +5,8 @@
     "scripts": {
         "typecheck": "tsc --noEmit",
         "predev": "npm run typecheck",
-        "dev": "tsx examples/main.ts",
-        "dev:watch": "tsx examples/main.ts --watch",
+        "dev": "node --import tsx examples/main.ts",
+        "dev:watch": "node --import tsx --watch examples/main.ts",
         "format": "prettier --write ."
     },
     "devDependencies": {
