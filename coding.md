@@ -24,9 +24,9 @@
     - Opening brace `{` goes on the **same line** as the declaration.
         ```ts
         if (x < y) {
-            foo();
+        	foo();
         } else {
-            bar();
+        	bar();
         }
         ```
     - Always use braces, even for single-line statements (avoids ambiguity).

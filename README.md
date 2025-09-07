@@ -61,13 +61,13 @@ import {MakeApp, Context} from "./ui.server";
 const app = MakeApp("en");
 
 function Home(_ctx: Context): string {
-    const body = ui.div("p-6 max-w-xl mx-auto bg-white rounded shadow")(
-        ui.div("text-xl font-bold")("Hello from t-sui"),
-        ui.div("text-gray-600")(
-            "Server-rendered UI without a client framework.",
-        ),
-    );
-    return app.HTML("Home", "bg-gray-100 min-h-screen", body);
+	const body = ui.div("p-6 max-w-xl mx-auto bg-white rounded shadow")(
+		ui.div("text-xl font-bold")("Hello from t-sui"),
+		ui.div("text-gray-600")(
+			"Server-rendered UI without a client framework.",
+		),
+	);
+	return app.HTML("Home", "bg-gray-100 min-h-screen", body);
 }
 
 app.Page("/", Home);
@@ -98,40 +98,40 @@ import {MakeApp, Context} from "./ui.server";
 const app = MakeApp("en");
 
 class Model {
-    Name = "";
+	Name = "";
 }
 const target = ui.Target();
 
 function Page(ctx: Context): string {
-    const m = new Model();
-    return ctx.app.HTML(
-        "Form Demo",
-        "bg-gray-100 min-h-screen",
-        ui.div(
-            "max-w-xl mx-auto p-6",
-            target,
-        )(
-            ui.form(
-                "bg-white p-4 rounded shadow space-y-4",
-                ctx.Submit(Save).Replace(target),
-            )(
-                ui.IText("Name", m).Required().Render("Your name"),
-                ui
-                    .Button()
-                    .Submit()
-                    .Color(ui.Blue)
-                    .Class("rounded")
-                    .Render("Save"),
-            ),
-        ),
-    );
+	const m = new Model();
+	return ctx.app.HTML(
+		"Form Demo",
+		"bg-gray-100 min-h-screen",
+		ui.div(
+			"max-w-xl mx-auto p-6",
+			target,
+		)(
+			ui.form(
+				"bg-white p-4 rounded shadow space-y-4",
+				ctx.Submit(Save).Replace(target),
+			)(
+				ui.IText("Name", m).Required().Render("Your name"),
+				ui
+					.Button()
+					.Submit()
+					.Color(ui.Blue)
+					.Class("rounded")
+					.Render("Save"),
+			),
+		),
+	);
 }
 
 function Save(ctx: Context): string {
-    const m = new Model();
-    ctx.Body(m); // populate from posted form values
-    ctx.Success("Saved!"); // enqueue a toast message
-    return Page(ctx); // re-render into the same target (Replace)
+	const m = new Model();
+	ctx.Body(m); // populate from posted form values
+	ctx.Success("Saved!"); // enqueue a toast message
+	return Page(ctx); // re-render into the same target (Replace)
 }
 
 app.Page("/forms", Page);
@@ -170,33 +170,33 @@ import {MakeApp, Context} from "./ui.server";
 const app = MakeApp("en");
 
 function Page(ctx: Context): string {
-    const target = ui.Target();
+	const target = ui.Target();
 
-    async function RenderHeavy(c: Context): Promise<string> {
-        await new Promise(function (r) {
-            setTimeout(r, 799);
-        }); // simulate work
-        return ui.div("bg-white p-5 rounded shadow", target)(
-            ui.div("font-semibold")("Deferred content loaded"),
-            ui.div("text-gray-500 text-sm")("Replaced via WS patch"),
-        );
-    }
+	async function RenderHeavy(c: Context): Promise<string> {
+		await new Promise(function (r) {
+			setTimeout(r, 799);
+		}); // simulate work
+		return ui.div("bg-white p-5 rounded shadow", target)(
+			ui.div("font-semibold")("Deferred content loaded"),
+			ui.div("text-gray-500 text-sm")("Replaced via WS patch"),
+		);
+	}
 
-    // Show a skeleton immediately; kick off async work that patches the target when ready.
-    setTimeout(function () {
-        RenderHeavy(ctx).then(function (html) {
-            ctx.Patch(target.Replace, html);
-        });
-    }, 0);
+	// Show a skeleton immediately; kick off async work that patches the target when ready.
+	setTimeout(function () {
+		RenderHeavy(ctx).then(function (html) {
+			ctx.Patch(target.Replace, html);
+		});
+	}, 0);
 
-    return ctx.app.HTML(
-        "Deferred Demo",
-        "bg-gray-100 min-h-screen",
-        ui.div("max-w-xl mx-auto p-6")(
-            ui.div("text-xl font-bold mb-2")("Deferred fragment"),
-            target.Skeleton("component"),
-        ),
-    );
+	return ctx.app.HTML(
+		"Deferred Demo",
+		"bg-gray-100 min-h-screen",
+		ui.div("max-w-xl mx-auto p-6")(
+			ui.div("text-xl font-bold mb-2")("Deferred fragment"),
+			target.Skeleton("component"),
+		),
+	);
 }
 
 app.Page("/deferred", Page);
@@ -219,38 +219,38 @@ The `Others` page includes a live clock that re-renders every second via WS patc
 const clockTarget = ui.Target();
 
 function pad2(n: number): string {
-    if (n < 10) {
-        return "0" + String(n);
-    } else {
-        return String(n);
-    }
+	if (n < 10) {
+		return "0" + String(n);
+	} else {
+		return String(n);
+	}
 }
 
 function ClockView(d: Date): string {
-    const h = pad2(d.getHours());
-    const m = pad2(d.getMinutes());
-    const s = pad2(d.getSeconds());
-    return ui.div("font-mono text-3xl", clockTarget)(h + ":" + m + ":" + s);
+	const h = pad2(d.getHours());
+	const m = pad2(d.getMinutes());
+	const s = pad2(d.getSeconds());
+	return ui.div("font-mono text-3xl", clockTarget)(h + ":" + m + ":" + s);
 }
 
 async function StartClock(ctx: Context): Promise<string> {
-    const h = setInterval(function () {
-        ctx.Patch(
-            {id: clockTarget.id, swap: "outline"},
-            ClockView(new Date()),
-            function stop() {
-                try {
-                    clearInterval(h);
-                } catch (_) {}
-            },
-        );
-    }, 1000);
-    return "";
+	const h = setInterval(function () {
+		ctx.Patch(
+			{id: clockTarget.id, swap: "outline"},
+			ClockView(new Date()),
+			function stop() {
+				try {
+					clearInterval(h);
+				} catch (_) {}
+			},
+		);
+	}, 1000);
+	return "";
 }
 
 // render once and start background updates
 setTimeout(function () {
-    StartClock(ctx);
+	StartClock(ctx);
 }, 0);
 ui.div("...")(ClockView(new Date()), clockTarget.Skeleton("component"));
 ```
@@ -272,12 +272,12 @@ Example:
 // Inside a page or action
 const target = ui.Target();
 const h = setInterval(function () {
-    function stop() {
-        try {
-            clearInterval(h);
-        } catch (_) {}
-    }
-    ctx.Patch({id: target.id, swap: target.swap}, renderNow(), stop);
+	function stop() {
+		try {
+			clearInterval(h);
+		} catch (_) {}
+	}
+	ctx.Patch({id: target.id, swap: target.swap}, renderNow(), stop);
 }, 1000);
 ```
 

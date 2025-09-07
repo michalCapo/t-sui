@@ -14,898 +14,898 @@ export const GET = "GET";
 export const POST = "POST";
 
 export interface BodyItem {
-    name: string;
-    type: string;
-    value: string;
+	name: string;
+	type: string;
+	value: string;
 }
 
 export type Callable = (ctx: Context) => string | Promise<string>;
 export type Deferred = (ctx: Context) => Promise<string>;
 
 export class App {
-    contentId: Target;
-    Language: string;
-    HTMLHead: string[];
-    _wsClients: Set<{socket: Socket; sid: string; lastPong: number}> =
-        new Set();
-    _debugEnabled: boolean = false;
-    _sessions: Map<
-        string,
-        {
-            id: string;
-            lastSeen: number;
-            timers: Map<string, number>;
-            targets: Map<string, (() => void) | undefined>;
-        }
-    > = new Map();
-    _sessionTTLms: number = 60000;
+	contentId: Target;
+	Language: string;
+	HTMLHead: string[];
+	_wsClients: Set<{socket: Socket; sid: string; lastPong: number}> =
+		new Set();
+	_debugEnabled: boolean = false;
+	_sessions: Map<
+		string,
+		{
+			id: string;
+			lastSeen: number;
+			timers: Map<string, number>;
+			targets: Map<string, (() => void) | undefined>;
+		}
+	> = new Map();
+	_sessionTTLms: number = 60000;
 
-    _touchSession(id: string): void {
-        if (!id) {
-            return;
-        }
-        const now = Date.now();
-        const prev = this._sessions.get(id);
-        if (prev) {
-            prev.lastSeen = now;
-        } else {
-            this._log("Setting session", id);
-            this._sessions.set(id, {
-                id: id,
-                lastSeen: now,
-                timers: new Map(),
-                targets: new Map(),
-            });
-        }
-    }
+	_touchSession(id: string): void {
+		if (!id) {
+			return;
+		}
+		const now = Date.now();
+		const prev = this._sessions.get(id);
+		if (prev) {
+			prev.lastSeen = now;
+		} else {
+			this._log("Setting session", id);
+			this._sessions.set(id, {
+				id: id,
+				lastSeen: now,
+				timers: new Map(),
+				targets: new Map(),
+			});
+		}
+	}
 
-    _sweepSessions(): void {
-        const now = Date.now();
-        const ttl = this._sessionTTLms;
-        const entries = this._sessions.entries();
-        while (true) {
-            const n = entries.next();
-            if (n.done) {
-                break;
-            }
-            const sid = n.value[0];
-            const rec = n.value[1];
-            if (!rec) {
-                continue;
-            }
-            const age = now - rec.lastSeen;
-            if (age > ttl) {
-                const timers = rec.timers;
-                if (timers) {
-                    const vals = timers.values();
-                    while (true) {
-                        const t = vals.next();
-                        if (t.done) {
-                            break;
-                        }
-                        clearInterval(t.value as unknown as number);
-                    }
-                }
-                try {
-                    if (rec.targets) {
-                        rec.targets.clear();
-                    }
-                } catch (_) {}
+	_sweepSessions(): void {
+		const now = Date.now();
+		const ttl = this._sessionTTLms;
+		const entries = this._sessions.entries();
+		while (true) {
+			const n = entries.next();
+			if (n.done) {
+				break;
+			}
+			const sid = n.value[0];
+			const rec = n.value[1];
+			if (!rec) {
+				continue;
+			}
+			const age = now - rec.lastSeen;
+			if (age > ttl) {
+				const timers = rec.timers;
+				if (timers) {
+					const vals = timers.values();
+					while (true) {
+						const t = vals.next();
+						if (t.done) {
+							break;
+						}
+						clearInterval(t.value as unknown as number);
+					}
+				}
+				try {
+					if (rec.targets) {
+						rec.targets.clear();
+					}
+				} catch (_) {}
 
-                this._log("Deleting session", sid);
-                this._sessions.delete(sid);
-            }
-        }
-    }
+				this._log("Deleting session", sid);
+				this._sessions.delete(sid);
+			}
+		}
+	}
 
-    // Dev: when enabled, injects client-side autoreload script
-    HTMLBody(cls: string): string {
-        if (!cls) cls = "bg-gray-200";
+	// Dev: when enabled, injects client-side autoreload script
+	HTMLBody(cls: string): string {
+		if (!cls) cls = "bg-gray-200";
 
-        return [
-            "<!DOCTYPE html>",
-            '<html lang="' + this.Language + '" class="' + cls + '">',
-            "  <head>__head__</head>",
-            '  <body id="' +
-                this.contentId.id +
-                '" class="relative">__body__</body>',
-            "</html>",
-        ].join(" ");
-    }
+		return [
+			"<!DOCTYPE html>",
+			'<html lang="' + this.Language + '" class="' + cls + '">',
+			"  <head>__head__</head>",
+			'  <body id="' +
+				this.contentId.id +
+				'" class="relative">__body__</body>',
+			"</html>",
+		].join(" ");
+	}
 
-    // private stored = new Map<Callable, { path: string, method: "GET" | "POST" }>();
-    private stored = new Map<
-        string,
-        {path: string; method: "GET" | "POST"; callable: Callable}
-    >();
+	// private stored = new Map<Callable, { path: string, method: "GET" | "POST" }>();
+	private stored = new Map<
+		string,
+		{path: string; method: "GET" | "POST"; callable: Callable}
+	>();
 
-    constructor(defaultLanguage: string) {
-        this.contentId = ui.Target();
-        this.Language = defaultLanguage;
-        this.HTMLHead = [
-            '<meta charset=\"UTF-8\">',
-            '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
-            '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
-            '<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css\" integrity=\"sha512-wnea99uKIC3TJF7v4eKk4Y+lMz2Mklv18+r4na2Gn1abDRPPOeef95xTzdwGD9e6zXJBteMIhZ1+68QC5byJZw==\" crossorigin=\"anonymous\" referrerpolicy=\"no-referrer\" />',
-            script([
-                __stringify,
-                __loader,
-                __offline,
-                __error,
-                __post,
-                __submit,
-                __load,
-                __ws,
-                __theme,
-            ]),
-        ];
-        // Dark mode CSS overrides (after Tailwind link to take precedence)
-        this.HTMLHead.push(
-            '<style id=\"tsui-dark-overrides\">\n' +
-                "  html.dark{ color-scheme: dark; }\n" +
-                "  /* Override backgrounds commonly used by components and examples.\n" +
-                "     Do not override bg-gray-200 so skeleton placeholders remain visible. */\n" +
-                "  html.dark.bg-white, html.dark.bg-gray-100 { background-color:#111827 !important; }\n" +
-                "  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-50 { background-color:#111827 !important; }\n" +
-                "  /* Text color overrides */\n" +
-                "  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n" +
-                "  /* Borders and placeholders for form controls */\n" +
-                "  .dark .border-gray-300 { border-color:#374151 !important; }\n" +
-                "  .dark input, .dark select, .dark textarea { color:#e5e7eb !important; background-color:#1f2937 !important; }\n" +
-                "  .dark input::placeholder, .dark textarea::placeholder { color:#9ca3af !important; }\n" +
-                "  /* Common hover bg used in nav/examples */\n" +
-                "  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n" +
-                "</style>",
-        );
+	constructor(defaultLanguage: string) {
+		this.contentId = ui.Target();
+		this.Language = defaultLanguage;
+		this.HTMLHead = [
+			'<meta charset=\"UTF-8\">',
+			'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
+			'<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
+			'<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css\" integrity=\"sha512-wnea99uKIC3TJF7v4eKk4Y+lMz2Mklv18+r4na2Gn1abDRPPOeef95xTzdwGD9e6zXJBteMIhZ1+68QC5byJZw==\" crossorigin=\"anonymous\" referrerpolicy=\"no-referrer\" />',
+			script([
+				__stringify,
+				__loader,
+				__offline,
+				__error,
+				__post,
+				__submit,
+				__load,
+				__ws,
+				__theme,
+			]),
+		];
+		// Dark mode CSS overrides (after Tailwind link to take precedence)
+		this.HTMLHead.push(
+			'<style id=\"tsui-dark-overrides\">\n' +
+				"  html.dark{ color-scheme: dark; }\n" +
+				"  /* Override backgrounds commonly used by components and examples.\n" +
+				"     Do not override bg-gray-200 so skeleton placeholders remain visible. */\n" +
+				"  html.dark.bg-white, html.dark.bg-gray-100 { background-color:#111827 !important; }\n" +
+				"  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-50 { background-color:#111827 !important; }\n" +
+				"  /* Text color overrides */\n" +
+				"  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n" +
+				"  /* Borders and placeholders for form controls */\n" +
+				"  .dark .border-gray-300 { border-color:#374151 !important; }\n" +
+				"  .dark input, .dark select, .dark textarea { color:#e5e7eb !important; background-color:#1f2937 !important; }\n" +
+				"  .dark input::placeholder, .dark textarea::placeholder { color:#9ca3af !important; }\n" +
+				"  /* Common hover bg used in nav/examples */\n" +
+				"  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n" +
+				"</style>",
+		);
 
-        try {
-            const self = this;
-            setInterval(function () {
-                self._sweepSessions();
-            }, 30000);
-        } catch {
-            /* noop */
-        }
-    }
+		try {
+			const self = this;
+			setInterval(function () {
+				self._sweepSessions();
+			}, 30000);
+		} catch {
+			/* noop */
+		}
+	}
 
-    // Enable or disable server debug logging.
-    // When enabled, messages are printed with a 'tsui:' prefix.
-    debug(enable: boolean): void {
-        this._debugEnabled = !!enable;
-    }
+	// Enable or disable server debug logging.
+	// When enabled, messages are printed with a 'tsui:' prefix.
+	debug(enable: boolean): void {
+		this._debugEnabled = !!enable;
+	}
 
-    // Back-compat with examples using PascalCase.
-    Debug(enable: boolean): void {
-        this.debug(enable);
-    }
+	// Back-compat with examples using PascalCase.
+	Debug(enable: boolean): void {
+		this.debug(enable);
+	}
 
-    // Internal: conditional logger with consistent prefix and no spread usage.
-    private _log(
-        a?: unknown,
-        b?: unknown,
-        c?: unknown,
-        d?: unknown,
-        e?: unknown,
-    ): void {
-        if (!this._debugEnabled) {
-            return;
-        }
-        let out = "tsui -";
-        function add(part: unknown): void {
-            if (typeof part === "undefined") {
-                return;
-            }
-            try {
-                out += " " + String(part);
-            } catch (_) {
-                out += " [object]";
-            }
-        }
-        add(a);
-        add(b);
-        add(c);
-        add(d);
-        add(e);
-        try {
-            console.log(out);
-        } catch (_) {}
-    }
+	// Internal: conditional logger with consistent prefix and no spread usage.
+	private _log(
+		a?: unknown,
+		b?: unknown,
+		c?: unknown,
+		d?: unknown,
+		e?: unknown,
+	): void {
+		if (!this._debugEnabled) {
+			return;
+		}
+		let out = "tsui -";
+		function add(part: unknown): void {
+			if (typeof part === "undefined") {
+				return;
+			}
+			try {
+				out += " " + String(part);
+			} catch (_) {
+				out += " [object]";
+			}
+		}
+		add(a);
+		add(b);
+		add(c);
+		add(d);
+		add(e);
+		try {
+			console.log(out);
+		} catch (_) {}
+	}
 
-    // Internal: broadcast a patch message to all WS clients
-    _sendPatch(payload: {id: string; swap: Swap; html: string}): void {
-        const msg = {
-            type: "patch",
-            id: String(payload.id || ""),
-            swap: String(payload.swap || "outline"),
-            html: ui.Trim(String(payload.html || "")),
-        } as {type: string; id: string; swap: string; html: string};
-        const data = JSON.stringify(msg);
-        const it = this._wsClients.values();
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            try {
-                wsSend(c.socket, data);
-            } catch (err) {
-                console.error("Failed to send to WebSocket client:", err);
-            }
-        }
-    }
+	// Internal: broadcast a patch message to all WS clients
+	_sendPatch(payload: {id: string; swap: Swap; html: string}): void {
+		const msg = {
+			type: "patch",
+			id: String(payload.id || ""),
+			swap: String(payload.swap || "outline"),
+			html: ui.Trim(String(payload.html || "")),
+		} as {type: string; id: string; swap: string; html: string};
+		const data = JSON.stringify(msg);
+		const it = this._wsClients.values();
+		while (true) {
+			const n = it.next();
+			if (n.done) {
+				break;
+			}
+			const c = n.value;
+			try {
+				wsSend(c.socket, data);
+			} catch (err) {
+				console.error("Failed to send to WebSocket client:", err);
+			}
+		}
+	}
 
-    // Internal: broadcast a reload message to all WS clients
-    _sendReload(): void {
-        const msg = {type: "reload"};
-        const data = JSON.stringify(msg);
-        this._log("Broadcasting reload to", this._wsClients.size, "clients");
-        const it = this._wsClients.values();
-        let sent = 0;
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            try {
-                wsSend(c.socket, data);
-                sent++;
-            } catch (err) {
-                console.error(
-                    "Failed to send reload to WebSocket client:",
-                    err,
-                );
-            }
-        }
-        this._log("Sent reload to", sent, "clients");
-    }
+	// Internal: broadcast a reload message to all WS clients
+	_sendReload(): void {
+		const msg = {type: "reload"};
+		const data = JSON.stringify(msg);
+		this._log("Broadcasting reload to", this._wsClients.size, "clients");
+		const it = this._wsClients.values();
+		let sent = 0;
+		while (true) {
+			const n = it.next();
+			if (n.done) {
+				break;
+			}
+			const c = n.value;
+			try {
+				wsSend(c.socket, data);
+				sent++;
+			} catch (err) {
+				console.error(
+					"Failed to send reload to WebSocket client:",
+					err,
+				);
+			}
+		}
+		this._log("Sent reload to", sent, "clients");
+	}
 
-    HTML(title: string, bodyClass: string, body: string): string {
-        const head = "<title>" + title + "</title>" + this.HTMLHead.join("");
-        const html = this.HTMLBody(ui.Classes(bodyClass))
-            .replace("__head__", head)
-            .replace("__body__", body);
-        return ui.Trim(html);
-    }
+	HTML(title: string, bodyClass: string, body: string): string {
+		const head = "<title>" + title + "</title>" + this.HTMLHead.join("");
+		const html = this.HTMLBody(ui.Classes(bodyClass))
+			.replace("__head__", head)
+			.replace("__body__", body);
+		return ui.Trim(html);
+	}
 
-    // Enable development autoreload (WebSocket-based).
-    AutoReload(enable: boolean): void {
-        if (!enable) {
-            return;
-        }
-        const client = ui.Trim(`
+	// Enable development autoreload (WebSocket-based).
+	AutoReload(enable: boolean): void {
+		if (!enable) {
+			return;
+		}
+		const client = ui.Trim(`
             (function(){
                 try { (window).__tsuiReloadEnabled = true; } catch(_){ }
             })();
         `);
-        this.HTMLHead.push("<script>" + client + "</script>");
-    }
+		this.HTMLHead.push("<script>" + client + "</script>");
+	}
 
-    private register(
-        method: "GET" | "POST",
-        path: string,
-        callable: Callable,
-    ): void {
-        if (!path) throw new Error("Path cannot be empty");
-        const m = normalizeMethod(method);
-        const p = normalizePath(path);
-        const key = routeKey(m, p);
+	private register(
+		method: "GET" | "POST",
+		path: string,
+		callable: Callable,
+	): void {
+		if (!path) throw new Error("Path cannot be empty");
+		const m = normalizeMethod(method);
+		const p = normalizePath(path);
+		const key = routeKey(m, p);
 
-        if (this.stored.has(key))
-            throw new Error("Path already registered: " + m + " " + p);
+		if (this.stored.has(key))
+			throw new Error("Path already registered: " + m + " " + p);
 
-        this._log("Registering path:", m, p);
-        this.stored.set(key, {path: p, method: m, callable: callable});
-    }
+		this._log("Registering path:", m, p);
+		this.stored.set(key, {path: p, method: m, callable: callable});
+	}
 
-    Page(path: string, component: Callable): Callable {
-        this.register(GET, path, component);
-        return component;
-    }
+	Page(path: string, component: Callable): Callable {
+		this.register(GET, path, component);
+		return component;
+	}
 
-    Action(uid: string, action: Callable): Callable {
-        if (!uid.startsWith("/")) uid = "/" + uid;
+	Action(uid: string, action: Callable): Callable {
+		if (!uid.startsWith("/")) uid = "/" + uid;
 
-        uid = normalizePath(uid);
+		uid = normalizePath(uid);
 
-        const key = routeKey(POST, uid);
-        const found = this.stored.get(key);
-        if (found) {
-            return found.callable;
-        }
-        this.register(POST, uid, action);
-        return action;
-    }
+		const key = routeKey(POST, uid);
+		const found = this.stored.get(key);
+		if (found) {
+			return found.callable;
+		}
+		this.register(POST, uid, action);
+		return action;
+	}
 
-    Callable(callable: Callable): Callable {
-        if (callable == null) throw new Error("Callable cannot be null");
+	Callable(callable: Callable): Callable {
+		if (callable == null) throw new Error("Callable cannot be null");
 
-        const uid =
-            "/" +
-            (callable.name || "anonymous")
-                .replace(/[.*()\[\]]/g, "")
-                .replace(/[./:-\s]/g, "-");
+		const uid =
+			"/" +
+			(callable.name || "anonymous")
+				.replace(/[.*()\[\]]/g, "")
+				.replace(/[./:-\s]/g, "-");
 
-        return this.Action(uid, callable);
-    }
+		return this.Action(uid, callable);
+	}
 
-    pathOf(callable: Callable): string | undefined {
-        if (callable == null) return undefined;
+	pathOf(callable: Callable): string | undefined {
+		if (callable == null) return undefined;
 
-        const found = Array.from(this.stored.values()).find(function (item: {
-            path: string;
-            method: "GET" | "POST";
-            callable: Callable;
-        }) {
-            return item.callable === callable;
-        });
-        if (found) return found.path;
+		const found = Array.from(this.stored.values()).find(function (item: {
+			path: string;
+			method: "GET" | "POST";
+			callable: Callable;
+		}) {
+			return item.callable === callable;
+		});
+		if (found) return found.path;
 
-        return undefined;
-    }
+		return undefined;
+	}
 
-    // Route dispatch used by server integration
-    async _dispatch(
-        method: string,
-        path: string,
-        req: IncomingMessage,
-        res: ServerResponse,
-    ): Promise<string> {
-        const m = normalizeMethod(method);
-        const p = normalizePath(path);
-        const callable = this.stored.get(routeKey(m, p))?.callable;
-        if (!callable) {
-            res.statusCode = 404;
-            return "Not found";
-        }
+	// Route dispatch used by server integration
+	async _dispatch(
+		method: string,
+		path: string,
+		req: IncomingMessage,
+		res: ServerResponse,
+	): Promise<string> {
+		const m = normalizeMethod(method);
+		const p = normalizePath(path);
+		const callable = this.stored.get(routeKey(m, p))?.callable;
+		if (!callable) {
+			res.statusCode = 404;
+			return "Not found";
+		}
 
-        // Resolve session id from cookie `tsui__sid`; create if missing and set cookie
-        let sid = "";
-        try {
-            const cookieHeader = String(
-                (req.headers && (req.headers["cookie"] as string)) || "",
-            );
-            const cookies = parseCookies(cookieHeader);
-            sid = String(cookies["tsui__sid"] || "");
-        } catch (_) {}
+		// Resolve session id from cookie `tsui__sid`; create if missing and set cookie
+		let sid = "";
+		try {
+			const cookieHeader = String(
+				(req.headers && (req.headers["cookie"] as string)) || "",
+			);
+			const cookies = parseCookies(cookieHeader);
+			sid = String(cookies["tsui__sid"] || "");
+		} catch (_) {}
 
-        let shouldSetCookie = false;
-        if (!sid) {
-            sid = "sess-" + Math.random().toString(36).slice(2);
-            shouldSetCookie = true;
-        }
+		let shouldSetCookie = false;
+		if (!sid) {
+			sid = "sess-" + Math.random().toString(36).slice(2);
+			shouldSetCookie = true;
+		}
 
-        this._touchSession(sid);
-        if (shouldSetCookie) {
-            try {
-                let v =
-                    "tsui__sid=" +
-                    encodeURIComponent(sid) +
-                    "; Path=/; HttpOnly; SameSite=Lax";
-                if (isSecure(req)) {
-                    v += "; Secure";
-                }
-                const prev = res.getHeader("Set-Cookie");
-                if (Array.isArray(prev)) {
-                    res.setHeader("Set-Cookie", prev.concat([v]));
-                } else if (typeof prev === "string" && prev) {
-                    res.setHeader("Set-Cookie", [prev, v]);
-                } else {
-                    res.setHeader("Set-Cookie", v);
-                }
-            } catch (_) {}
-        }
-        const ctx = new Context(this, req, res, sid);
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
+		this._touchSession(sid);
+		if (shouldSetCookie) {
+			try {
+				let v =
+					"tsui__sid=" +
+					encodeURIComponent(sid) +
+					"; Path=/; HttpOnly; SameSite=Lax";
+				if (isSecure(req)) {
+					v += "; Secure";
+				}
+				const prev = res.getHeader("Set-Cookie");
+				if (Array.isArray(prev)) {
+					res.setHeader("Set-Cookie", prev.concat([v]));
+				} else if (typeof prev === "string" && prev) {
+					res.setHeader("Set-Cookie", [prev, v]);
+				} else {
+					res.setHeader("Set-Cookie", v);
+				}
+			} catch (_) {}
+		}
+		const ctx = new Context(this, req, res, sid);
+		res.setHeader("Content-Type", "text/html; charset=utf-8");
 
-        let html = await callable(ctx);
-        if (ctx.append.length) html += ctx.append.join("");
+		let html = await callable(ctx);
+		if (ctx.append.length) html += ctx.append.join("");
 
-        return html;
-    }
+		return html;
+	}
 
-    Listen(port = 1422): void {
-        const self = this;
-        const server = http.createServer(async function (
-            req: IncomingMessage,
-            res: ServerResponse,
-        ) {
-            try {
-                const url = req.url as string;
-                const path = url.split("?")[0];
-                const qs =
-                    url.indexOf("?") >= 0
-                        ? url.slice(url.indexOf("?") + 1)
-                        : "";
-                const method = (req.method as string) || GET;
+	Listen(port = 1422): void {
+		const self = this;
+		const server = http.createServer(async function (
+			req: IncomingMessage,
+			res: ServerResponse,
+		) {
+			try {
+				const url = req.url as string;
+				const path = url.split("?")[0];
+				const qs =
+					url.indexOf("?") >= 0
+						? url.slice(url.indexOf("?") + 1)
+						: "";
+				const method = (req.method as string) || GET;
 
-                let body = "";
-                await new Promise(function (resolve) {
-                    let done = false;
-                    function finish() {
-                        if (done) return;
-                        done = true;
-                        resolve(undefined);
-                    }
-                    req.on("data", function (chunk: unknown) {
-                        body += String(chunk as string);
-                        if (body.length > 1_000_000) {
-                            req.destroy();
-                            finish();
-                        }
-                    });
-                    req.on("end", finish);
-                    req.on("aborted", finish);
-                    req.on("close", finish);
-                    setTimeout(finish, 10000);
-                });
-                try {
-                    let parsed: BodyItem[] | undefined = undefined;
-                    if (body) {
-                        parsed = JSON.parse(body) as BodyItem[];
-                    }
-                    REQ_BODY.set(req, parsed);
-                } catch {
-                    REQ_BODY.set(req, undefined);
-                }
+				let body = "";
+				await new Promise(function (resolve) {
+					let done = false;
+					function finish() {
+						if (done) return;
+						done = true;
+						resolve(undefined);
+					}
+					req.on("data", function (chunk: unknown) {
+						body += String(chunk as string);
+						if (body.length > 1_000_000) {
+							req.destroy();
+							finish();
+						}
+					});
+					req.on("end", finish);
+					req.on("aborted", finish);
+					req.on("close", finish);
+					setTimeout(finish, 10000);
+				});
+				try {
+					let parsed: BodyItem[] | undefined = undefined;
+					if (body) {
+						parsed = JSON.parse(body) as BodyItem[];
+					}
+					REQ_BODY.set(req, parsed);
+				} catch {
+					REQ_BODY.set(req, undefined);
+				}
 
-                const html = await self._dispatch(method, path, req, res);
-                res.write(html);
-                res.end();
-            } catch (err) {
-                console.error("Request handler error:", err);
-                res.statusCode = 500;
-                res.setHeader("Content-Type", "text/html; charset=utf-8");
-                const page =
-                    "<!DOCTYPE html>\n" +
-                    '<html lang="en">\n' +
-                    "<head>\n" +
-                    '  <meta charset="UTF-8">\n' +
-                    '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-                    "  <title>Something went wrong…</title>\n" +
-                    "  <style>\n" +
-                    "    html,body{height:100%}\n" +
-                    "    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n" +
-                    "    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n" +
-                    "    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n" +
-                    "    .sub{font-size:14px;color:#6b7280}\n" +
-                    "  </style>\n" +
-                    "</head>\n" +
-                    "<body>\n" +
-                    '  <div class="card">\n' +
-                    '    <div class="title">Something went wrong…</div>\n' +
-                    '    <div class="sub">Waiting for server changes. Page will refresh when ready.</div>\n' +
-                    "  </div>\n" +
-                    "  <script>\n" +
-                    "    (function(){\n" +
-                    "      try {\n" +
-                    '        var KEY="__tsui_last_error_reload";\n' +
-                    "        function shouldReload() {\n" +
-                    "          try {\n" +
-                    "            var v=sessionStorage.getItem(KEY);\n" +
-                    "            var last=v?parseInt(v,10):0;\n" +
-                    "            var now=Date.now();\n" +
-                    "            if(!last||now-last>2500){\n" +
-                    "              sessionStorage.setItem(KEY,String(now));\n" +
-                    "              return true;\n" +
-                    "            }\n" +
-                    "            return false;\n" +
-                    "          } catch(_){\n" +
-                    "            return true;\n" +
-                    "          }\n" +
-                    "        }\n" +
-                    "        function connect() {\n" +
-                    '          var p=(location.protocol==="https:")?"wss://":"ws://";\n' +
-                    '          var ws=new WebSocket(p+location.host+"/__ws");\n' +
-                    "          ws.onopen=function(){\n" +
-                    "            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n" +
-                    "          };\n" +
-                    "          ws.onclose=function(){ setTimeout(connect,1000); };\n" +
-                    "          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n" +
-                    "        }\n" +
-                    "        connect();\n" +
-                    "      } catch(_){ /* noop */ }\n" +
-                    "    })();\n" +
-                    "  </script>\n" +
-                    "</body>\n" +
-                    "</html>\n";
-                res.end(page);
-            }
-        });
-        server.headersTimeout = 15000;
-        server.requestTimeout = 30000;
-        server.keepAliveTimeout = 5000;
-        server.on("error", function (err: unknown) {
-            console.error("Server error:", err);
-        });
-        server.on("upgrade", function (req: IncomingMessage, socket: Socket) {
-            handleUpgrade(self, req, socket);
-        });
-        server.listen(port, "0.0.0.0");
-        console.log("Listening on http://0.0.0.0:" + String(port));
-    }
+				const html = await self._dispatch(method, path, req, res);
+				res.write(html);
+				res.end();
+			} catch (err) {
+				console.error("Request handler error:", err);
+				res.statusCode = 500;
+				res.setHeader("Content-Type", "text/html; charset=utf-8");
+				const page =
+					"<!DOCTYPE html>\n" +
+					'<html lang="en">\n' +
+					"<head>\n" +
+					'  <meta charset="UTF-8">\n' +
+					'  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+					"  <title>Something went wrong…</title>\n" +
+					"  <style>\n" +
+					"    html,body{height:100%}\n" +
+					"    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n" +
+					"    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n" +
+					"    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n" +
+					"    .sub{font-size:14px;color:#6b7280}\n" +
+					"  </style>\n" +
+					"</head>\n" +
+					"<body>\n" +
+					'  <div class="card">\n' +
+					'    <div class="title">Something went wrong…</div>\n' +
+					'    <div class="sub">Waiting for server changes. Page will refresh when ready.</div>\n' +
+					"  </div>\n" +
+					"  <script>\n" +
+					"    (function(){\n" +
+					"      try {\n" +
+					'        var KEY="__tsui_last_error_reload";\n' +
+					"        function shouldReload() {\n" +
+					"          try {\n" +
+					"            var v=sessionStorage.getItem(KEY);\n" +
+					"            var last=v?parseInt(v,10):0;\n" +
+					"            var now=Date.now();\n" +
+					"            if(!last||now-last>2500){\n" +
+					"              sessionStorage.setItem(KEY,String(now));\n" +
+					"              return true;\n" +
+					"            }\n" +
+					"            return false;\n" +
+					"          } catch(_){\n" +
+					"            return true;\n" +
+					"          }\n" +
+					"        }\n" +
+					"        function connect() {\n" +
+					'          var p=(location.protocol==="https:")?"wss://":"ws://";\n' +
+					'          var ws=new WebSocket(p+location.host+"/__ws");\n' +
+					"          ws.onopen=function(){\n" +
+					"            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n" +
+					"          };\n" +
+					"          ws.onclose=function(){ setTimeout(connect,1000); };\n" +
+					"          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n" +
+					"        }\n" +
+					"        connect();\n" +
+					"      } catch(_){ /* noop */ }\n" +
+					"    })();\n" +
+					"  </script>\n" +
+					"</body>\n" +
+					"</html>\n";
+				res.end(page);
+			}
+		});
+		server.headersTimeout = 15000;
+		server.requestTimeout = 30000;
+		server.keepAliveTimeout = 5000;
+		server.on("error", function (err: unknown) {
+			console.error("Server error:", err);
+		});
+		server.on("upgrade", function (req: IncomingMessage, socket: Socket) {
+			handleUpgrade(self, req, socket);
+		});
+		server.listen(port, "0.0.0.0");
+		console.log("Listening on http://0.0.0.0:" + String(port));
+	}
 }
 
 // Debug control: enable or disable server logs. When enabled, logs are prefixed with 'tsui:'.
 export interface Debuggable {
-    debug(enable: boolean): void;
+	debug(enable: boolean): void;
 }
 
 export class Context {
-    app: App;
-    req: IncomingMessage;
-    res: ServerResponse;
-    sessionID: string;
-    append: string[] = [];
+	app: App;
+	req: IncomingMessage;
+	res: ServerResponse;
+	sessionID: string;
+	append: string[] = [];
 
-    constructor(
-        app: App,
-        req: IncomingMessage,
-        res: ServerResponse,
-        sessionID: string,
-    ) {
-        this.app = app;
-        this.req = req;
-        this.res = res;
-        this.sessionID = sessionID;
-    }
+	constructor(
+		app: App,
+		req: IncomingMessage,
+		res: ServerResponse,
+		sessionID: string,
+	) {
+		this.app = app;
+		this.req = req;
+		this.res = res;
+		this.sessionID = sessionID;
+	}
 
-    Body<T extends object>(output: T): void {
-        const data = this.req ? REQ_BODY.get(this.req) : undefined;
-        if (!Array.isArray(data)) return;
-        for (let i = 0; i < data.length; i++) {
-            const item = data[i];
-            setPath(
-                output as unknown as Record<string, unknown>,
-                item.name,
-                coerce(item.type, item.value),
-            );
-        }
-    }
+	Body<T extends object>(output: T): void {
+		const data = this.req ? REQ_BODY.get(this.req) : undefined;
+		if (!Array.isArray(data)) return;
+		for (let i = 0; i < data.length; i++) {
+			const item = data[i];
+			setPath(
+				output as unknown as Record<string, unknown>,
+				item.name,
+				coerce(item.type, item.value),
+			);
+		}
+	}
 
-    Callable(method: Callable): Callable {
-        return this.app.Callable(method);
-    }
-    Action(uid: string, action: Callable): Callable {
-        return this.app.Action(uid, action);
-    }
+	Callable(method: Callable): Callable {
+		return this.app.Callable(method);
+	}
+	Action(uid: string, action: Callable): Callable {
+		return this.app.Action(uid, action);
+	}
 
-    Post(
-        as: ActionType,
-        swap: Swap,
-        action: {method: Callable; target?: Attr; values?: any[]},
-    ): string {
-        const path = this.app.pathOf(action.method);
-        if (!path) throw new Error("Function not registered.");
+	Post(
+		as: ActionType,
+		swap: Swap,
+		action: {method: Callable; target?: Attr; values?: any[]},
+	): string {
+		const path = this.app.pathOf(action.method);
+		if (!path) throw new Error("Function not registered.");
 
-        const body: BodyItem[] = [];
-        const values = action.values || [];
-        for (let i = 0; i < values.length; i++) {
-            const item = values[i];
-            if (item == null) continue;
-            const entries = Object.entries(item);
-            for (let j = 0; j < entries.length; j++) {
-                const kv = entries[j];
-                const name = kv[0];
-                const value = kv[1];
-                body.push({
-                    name: name,
-                    type: typeOf(value),
-                    value: valueToString(value),
-                });
-            }
-        }
+		const body: BodyItem[] = [];
+		const values = action.values || [];
+		for (let i = 0; i < values.length; i++) {
+			const item = values[i];
+			if (item == null) continue;
+			const entries = Object.entries(item);
+			for (let j = 0; j < entries.length; j++) {
+				const kv = entries[j];
+				const name = kv[0];
+				const value = kv[1];
+				body.push({
+					name: name,
+					type: typeOf(value),
+					value: valueToString(value),
+				});
+			}
+		}
 
-        let valuesStr = "[]";
-        if (body.length > 0) {
-            valuesStr = JSON.stringify(body);
-        }
+		let valuesStr = "[]";
+		if (body.length > 0) {
+			valuesStr = JSON.stringify(body);
+		}
 
-        if (as === "FORM") {
-            return ui.Normalize(
-                '__submit(event, \"' +
-                    swap +
-                    '\", \"' +
-                    (action.target && action.target.id
-                        ? action.target.id
-                        : "") +
-                    '\", \"' +
-                    path +
-                    '\", ' +
-                    valuesStr +
-                    ") ",
-            );
-        }
-        return ui.Normalize(
-            '__post(event, \"' +
-                swap +
-                '\", \"' +
-                (action.target && action.target.id ? action.target.id : "") +
-                '\", \"' +
-                path +
-                '\", ' +
-                valuesStr +
-                ") ",
-        );
-    }
+		if (as === "FORM") {
+			return ui.Normalize(
+				'__submit(event, \"' +
+					swap +
+					'\", \"' +
+					(action.target && action.target.id
+						? action.target.id
+						: "") +
+					'\", \"' +
+					path +
+					'\", ' +
+					valuesStr +
+					") ",
+			);
+		}
+		return ui.Normalize(
+			'__post(event, \"' +
+				swap +
+				'\", \"' +
+				(action.target && action.target.id ? action.target.id : "") +
+				'\", \"' +
+				path +
+				'\", ' +
+				valuesStr +
+				") ",
+		);
+	}
 
-    Send<T extends object>(method: Callable, ...values: T[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        return {
-            Render: function (target: Attr) {
-                return self.Post("FORM", "inline", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            Replace: function (target: Attr) {
-                return self.Post("FORM", "outline", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            Append: function (target: Attr) {
-                return self.Post("FORM", "append", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            Prepend: function (target: Attr) {
-                return self.Post("FORM", "prepend", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            None: function () {
-                return self.Post("FORM", "none", {
-                    method: callable,
-                    values: values,
-                });
-            },
-        };
-    }
+	Send<T extends object>(method: Callable, ...values: T[]) {
+		const callable = this.Callable(method);
+		const self = this;
+		return {
+			Render: function (target: Attr) {
+				return self.Post("FORM", "inline", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			Replace: function (target: Attr) {
+				return self.Post("FORM", "outline", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			Append: function (target: Attr) {
+				return self.Post("FORM", "append", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			Prepend: function (target: Attr) {
+				return self.Post("FORM", "prepend", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			None: function () {
+				return self.Post("FORM", "none", {
+					method: callable,
+					values: values,
+				});
+			},
+		};
+	}
 
-    Call<T extends object>(method: Callable, ...values: T[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        return {
-            Render: function (target: Attr) {
-                return self.Post("POST", "inline", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            Replace: function (target: Attr) {
-                return self.Post("POST", "outline", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            Append: function (target: Attr) {
-                return self.Post("POST", "append", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            Prepend: function (target: Attr) {
-                return self.Post("POST", "prepend", {
-                    method: callable,
-                    target: target,
-                    values: values,
-                });
-            },
-            None: function () {
-                return self.Post("POST", "none", {
-                    method: callable,
-                    values: values,
-                });
-            },
-        };
-    }
+	Call<T extends object>(method: Callable, ...values: T[]) {
+		const callable = this.Callable(method);
+		const self = this;
+		return {
+			Render: function (target: Attr) {
+				return self.Post("POST", "inline", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			Replace: function (target: Attr) {
+				return self.Post("POST", "outline", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			Append: function (target: Attr) {
+				return self.Post("POST", "append", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			Prepend: function (target: Attr) {
+				return self.Post("POST", "prepend", {
+					method: callable,
+					target: target,
+					values: values,
+				});
+			},
+			None: function () {
+				return self.Post("POST", "none", {
+					method: callable,
+					values: values,
+				});
+			},
+		};
+	}
 
-    Submit<T extends object>(method: Callable, ...values: T[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        return {
-            Render: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "inline", {
-                        method: callable,
-                        target: target,
-                        values: values,
-                    }),
-                };
-            },
-            Replace: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "outline", {
-                        method: callable,
-                        target: target,
-                        values: values,
-                    }),
-                };
-            },
-            Append: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "append", {
-                        method: callable,
-                        target: target,
-                        values: values,
-                    }),
-                };
-            },
-            Prepend: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "prepend", {
-                        method: callable,
-                        target: target,
-                        values: values,
-                    }),
-                };
-            },
-            None: function (): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "none", {
-                        method: callable,
-                        values: values,
-                    }),
-                };
-            },
-        };
-    }
+	Submit<T extends object>(method: Callable, ...values: T[]) {
+		const callable = this.Callable(method);
+		const self = this;
+		return {
+			Render: function (target: Attr): Attr {
+				return {
+					onsubmit: self.Post("FORM", "inline", {
+						method: callable,
+						target: target,
+						values: values,
+					}),
+				};
+			},
+			Replace: function (target: Attr): Attr {
+				return {
+					onsubmit: self.Post("FORM", "outline", {
+						method: callable,
+						target: target,
+						values: values,
+					}),
+				};
+			},
+			Append: function (target: Attr): Attr {
+				return {
+					onsubmit: self.Post("FORM", "append", {
+						method: callable,
+						target: target,
+						values: values,
+					}),
+				};
+			},
+			Prepend: function (target: Attr): Attr {
+				return {
+					onsubmit: self.Post("FORM", "prepend", {
+						method: callable,
+						target: target,
+						values: values,
+					}),
+				};
+			},
+			None: function (): Attr {
+				return {
+					onsubmit: self.Post("FORM", "none", {
+						method: callable,
+						values: values,
+					}),
+				};
+			},
+		};
+	}
 
-    Load(href: string): Attr {
-        return {onclick: ui.Normalize('__load(\"' + href + '\")')};
-    }
-    Reload(): string {
-        return ui.Normalize("<script>window.location.reload();</script>");
-    }
-    Redirect(href: string): string {
-        return ui.Normalize(
-            "<script>window.location.href = '" + href + "';</script>",
-        );
-    }
+	Load(href: string): Attr {
+		return {onclick: ui.Normalize('__load(\"' + href + '\")')};
+	}
+	Reload(): string {
+		return ui.Normalize("<script>window.location.reload();</script>");
+	}
+	Redirect(href: string): string {
+		return ui.Normalize(
+			"<script>window.location.href = '" + href + "';</script>",
+		);
+	}
 
-    Success(message: string) {
-        displayMessage(this, message, "bg-green-700 text-white");
-    }
-    Error(message: string) {
-        displayMessage(this, message, "bg-red-700 text-white");
-    }
-    Info(message: string) {
-        displayMessage(this, message, "bg-blue-700 text-white");
-    }
+	Success(message: string) {
+		displayMessage(this, message, "bg-green-700 text-white");
+	}
+	Error(message: string) {
+		displayMessage(this, message, "bg-red-700 text-white");
+	}
+	Info(message: string) {
+		displayMessage(this, message, "bg-blue-700 text-white");
+	}
 
-    Patch(
-        target: {id: string; swap: Swap},
-        html: string | Promise<string>,
-        clear?: () => void,
-    ): void {
-        // Track the target id for this session so the server can react to client-reported invalid targets.
-        try {
-            const sid = this.sessionID;
-            if (sid) {
-                this.app._touchSession(sid);
-                const rec = this.app._sessions.get(sid);
-                if (rec) {
-                    if (!rec.targets) {
-                        rec.targets = new Map();
-                    }
-                    rec.targets.set(String(target.id || ""), clear);
-                }
-            }
-        } catch (_) {}
+	Patch(
+		target: {id: string; swap: Swap},
+		html: string | Promise<string>,
+		clear?: () => void,
+	): void {
+		// Track the target id for this session so the server can react to client-reported invalid targets.
+		try {
+			const sid = this.sessionID;
+			if (sid) {
+				this.app._touchSession(sid);
+				const rec = this.app._sessions.get(sid);
+				if (rec) {
+					if (!rec.targets) {
+						rec.targets = new Map();
+					}
+					rec.targets.set(String(target.id || ""), clear);
+				}
+			}
+		} catch (_) {}
 
-        var self = this;
-        Promise.resolve(html)
-            .then(function (resolved: string) {
-                return resolved;
-            })
-            .then(function (resolved: string) {
-                try {
-                    self.app._sendPatch({
-                        id: target.id,
-                        swap: target.swap,
-                        html: resolved,
-                    });
-                } catch (err) {
-                    console.error("Patch send error:", err);
-                }
-            })
-            .catch(function (err: unknown) {
-                console.error("Patch error:", err);
-            });
-    }
+		var self = this;
+		Promise.resolve(html)
+			.then(function (resolved: string) {
+				return resolved;
+			})
+			.then(function (resolved: string) {
+				try {
+					self.app._sendPatch({
+						id: target.id,
+						swap: target.swap,
+						html: resolved,
+					});
+				} catch (err) {
+					console.error("Patch send error:", err);
+				}
+			})
+			.catch(function (err: unknown) {
+				console.error("Patch error:", err);
+			});
+	}
 }
 
 function displayMessage(ctx: Context, message: string, color: string) {
-    const script1 = [
-        "<script>(function(){",
-        'var box=document.getElementById("__messages__");',
-        'if(box==null){box=document.createElement("div");box.id="__messages__";',
-        'box.style.position="fixed";box.style.top="0";box.style.right="0";box.style.padding="8px";box.style.zIndex="9999";box.style.pointerEvents="none";document.body.appendChild(box);}',
-        'var n=document.createElement("div");',
-        'n.style.display="flex";n.style.alignItems="center";n.style.gap="10px";',
-        'n.style.padding="12px 16px";n.style.margin="8px";n.style.borderRadius="12px";',
-        'n.style.minHeight="44px";n.style.minWidth="340px";n.style.maxWidth="340px";',
-        'n.style.boxShadow="0 6px 18px rgba(0,0,0,0.08)";n.style.border="1px solid";',
-        "var isGreen=(" +
-            JSON.stringify(color) +
-            ').indexOf("green")>=0;var isRed=(' +
-            JSON.stringify(color) +
-            ').indexOf("red")>=0;',
-        'var accent=isGreen?"#16a34a":(isRed?"#dc2626":"#4f46e5");',
-        'if(isGreen){n.style.background="#dcfce7";n.style.color="#166534";n.style.borderColor="#bbf7d0";}else if(isRed){n.style.background="#fee2e2";n.style.color="#991b1b";n.style.borderColor="#fecaca";}else{n.style.background="#eef2ff";n.style.color="#3730a3";n.style.borderColor="#e0e7ff";}',
-        'n.style.borderLeft="4px solid "+accent;',
-        'var dot=document.createElement("span");dot.style.width="10px";dot.style.height="10px";dot.style.borderRadius="9999px";dot.style.background=accent;',
-        'var t=document.createElement("span");t.textContent=',
-        JSON.stringify(ui.Normalize(message)),
-        ";",
-        "n.appendChild(dot);n.appendChild(t);",
-        "box.appendChild(n);",
-        "setTimeout(function(){try{box.removeChild(n);}catch(_){}} ,5000);",
-        "})();</script>",
-    ].join("");
-    ctx.append.push(ui.Trim(script1));
+	const script1 = [
+		"<script>(function(){",
+		'var box=document.getElementById("__messages__");',
+		'if(box==null){box=document.createElement("div");box.id="__messages__";',
+		'box.style.position="fixed";box.style.top="0";box.style.right="0";box.style.padding="8px";box.style.zIndex="9999";box.style.pointerEvents="none";document.body.appendChild(box);}',
+		'var n=document.createElement("div");',
+		'n.style.display="flex";n.style.alignItems="center";n.style.gap="10px";',
+		'n.style.padding="12px 16px";n.style.margin="8px";n.style.borderRadius="12px";',
+		'n.style.minHeight="44px";n.style.minWidth="340px";n.style.maxWidth="340px";',
+		'n.style.boxShadow="0 6px 18px rgba(0,0,0,0.08)";n.style.border="1px solid";',
+		"var isGreen=(" +
+			JSON.stringify(color) +
+			').indexOf("green")>=0;var isRed=(' +
+			JSON.stringify(color) +
+			').indexOf("red")>=0;',
+		'var accent=isGreen?"#16a34a":(isRed?"#dc2626":"#4f46e5");',
+		'if(isGreen){n.style.background="#dcfce7";n.style.color="#166534";n.style.borderColor="#bbf7d0";}else if(isRed){n.style.background="#fee2e2";n.style.color="#991b1b";n.style.borderColor="#fecaca";}else{n.style.background="#eef2ff";n.style.color="#3730a3";n.style.borderColor="#e0e7ff";}',
+		'n.style.borderLeft="4px solid "+accent;',
+		'var dot=document.createElement("span");dot.style.width="10px";dot.style.height="10px";dot.style.borderRadius="9999px";dot.style.background=accent;',
+		'var t=document.createElement("span");t.textContent=',
+		JSON.stringify(ui.Normalize(message)),
+		";",
+		"n.appendChild(dot);n.appendChild(t);",
+		"box.appendChild(n);",
+		"setTimeout(function(){try{box.removeChild(n);}catch(_){}} ,5000);",
+		"})();</script>",
+	].join("");
+	ctx.append.push(ui.Trim(script1));
 }
 
 function typeOf(v: any): string {
-    if (v instanceof Date) return "Time";
-    const t = typeof v;
-    if (t === "number") {
-        if (Number.isInteger(v)) return "int";
-        return "float64";
-    }
-    if (t === "boolean") return "bool";
-    if (t === "string") return "string";
-    return "string";
+	if (v instanceof Date) return "Time";
+	const t = typeof v;
+	if (t === "number") {
+		if (Number.isInteger(v)) return "int";
+		return "float64";
+	}
+	if (t === "boolean") return "bool";
+	if (t === "string") return "string";
+	return "string";
 }
 
 function valueToString(v: any): string {
-    if (v instanceof Date) return v.toUTCString();
-    return String(v);
+	if (v instanceof Date) return v.toUTCString();
+	return String(v);
 }
 
 function coerce(type: string, value: string): any {
-    switch (type) {
-        case "date":
-        case "time":
-        case "Time":
-        case "datetime-local":
-            return new Date(value);
-        case "float64":
-            return parseFloat(value);
-        case "bool":
-        case "checkbox":
-            return value === "true";
-        case "int":
-        case "int64":
-        case "number":
-            return parseInt(value, 10);
-        default:
-            return value;
-    }
+	switch (type) {
+		case "date":
+		case "time":
+		case "Time":
+		case "datetime-local":
+			return new Date(value);
+		case "float64":
+			return parseFloat(value);
+		case "bool":
+		case "checkbox":
+			return value === "true";
+		case "int":
+		case "int64":
+		case "number":
+			return parseInt(value, 10);
+		default:
+			return value;
+	}
 }
 
 function setPath(obj: any, path: string, value: any) {
-    const parts = path.split(".");
-    let current = obj;
-    for (let i = 0; i < parts.length - 1; i++) {
-        const part = parts[i];
-        if (!(part in current) || typeof current[part] !== "object")
-            current[part] = {};
-        current = current[part];
-    }
-    current[parts[parts.length - 1]] = value;
+	const parts = path.split(".");
+	let current = obj;
+	for (let i = 0; i < parts.length - 1; i++) {
+		const part = parts[i];
+		if (!(part in current) || typeof current[part] !== "object")
+			current[part] = {};
+		current = current[part];
+	}
+	current[parts[parts.length - 1]] = value;
 }
 
 export const __post = ui.Trim(`
@@ -1317,7 +1317,7 @@ export const __load = ui.Trim(`
 `);
 
 export function MakeApp(defaultLanguage: string) {
-    return new App(defaultLanguage);
+	return new App(defaultLanguage);
 }
 
 // Theme initializer and toggler: applies html.dark class from stored preference or system
@@ -1360,352 +1360,352 @@ export const __theme = ui.Trim(`
 // (No __sid helper; sessions are cookie-based only.)
 
 function script(parts: string[]) {
-    var out = "";
-    for (var i = 0; i < parts.length; i++) {
-        out += "<script>" + parts[i] + "</script>";
-    }
-    return out;
+	var out = "";
+	for (var i = 0; i < parts.length; i++) {
+		out += "<script>" + parts[i] + "</script>";
+	}
+	return out;
 }
 
 function isSecure(req: IncomingMessage): boolean {
-    try {
-        const enc = (req.socket as any) && (req.socket as any).encrypted;
-        if (enc) {
-            return true;
-        }
-        const xf = String(
-            (req.headers && (req.headers["x-forwarded-proto"] as string)) || "",
-        );
-        if (xf) {
-            const first = xf.split(",")[0].trim().toLowerCase();
-            return first === "https";
-        }
-    } catch (_) {}
-    return false;
+	try {
+		const enc = (req.socket as any) && (req.socket as any).encrypted;
+		if (enc) {
+			return true;
+		}
+		const xf = String(
+			(req.headers && (req.headers["x-forwarded-proto"] as string)) || "",
+		);
+		if (xf) {
+			const first = xf.split(",")[0].trim().toLowerCase();
+			return first === "https";
+		}
+	} catch (_) {}
+	return false;
 }
 
 function parseCookies(header: string): {[k: string]: string} {
-    const out: {[k: string]: string} = {};
-    if (!header) {
-        return out;
-    }
-    const parts = header.split(";");
-    for (let i = 0; i < parts.length; i++) {
-        let p = parts[i];
-        if (!p) {
-            continue;
-        }
-        try {
-            p = p.trim();
-        } catch (_) {}
-        const eq = p.indexOf("=");
-        if (eq < 0) {
-            continue;
-        }
-        const k = p.slice(0, eq).trim();
-        let v = p.slice(eq + 1);
-        try {
-            v = decodeURIComponent(v);
-        } catch (_) {}
-        out[k] = v;
-    }
-    return out;
+	const out: {[k: string]: string} = {};
+	if (!header) {
+		return out;
+	}
+	const parts = header.split(";");
+	for (let i = 0; i < parts.length; i++) {
+		let p = parts[i];
+		if (!p) {
+			continue;
+		}
+		try {
+			p = p.trim();
+		} catch (_) {}
+		const eq = p.indexOf("=");
+		if (eq < 0) {
+			continue;
+		}
+		const k = p.slice(0, eq).trim();
+		let v = p.slice(eq + 1);
+		try {
+			v = decodeURIComponent(v);
+		} catch (_) {}
+		out[k] = v;
+	}
+	return out;
 }
 
 function normalizeMethod(method: string): "GET" | "POST" {
-    const m = (method || "").toString().trim().toUpperCase();
-    if (m === "POST") return POST;
-    return GET;
+	const m = (method || "").toString().trim().toUpperCase();
+	if (m === "POST") return POST;
+	return GET;
 }
 
 function normalizePath(p: string): string {
-    let path = (p || "").toString().trim();
-    if (path.length === 0) path = "/";
-    if (!path.startsWith("/")) path = "/" + path;
-    return path.toLowerCase();
+	let path = (p || "").toString().trim();
+	if (path.length === 0) path = "/";
+	if (!path.startsWith("/")) path = "/" + path;
+	return path.toLowerCase();
 }
 
 function routeKey(method: "GET" | "POST", path: string): string {
-    return method + " " + path;
+	return method + " " + path;
 }
 
 // Minimal WebSocket helpers (server-side) using native http 'upgrade'
 function sha1Base64(s: string): string {
-    try {
-        const h = crypto.createHash("sha1");
-        h.update(s);
-        return h.digest("base64");
-    } catch (_) {
-        return "";
-    }
+	try {
+		const h = crypto.createHash("sha1");
+		h.update(s);
+		return h.digest("base64");
+	} catch (_) {
+		return "";
+	}
 }
 
 function encodeLength(len: number): Buffer {
-    if (len < 126) {
-        return Buffer.from([len]);
-    }
-    if (len < 65536) {
-        const b = Buffer.alloc(3);
-        b[0] = 126;
-        b.writeUInt16BE(len, 1);
-        return b;
-    }
-    const out = Buffer.alloc(9);
-    out[0] = 127;
-    const hi = Math.floor(len / 0x100000000);
-    const lo = len >>> 0;
-    out.writeUInt32BE(hi, 1);
-    out.writeUInt32BE(lo, 5);
-    return out;
+	if (len < 126) {
+		return Buffer.from([len]);
+	}
+	if (len < 65536) {
+		const b = Buffer.alloc(3);
+		b[0] = 126;
+		b.writeUInt16BE(len, 1);
+		return b;
+	}
+	const out = Buffer.alloc(9);
+	out[0] = 127;
+	const hi = Math.floor(len / 0x100000000);
+	const lo = len >>> 0;
+	out.writeUInt32BE(hi, 1);
+	out.writeUInt32BE(lo, 5);
+	return out;
 }
 
 function wsFrame(data: string): Buffer {
-    const payload = Buffer.from(data, "utf8");
-    const header = Buffer.concat([
-        Buffer.from([0x81]),
-        encodeLength(payload.length),
-    ]);
-    return Buffer.concat([header, payload]);
+	const payload = Buffer.from(data, "utf8");
+	const header = Buffer.concat([
+		Buffer.from([0x81]),
+		encodeLength(payload.length),
+	]);
+	return Buffer.concat([header, payload]);
 }
 
 function wsSend(socket: Socket, data: string): void {
-    if (!socket.writable) {
-        return;
-    }
-    try {
-        socket.write(wsFrame(data));
-    } catch (e: any) {
-        console.error(e);
-    }
+	if (!socket.writable) {
+		return;
+	}
+	try {
+		socket.write(wsFrame(data));
+	} catch (e: any) {
+		console.error(e);
+	}
 }
 
 // Send a WebSocket Ping (opcode 0x9). Browsers auto-respond with Pong.
 function wsPing(socket: Socket, payload?: string): void {
-    if (!socket || !socket.writable) {
-        return;
-    }
-    try {
-        let body = Buffer.alloc(0);
-        if (payload) {
-            body = Buffer.from(payload, "utf8");
-            if (body.length > 125) {
-                body = body.slice(0, 125);
-            }
-        }
-        const header = Buffer.concat([
-            Buffer.from([0x89]),
-            encodeLength(body.length),
-        ]);
-        socket.write(Buffer.concat([header, body]));
-    } catch (_) {}
+	if (!socket || !socket.writable) {
+		return;
+	}
+	try {
+		let body = Buffer.alloc(0);
+		if (payload) {
+			body = Buffer.from(payload, "utf8");
+			if (body.length > 125) {
+				body = body.slice(0, 125);
+			}
+		}
+		const header = Buffer.concat([
+			Buffer.from([0x89]),
+			encodeLength(body.length),
+		]);
+		socket.write(Buffer.concat([header, body]));
+	} catch (_) {}
 }
 
 function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
-    const url = String(req.url || "/");
-    const path = url.split("?")[0];
-    if (path !== "/__ws") {
-        socket.destroy();
-        return;
-    }
-    const key = String(
-        (req.headers && (req.headers["sec-websocket-key"] as string)) || "",
-    );
-    if (!key) {
-        socket.destroy();
-        return;
-    }
-    // Resolve sid from cookies; generate if missing
-    let sid = "";
-    try {
-        const cookieHeader = String(
-            (req.headers && (req.headers["cookie"] as string)) || "",
-        );
-        const cookies = parseCookies(cookieHeader);
-        sid = String(cookies["tsui__sid"] || "");
-    } catch (_) {}
-    let setCookieHeader = "";
-    if (!sid) {
-        sid = "sess-" + Math.random().toString(36).slice(2);
-        setCookieHeader =
-            "Set-Cookie: tsui__sid=" +
-            encodeURIComponent(sid) +
-            "; Path=/; HttpOnly; SameSite=Lax" +
-            (isSecure(req) ? "; Secure" : "");
-    }
-    app._touchSession(sid);
-    const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    const accept = sha1Base64(key + GUID);
-    const lines = [
-        "HTTP/1.1 101 Switching Protocols",
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        "Sec-WebSocket-Accept: " + accept,
-    ];
-    if (setCookieHeader) {
-        lines.push(setCookieHeader);
-    }
-    lines.push("\r\n");
-    const headers = lines.join("\r\n");
-    socket.write(headers);
-    const record = {socket: socket, sid: sid, lastPong: Date.now()};
-    app._wsClients.add(record);
-    wsSend(socket, JSON.stringify({type: "hello", ok: true}));
-    // Heartbeat: touch session + ping; drop if no pong within 75s
-    let heartbeat: any = 0;
-    try {
-        heartbeat = setInterval(function () {
-            try {
-                if (sid) {
-                    app._touchSession(sid);
-                }
-                const now = Date.now();
-                const age = now - record.lastPong;
-                if (age > 75000) {
-                    try {
-                        socket.destroy();
-                    } catch (_) {}
-                    return;
-                }
-                wsPing(socket);
-            } catch (_) {}
-        }, 25000);
-    } catch (_) {}
-    socket.on("error", function () {
-        socket.destroy();
-    });
-    socket.on("close", function () {
-        try {
-            if (heartbeat) {
-                clearInterval(heartbeat);
-                heartbeat = 0;
-            }
-        } catch (_) {}
-        const it = app._wsClients.values();
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            if (c.socket === socket) {
-                app._wsClients.delete(c);
-            }
-        }
-    });
-    socket.on("data", function (buf: Buffer) {
-        if (!buf || buf.length < 2) {
-            return;
-        }
-        const firstByte = buf[0];
-        const opcode = firstByte & 0x0f;
-        const masked = (buf[1] & 0x80) === 0x80;
-        let payloadLength = buf[1] & 0x7f;
-        let offset = 2;
+	const url = String(req.url || "/");
+	const path = url.split("?")[0];
+	if (path !== "/__ws") {
+		socket.destroy();
+		return;
+	}
+	const key = String(
+		(req.headers && (req.headers["sec-websocket-key"] as string)) || "",
+	);
+	if (!key) {
+		socket.destroy();
+		return;
+	}
+	// Resolve sid from cookies; generate if missing
+	let sid = "";
+	try {
+		const cookieHeader = String(
+			(req.headers && (req.headers["cookie"] as string)) || "",
+		);
+		const cookies = parseCookies(cookieHeader);
+		sid = String(cookies["tsui__sid"] || "");
+	} catch (_) {}
+	let setCookieHeader = "";
+	if (!sid) {
+		sid = "sess-" + Math.random().toString(36).slice(2);
+		setCookieHeader =
+			"Set-Cookie: tsui__sid=" +
+			encodeURIComponent(sid) +
+			"; Path=/; HttpOnly; SameSite=Lax" +
+			(isSecure(req) ? "; Secure" : "");
+	}
+	app._touchSession(sid);
+	const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+	const accept = sha1Base64(key + GUID);
+	const lines = [
+		"HTTP/1.1 101 Switching Protocols",
+		"Upgrade: websocket",
+		"Connection: Upgrade",
+		"Sec-WebSocket-Accept: " + accept,
+	];
+	if (setCookieHeader) {
+		lines.push(setCookieHeader);
+	}
+	lines.push("\r\n");
+	const headers = lines.join("\r\n");
+	socket.write(headers);
+	const record = {socket: socket, sid: sid, lastPong: Date.now()};
+	app._wsClients.add(record);
+	wsSend(socket, JSON.stringify({type: "hello", ok: true}));
+	// Heartbeat: touch session + ping; drop if no pong within 75s
+	let heartbeat: any = 0;
+	try {
+		heartbeat = setInterval(function () {
+			try {
+				if (sid) {
+					app._touchSession(sid);
+				}
+				const now = Date.now();
+				const age = now - record.lastPong;
+				if (age > 75000) {
+					try {
+						socket.destroy();
+					} catch (_) {}
+					return;
+				}
+				wsPing(socket);
+			} catch (_) {}
+		}, 25000);
+	} catch (_) {}
+	socket.on("error", function () {
+		socket.destroy();
+	});
+	socket.on("close", function () {
+		try {
+			if (heartbeat) {
+				clearInterval(heartbeat);
+				heartbeat = 0;
+			}
+		} catch (_) {}
+		const it = app._wsClients.values();
+		while (true) {
+			const n = it.next();
+			if (n.done) {
+				break;
+			}
+			const c = n.value;
+			if (c.socket === socket) {
+				app._wsClients.delete(c);
+			}
+		}
+	});
+	socket.on("data", function (buf: Buffer) {
+		if (!buf || buf.length < 2) {
+			return;
+		}
+		const firstByte = buf[0];
+		const opcode = firstByte & 0x0f;
+		const masked = (buf[1] & 0x80) === 0x80;
+		let payloadLength = buf[1] & 0x7f;
+		let offset = 2;
 
-        // Handle extended payload length
-        if (payloadLength === 126) {
-            if (buf.length < 4) {
-                return;
-            }
-            payloadLength = buf.readUInt16BE(2);
-            offset = 4;
-        } else if (payloadLength === 127) {
-            if (buf.length < 10) {
-                return;
-            }
-            // For simplicity, we don't handle 64-bit lengths > 2^32
-            payloadLength = buf.readUInt32BE(6);
-            offset = 10;
-        }
+		// Handle extended payload length
+		if (payloadLength === 126) {
+			if (buf.length < 4) {
+				return;
+			}
+			payloadLength = buf.readUInt16BE(2);
+			offset = 4;
+		} else if (payloadLength === 127) {
+			if (buf.length < 10) {
+				return;
+			}
+			// For simplicity, we don't handle 64-bit lengths > 2^32
+			payloadLength = buf.readUInt32BE(6);
+			offset = 10;
+		}
 
-        // Handle masking key
-        let maskKey: Buffer | undefined;
-        if (masked) {
-            if (buf.length < offset + 4) {
-                return;
-            }
-            maskKey = buf.slice(offset, offset + 4);
-            offset += 4;
-        }
+		// Handle masking key
+		let maskKey: Buffer | undefined;
+		if (masked) {
+			if (buf.length < offset + 4) {
+				return;
+			}
+			maskKey = buf.slice(offset, offset + 4);
+			offset += 4;
+		}
 
-        // Extract payload
-        if (buf.length < offset + payloadLength) {
-            return;
-        }
-        let payload = buf.slice(offset, offset + payloadLength);
+		// Extract payload
+		if (buf.length < offset + payloadLength) {
+			return;
+		}
+		let payload = buf.slice(offset, offset + payloadLength);
 
-        // Unmask payload if needed
-        if (masked && maskKey) {
-            for (let i = 0; i < payload.length; i++) {
-                payload[i] ^= maskKey[i % 4];
-            }
-        }
+		// Unmask payload if needed
+		if (masked && maskKey) {
+			for (let i = 0; i < payload.length; i++) {
+				payload[i] ^= maskKey[i % 4];
+			}
+		}
 
-        // Handle different frame types
-        if (opcode === 0x8) {
-            // Close frame
-            socket.end();
-            return;
-        }
-        if (opcode === 0x9) {
-            // Ping frame - respond with pong
-            const pongFrame = Buffer.concat([
-                Buffer.from([0x8a]), // Pong opcode with FIN bit
-                Buffer.from([payload.length]), // Payload length (unmasked)
-                payload, // Echo the ping payload
-            ]);
-            socket.write(pongFrame);
-            return;
-        }
-        if (opcode === 0xa) {
-            // Pong frame - update last seen
-            try {
-                record.lastPong = Date.now();
-            } catch (_) {}
-            return;
-        }
-        // Text frames: support app-level ping/pong and invalid-target notices
-        if (opcode === 0x1) {
-            try {
-                const text = payload.toString("utf8");
-                let msg: any = {};
-                try {
-                    msg = JSON.parse(text);
-                } catch (_) {
-                    msg = {};
-                }
-                const t = String((msg && msg.type) || "");
-                if (t === "ping") {
-                    try {
-                        wsSend(
-                            socket,
-                            JSON.stringify({type: "pong", t: Date.now()}),
-                        );
-                    } catch (_) {}
-                } else if (t === "invalid") {
-                    try {
-                        const id = String((msg && msg.id) || "");
-                        const sid2 = String(record.sid || "");
-                        if (sid2) {
-                            app._touchSession(sid2);
-                            const rec2 = app._sessions.get(sid2);
-                            if (rec2 && rec2.targets) {
-                                const fn = rec2.targets.get(id);
-                                if (typeof fn === "function") {
-                                    try {
-                                        fn();
-                                    } catch (_) {}
-                                }
-                                try {
-                                    rec2.targets.delete(id);
-                                } catch (_) {}
-                            }
-                        }
-                    } catch (_) {}
-                }
-            } catch (_) {}
-            return;
-        }
-        // Other frames ignored
-    });
+		// Handle different frame types
+		if (opcode === 0x8) {
+			// Close frame
+			socket.end();
+			return;
+		}
+		if (opcode === 0x9) {
+			// Ping frame - respond with pong
+			const pongFrame = Buffer.concat([
+				Buffer.from([0x8a]), // Pong opcode with FIN bit
+				Buffer.from([payload.length]), // Payload length (unmasked)
+				payload, // Echo the ping payload
+			]);
+			socket.write(pongFrame);
+			return;
+		}
+		if (opcode === 0xa) {
+			// Pong frame - update last seen
+			try {
+				record.lastPong = Date.now();
+			} catch (_) {}
+			return;
+		}
+		// Text frames: support app-level ping/pong and invalid-target notices
+		if (opcode === 0x1) {
+			try {
+				const text = payload.toString("utf8");
+				let msg: any = {};
+				try {
+					msg = JSON.parse(text);
+				} catch (_) {
+					msg = {};
+				}
+				const t = String((msg && msg.type) || "");
+				if (t === "ping") {
+					try {
+						wsSend(
+							socket,
+							JSON.stringify({type: "pong", t: Date.now()}),
+						);
+					} catch (_) {}
+				} else if (t === "invalid") {
+					try {
+						const id = String((msg && msg.id) || "");
+						const sid2 = String(record.sid || "");
+						if (sid2) {
+							app._touchSession(sid2);
+							const rec2 = app._sessions.get(sid2);
+							if (rec2 && rec2.targets) {
+								const fn = rec2.targets.get(id);
+								if (typeof fn === "function") {
+									try {
+										fn();
+									} catch (_) {}
+								}
+								try {
+									rec2.targets.delete(id);
+								} catch (_) {}
+							}
+						}
+					} catch (_) {}
+				}
+			} catch (_) {}
+			return;
+		}
+		// Other frames ignored
+	});
 }
