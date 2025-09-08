@@ -1,4 +1,4 @@
-import ui, { Attr, AOption, Target } from "./ui";
+import ui, { AOption, Target } from "./ui";
 import { Context } from "./ui.server";
 
 // Go-style data collation helpers for server-side UI (TypeScript port)
@@ -182,7 +182,8 @@ export class Collate<T> {
             this.Loader = loader;
         }
         const q = makeQuery(this.Init);
-        return this.ui(ctx, q);
+
+        return this.render(ctx, q);
     }
 
     Load(query: TQuery): TCollateResult<T> {
@@ -211,40 +212,44 @@ export class Collate<T> {
         return out;
     }
 
-    private onXLS(ctx: Context): string {
+    private onResize(ctx: Context): string {
+        const query = makeQuery(this.Init);
+        ctx.Body(query);
+        query.Limit = query.Limit * 2;
+
+        return this.render(ctx, query);
+    }
+
+    onSort(ctx: Context): string {
+        const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
+        ctx.Body(query);
+
+        return this.render(ctx, query);
+    }
+
+    onXLS(ctx: Context): string {
         // Not implemented: no server file download plumbing here.
         // Provide a friendly info toast when clicked.
         ctx.Info("Export not implemented in this build.");
         return "";
     }
 
-    private onResize(ctx: Context): string {
-        const query = makeQuery(this.Init);
+
+    onSearch(ctx: Context): string {
+        const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
         ctx.Body(query);
-        query.Limit = query.Limit * 2;
-        return this.ui(ctx, query);
+
+        return this.render(ctx, query);
     }
 
-    private onSort(ctx: Context): string {
-        const body: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
-        ctx.Body(body);
-        const query = makeQuery(this.Init);
-        query.Order = body.Order;
-        return this.ui(ctx, query);
-    }
-
-    private onSearch(ctx: Context): string {
-        const query = makeQuery(this.Init);
+    onReset(ctx: Context): string {
+        const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
         ctx.Body(query);
-        return this.ui(ctx, query);
+
+        return this.render(ctx, query);
     }
 
-    private onReset(ctx: Context): string {
-        const query = makeQuery(this.Init);
-        return this.ui(ctx, query);
-    }
-
-    private ui(ctx: Context, query: TQuery): string {
+    render(ctx: Context, query: TQuery): string {
         const result = this.Load(query);
 
         const header = ui.div("flex flex-col")(
@@ -263,6 +268,7 @@ export class Collate<T> {
 
         return ui.div("flex flex-col gap-2 mt-2", this.Target)(header, rows, pager);
     }
+
 }
 
 function makeQuery(def: TQuery): TQuery {
@@ -281,13 +287,13 @@ function makeQuery(def: TQuery): TQuery {
     };
 }
 
-function startOfDay(t: Date): Date {
-    return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 0, 0, 0, 0);
-}
+// function startOfDay(t: Date): Date {
+//     return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 0, 0, 0, 0);
+// }
 
-function endOfDay(t: Date): Date {
-    return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59, 0);
-}
+// function endOfDay(t: Date): Date {
+//     return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59, 0);
+// }
 
 function Empty<T>(result: TCollateResult<T>): string {
     if (result.Total === 0) {
@@ -316,26 +322,13 @@ function Empty<T>(result: TCollateResult<T>): string {
     return "";
 }
 
-function Hidden(name: string, type: string, value: unknown): string {
-    return ui.input("", { type: "hidden", name: name, value: String(value) });
-}
+// function Icon2(css: string, text: string): string {
+//     return ui.div("flex gap-2 items-center")(ui.Icon(css), text);
+// }
 
-function Map2<T>(items: T[], fn: (item: T, index: number) => string[]): string {
-    const out: string[] = [];
-    for (let i = 0; i < items.length; i++) {
-        const part = fn(items[i], i);
-        out.push(part.join(" "));
-    }
-    return out.join(" ");
-}
-
-function Icon2(css: string, text: string): string {
-    return ui.div("flex gap-2 items-center")(ui.Icon(css), text);
-}
-
-function Icon3(css: string, text: string): string {
-    return ui.div("flex gap-2 items-center")(ui.Icon(css), ui.div("")(text));
-}
+// function Icon3(css: string, text: string): string {
+//     return ui.div("flex gap-2 items-center")(ui.Icon(css), ui.div("")(text));
+// }
 
 function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
     if (!collate.FilterFields || collate.FilterFields.length === 0) {
@@ -343,11 +336,9 @@ function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
     }
     return ui.div("col-span-2 relative h-0 hidden z-20", collate.TargetFilter)(
         ui.div("absolute top-1 right-0 rounded-lg bg-gray-100 border border-black shadow-2xl p-4")(
-            ui.form("flex flex-col", ctx.Submit(function (c: Context) {
-                return collate["onSearch"](c);
-            }).Replace(collate.Target))(
-                Hidden("Search", "string", query.Search),
-                Map2(collate.FilterFields, function (item: TField, index: number) {
+            ui.form("flex flex-col", ctx.Submit(collate.onSearch).Replace(collate.Target))(
+                ui.Hidden("Search", "string", query.Search),
+                ui.Map2(collate.FilterFields, function (item: TField, index: number) {
                     if (!item.DB) {
                         item.DB = item.Field;
                     }
@@ -356,22 +347,22 @@ function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
                     return [
                         ui.Iff(item.As === ZERO_DATE)(
                             ui.div("flex")(
-                                Hidden(position + ".Field", "string", item.DB),
-                                Hidden(position + ".As", "uint", item.As),
+                                ui.Hidden(position + ".Field", "string", item.DB),
+                                ui.Hidden(position + ".As", "uint", item.As),
                                 ui.ICheckbox(position + ".Bool", query).Render(item.Text),
                             ),
                         ),
                         ui.Iff(item.As === NOT_ZERO_DATE)(
                             ui.div("flex")(
-                                Hidden(position + ".Field", "string", item.DB),
-                                Hidden(position + ".As", "uint", item.As),
+                                ui.Hidden(position + ".Field", "string", item.DB),
+                                ui.Hidden(position + ".As", "uint", item.As),
                                 ui.ICheckbox(position + ".Bool", query).Render(item.Text),
                             ),
                         ),
                         ui.Iff(item.As === SELECT)(
                             ui.div("flex gap-1")(
-                                Hidden(position + ".Field", "string", item.DB),
-                                Hidden(position + ".As", "uint", item.As),
+                                ui.Hidden(position + ".Field", "string", item.DB),
+                                ui.Hidden(position + ".As", "uint", item.As),
                                 ui.ISelect(position + ".Value", query)
                                     .Options(item.Options)
                                     .Render(item.Text),
@@ -379,17 +370,17 @@ function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
                         ),
                         ui.Iff(item.As === DATES)(
                             ui.div("flex")(
-                                Hidden(position + ".Field", "string", item.DB),
-                                Hidden(position + ".As", "uint", item.As),
+                                ui.Hidden(position + ".Field", "string", item.DB),
+                                ui.Hidden(position + ".As", "uint", item.As),
                                 ui.IDate(position + ".Dates.From", query).Render("From"),
                                 ui.IDate(position + ".Dates.To", query).Render("To"),
                             ),
                         ),
                         ui.Iff(item.As === BOOL)(
                             ui.div("flex")(
-                                Hidden(position + ".Field", "string", item.DB),
-                                Hidden(position + ".As", "uint", item.As),
-                                Hidden(position + ".Condition", "string", item.Condition),
+                                ui.Hidden(position + ".Field", "string", item.DB),
+                                ui.Hidden(position + ".As", "uint", item.As),
+                                ui.Hidden(position + ".Condition", "string", item.Condition),
                                 ui.ICheckbox(position + ".Bool", query).Render(item.Text),
                             ),
                         ),
@@ -420,7 +411,7 @@ function Searching<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
     return ui.div("flex gap-px bg-blue-800 rounded-lg")(
 
         // Search
-        ui.form("flex gap-x-2", ctx.Submit(collate["onSearch"]).Replace(collate.Target))(
+        ui.form("flex gap-x-2", ctx.Submit(collate.onSearch).Replace(collate.Target))(
             ui.IText("Search", query)
                 .Class("flex-1 p-1 w-72")
                 .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full p-3")
@@ -438,11 +429,9 @@ function Searching<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
         ui.Button()
             .Color(ui.Blue)
             .Click(
-                ctx.Call(function (c: Context) {
-                    return collate["onXLS"](c);
-                }, query).None(),
+                ctx.Call(collate.onXLS, query).None(),
             )
-            .Render(Icon2("fa fa-download", "XLS")),
+            .Render(ui.IconLeft("fa fa-download", "XLS")),
 
         // Filter
         (collate.FilterFields && collate.FilterFields.length > 0) &&
@@ -455,7 +444,7 @@ function Searching<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
                 collate.TargetFilter.id +
                 '")?.classList.toggle("hidden")',
             )
-            .Render(Icon3("fa fa-fw fa-chevron-down", "Filter")),
+            .Render(ui.IconLeft("fa fa-fw fa-chevron-down", "Filter")),
     );
 }
 
@@ -483,15 +472,16 @@ function Sorting<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
         if (direction === "desc") {
             reverse = "asc";
         }
+
+        query.Order = sort.DB + " " + reverse;
+
         return ui
             .Button()
             .Class("rounded bg-white")
             .Color(color)
             .Click(
                 ctx
-                    .Call(function (c: Context) {
-                        return collate["onSort"](c);
-                    }, { Order: sort.DB + " " + reverse, Limit: 0, Offset: 0, Search: "", Filter: [] })
+                    .Call(collate.onSort, query)
                     .Replace(collate.Target),
             )
             .Render(
@@ -524,12 +514,11 @@ function Paging<T>(ctx: Context, collate: Collate<T>, result: TCollateResult<T>)
                 .Disabled(size === 0 || size <= Number(collate.Init.Limit))
                 .Click(
                     ctx
-                        .Call(function (c: Context) {
-                            return collate["onReset"](c);
-                        })
+                        .Call(collate.onReset, result.Query)
                         .Replace(collate.Target),
                 )
                 .Render(ui.Icon("fa fa-fw fa-undo")),
+
             ui
                 .Button()
                 .Class("rounded-r")
@@ -537,9 +526,7 @@ function Paging<T>(ctx: Context, collate: Collate<T>, result: TCollateResult<T>)
                 .Disabled(size >= Number(result.Filtered))
                 .Click(
                     ctx
-                        .Call(function (c: Context) {
-                            return collate["onResize"](c);
-                        }, result.Query)
+                        .Call(collate["onResize"], result.Query)
                         .Replace(collate.Target),
                 )
                 .Render(

@@ -90,6 +90,16 @@ function Map<T>(values: T[], iter: (value: T, i: number) => string): string {
     return out.join(" ");
 }
 
+
+function Map2<T>(items: T[], fn: (item: T, index: number) => string[]): string {
+    const out: string[] = [];
+    for (let i = 0; i < items.length; i++) {
+        const part = fn(items[i], i);
+        out.push(part.join(" "));
+    }
+    return out.join(" ");
+}
+
 function For(from: number, to: number, iter: (i: number) => string): string {
     const out: string[] = [];
     for (let i = from; i < to; i++) {
@@ -1756,6 +1766,10 @@ function Timeout(timeout: number, callback: () => void) {
     return stop;
 }
 
+function Hidden(name: string, type: string, value: unknown): string {
+    return input("", { type: "hidden", name: name, value: String(value) });
+}
+
 export default {
     Trim,
     Normalize,
@@ -1763,6 +1777,7 @@ export default {
     If,
     Iff,
     Map,
+    Map2,
     For,
     RandomString,
     makeId,
@@ -1830,4 +1845,5 @@ export default {
     ThemeSwitcher,
     Interval,
     Timeout,
+    Hidden,
 };

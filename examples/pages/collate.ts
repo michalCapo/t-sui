@@ -366,7 +366,7 @@ export function CollateContent(ctx: Context): string {
     seed();
 
     const init: TQuery = { Limit: 10, Offset: 0, Order: "CreatedAt desc", Search: "", Filter: [] };
-    const c = new Collate<Row>({
+    const collate = new Collate<Row>({
         init: init,
         onRow: function (r: Row): string {
             return renderRow(r);
@@ -375,15 +375,16 @@ export function CollateContent(ctx: Context): string {
             return applyQuery(DB, q);
         },
     });
-    c.Filter(buildFilters());
-    c.Sort(buildSort());
+
+    collate.Filter(buildFilters());
+    collate.Sort(buildSort());
 
     const card = ui.div("flex flex-col gap-4 mb-4")(
         ui.div("text-3xl font-bold")("Data Collation"),
         ui.div("text-gray-600 mb-2")(
             "Search, sort, filter, and paging over an in-memory dataset of 100 rows.",
         ),
-        c.Render(ctx),
+        collate.Render(ctx),
     );
 
     return ui.div("flex flex-col gap-4")(card);
