@@ -130,7 +130,7 @@ export interface CollateConfig<T> {
     onExcel?: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>;
 }
 
-export class Collate<T> {
+export interface CollateModel<T> {
     Init: TQuery;
     Target: Target;
     TargetFilter: Target;
@@ -144,62 +144,47 @@ export class Collate<T> {
     OnExcel?: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>;
     Loader?: Loader<T>;
 
-    constructor(cfg: CollateConfig<T>) {
-        this.Init = makeQuery(cfg.init);
-        this.Target = ui.Target();
-        this.TargetFilter = ui.Target();
-        this.SearchFields = [];
-        this.SortFields = [];
-        this.FilterFields = [];
-        this.ExcelFields = [];
-        this.OnRow = cfg.onRow;
-        this.Loader = cfg.loader;
-        this.OnExcel = cfg.onExcel;
-    }
+    Search: (fields: TField[]) => void;
+    Sort: (fields: TField[]) => void;
+    Filter: (fields: TField[]) => void;
+    Excel: (fields: TField[]) => void;
+    Row: (fn: (item: T, index: number) => string) => void;
+    Render: (ctx: Context, loader?: Loader<T>) => string;
 
-    Search(fields: TField[]): void {
-        this.SearchFields = fields;
-    }
+    onResize: (ctx: Context) => string;
+    onSort: (ctx: Context) => string;
+    onXLS: (ctx: Context) => string;
+    onSearch: (ctx: Context) => string;
+    onReset: (ctx: Context) => string;
+}
 
-    Sort(fields: TField[]): void {
-        this.SortFields = fields;
-    }
+export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
+    const state = {
+        Init: makeQuery(cfg.init),
+        Target: ui.Target(),
+        TargetFilter: ui.Target(),
+        SearchFields: [] as TField[],
+        SortFields: [] as TField[],
+        FilterFields: [] as TField[],
+        ExcelFields: [] as TField[],
+        OnRow: cfg.onRow as ((item: T, index: number) => string) | undefined,
+        OnExcel: cfg.onExcel,
+        Loader: cfg.loader as Loader<T> | undefined,
+    };
 
-    Filter(fields: TField[]): void {
-        this.FilterFields = fields;
-    }
-
-    Excel(fields: TField[]): void {
-        this.ExcelFields = fields;
-    }
-
-    Row(fn: (item: T, index: number) => string): void {
-        this.OnRow = fn;
-    }
-
-    Render(ctx: Context, loader?: Loader<T>): string {
-        if (loader) {
-            this.Loader = loader;
-        }
-        const q = makeQuery(this.Init);
-
-        return this.render(ctx, q);
-    }
-
-    Load(query: TQuery): TCollateResult<T> {
+    function Load(query: TQuery): TCollateResult<T> {
         const out: TCollateResult<T> = {
             Total: 0,
             Filtered: 0,
             Data: [],
             Query: query,
         };
-        const load = this.Loader;
+        const load = state.Loader;
         if (!load) {
             return out;
         }
         const res = load(query);
         if (res && typeof (res as Promise<LoadResult<T>>).then === "function") {
-            // Synchronous only rendering expected in this helper. If async provided, skip and return empty.
             return out;
         }
         const r = res as LoadResult<T>;
@@ -212,63 +197,130 @@ export class Collate<T> {
         return out;
     }
 
-    private onResize(ctx: Context): string {
-        const query = makeQuery(this.Init);
+    function render(ctx: Context, query: TQuery): string {
+        const result = Load(query);
+
+        const header = ui.div("flex flex-col")(
+            ui.div("flex gap-x-2")(
+                Sorting(ctx, state.SortFields, state.Target, onSort, query),
+                ui.Flex1,
+                Searching(
+                    ctx,
+                    query,
+                    state.Target,
+                    state.TargetFilter,
+                    state.FilterFields,
+                    state.ExcelFields,
+                    onSearch,
+                    onXLS,
+                ),
+            ),
+            ui.div("flex justify-end")(
+                Filtering(
+                    ctx,
+                    state.Target,
+                    state.TargetFilter,
+                    state.FilterFields,
+                    onSearch,
+                    query,
+                ),
+            ),
+        );
+
+        const rows = renderRows(result.Data, state.OnRow);
+        const pager = Paging(
+            ctx,
+            result,
+            state.Init ? Number(state.Init.Limit) : 10,
+            onReset,
+            onResize,
+            state.Target,
+        );
+
+        return ui.div("flex flex-col gap-2 mt-2", state.Target)(header, rows, pager);
+    }
+
+    function onResize(ctx: Context): string {
+        const query = makeQuery(state.Init);
         ctx.Body(query);
         query.Limit = query.Limit * 2;
-
-        return this.render(ctx, query);
+        return render(ctx, query);
     }
 
-    onSort(ctx: Context): string {
+    function onSort(ctx: Context): string {
         const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
         ctx.Body(query);
-
-        return this.render(ctx, query);
+        return render(ctx, query);
     }
 
-    onXLS(ctx: Context): string {
-        // Not implemented: no server file download plumbing here.
-        // Provide a friendly info toast when clicked.
+    function onXLS(ctx: Context): string {
         ctx.Info("Export not implemented in this build.");
         return "";
     }
 
-
-    onSearch(ctx: Context): string {
+    function onSearch(ctx: Context): string {
         const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
         ctx.Body(query);
-
-        return this.render(ctx, query);
+        return render(ctx, query);
     }
 
-    onReset(ctx: Context): string {
+    function onReset(ctx: Context): string {
         const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
         ctx.Body(query);
-
-        return this.render(ctx, query);
+        return render(ctx, query);
     }
 
-    render(ctx: Context, query: TQuery): string {
-        const result = this.Load(query);
-
-        const header = ui.div("flex flex-col")(
-            ui.div("flex gap-x-2")(
-                Sorting(ctx, this, query),
-                ui.Flex1,
-                Searching(ctx, this, query),
-            ),
-            ui.div("flex justify-end")(
-                Filtering(ctx, this, query),
-            ),
-        );
-
-        const rows = renderRows(result.Data, this.OnRow);
-        const pager = Paging(ctx, this, result);
-
-        return ui.div("flex flex-col gap-2 mt-2", this.Target)(header, rows, pager);
+    function Search(fields: TField[]): void {
+        state.SearchFields = fields;
     }
 
+    function Sort(fields: TField[]): void {
+        state.SortFields = fields;
+    }
+
+    function Filter(fields: TField[]): void {
+        state.FilterFields = fields;
+    }
+
+    function Excel(fields: TField[]): void {
+        state.ExcelFields = fields;
+    }
+
+    function Row(fn: (item: T, index: number) => string): void {
+        state.OnRow = fn;
+    }
+
+    function Render(ctx: Context, loader?: Loader<T>): string {
+        if (loader) {
+            state.Loader = loader;
+        }
+        const q = makeQuery(state.Init);
+        return render(ctx, q);
+    }
+
+    return {
+        Init: state.Init,
+        Target: state.Target,
+        TargetFilter: state.TargetFilter,
+        SearchFields: state.SearchFields,
+        SortFields: state.SortFields,
+        FilterFields: state.FilterFields,
+        ExcelFields: state.ExcelFields,
+        OnRow: state.OnRow as (item: T, index: number) => string,
+        OnExcel: state.OnExcel,
+        Loader: state.Loader as Loader<T>,
+        Search: Search,
+        Sort: Sort,
+        Filter: Filter,
+        Excel: Excel,
+        Row: Row,
+        Render: Render,
+        onResize: onResize,
+        onSort: onSort,
+        onXLS: onXLS,
+        onSearch: onSearch,
+        onReset: onReset,
+    } satisfies CollateModel<T>;
 }
 
 function makeQuery(def: TQuery): TQuery {
@@ -330,15 +382,15 @@ function Empty<T>(result: TCollateResult<T>): string {
 //     return ui.div("flex gap-2 items-center")(ui.Icon(css), ui.div("")(text));
 // }
 
-function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
-    if (!collate.FilterFields || collate.FilterFields.length === 0) {
+function Filtering(ctx: Context, target: Target, targetFilter: Target, filterFields: TField[], onSearch: (ctx: Context) => string, query: TQuery): string {
+    if (!filterFields || filterFields.length === 0) {
         return "";
     }
-    return ui.div("col-span-2 relative h-0 hidden z-20", collate.TargetFilter)(
+    return ui.div("col-span-2 relative h-0 hidden z-20", targetFilter)(
         ui.div("absolute top-1 right-0 rounded-lg bg-gray-100 border border-black shadow-2xl p-4")(
-            ui.form("flex flex-col", ctx.Submit(collate.onSearch).Replace(collate.Target))(
+            ui.form("flex flex-col", ctx.Submit(onSearch).Replace(target))(
                 ui.Hidden("Search", "string", query.Search),
-                ui.Map2(collate.FilterFields, function (item: TField, index: number) {
+                ui.Map2(filterFields, function (item: TField, index: number) {
                     if (!item.DB) {
                         item.DB = item.Field;
                     }
@@ -395,7 +447,7 @@ function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
                     ui.Button()
                         .Click(
                             'window.document.getElementById("' +
-                            collate.TargetFilter.id +
+                            targetFilter.id +
                             '")?.classList.add("hidden")',
                         )
                         .Class("rounded-r-lg bg-white")
@@ -407,11 +459,11 @@ function Filtering<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
     );
 }
 
-function Searching<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
+function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Target, filterFields: TField[], excelFields: TField[], onSearch: (ctx: Context) => string, onXLS: (ctx: Context) => string): string {
     return ui.div("flex gap-px bg-blue-800 rounded-lg")(
 
         // Search
-        ui.form("flex gap-x-2", ctx.Submit(collate.onSearch).Replace(collate.Target))(
+        ui.form("flex gap-x-2", ctx.Submit(onSearch).Replace(target))(
             ui.IText("Search", query)
                 .Class("flex-1 p-1 w-72")
                 .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full p-3")
@@ -425,34 +477,30 @@ function Searching<T>(ctx: Context, collate: Collate<T>, query: TQuery): string 
         ),
 
         // Excel
-        ((collate.ExcelFields && collate.ExcelFields.length > 0) || !!collate.OnExcel) &&
+        ((excelFields && excelFields.length > 0)) &&
         ui.Button()
             .Color(ui.Blue)
-            .Click(
-                ctx.Call(collate.onXLS, query).None(),
-            )
+            .Click(ctx.Call(onXLS, query).None())
             .Render(ui.IconLeft("fa fa-download", "XLS")),
 
         // Filter
-        (collate.FilterFields && collate.FilterFields.length > 0) &&
+        (filterFields && filterFields.length > 0) &&
         ui.Button()
             .Submit()
             .Class("rounded-r-lg shadow bg-white")
             .Color(ui.Blue)
             .Click(
-                'window.document.getElementById("' +
-                collate.TargetFilter.id +
-                '")?.classList.toggle("hidden")',
+                'window.document.getElementById("' + targetFilter.id + '")?.classList.toggle("hidden")',
             )
             .Render(ui.IconLeft("fa fa-fw fa-chevron-down", "Filter")),
     );
 }
 
-function Sorting<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
-    if (!collate.SortFields || collate.SortFields.length === 0) {
+function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ctx: Context) => string, query: TQuery): string {
+    if (!sortFields || sortFields.length === 0) {
         return "";
     }
-    return ui.div("flex gap-1")(ui.Map(collate.SortFields, function (sort: TField): string {
+    return ui.div("flex gap-1")(ui.Map(sortFields, function (sort: TField): string {
         if (!sort.DB) {
             sort.DB = sort.Field;
         }
@@ -479,11 +527,7 @@ function Sorting<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
             .Button()
             .Class("rounded bg-white")
             .Color(color)
-            .Click(
-                ctx
-                    .Call(collate.onSort, query)
-                    .Replace(collate.Target),
-            )
+            .Click(ctx.Call(onSort, query).Replace(target))
             .Render(
                 ui.div("flex gap-2 items-center")(
                     ui.Iff(direction === "asc")(ui.Icon("fa fa-fw fa-sort-amount-asc")),
@@ -495,7 +539,7 @@ function Sorting<T>(ctx: Context, collate: Collate<T>, query: TQuery): string {
     }));
 }
 
-function Paging<T>(ctx: Context, collate: Collate<T>, result: TCollateResult<T>): string {
+function Paging<T>(ctx: Context, result: TCollateResult<T>, initLimit: number, onReset: (ctx: Context) => string, onResize: (ctx: Context) => string, target: Target): string {
     if (result.Filtered === 0) {
         return Empty(result);
     }
@@ -511,12 +555,8 @@ function Paging<T>(ctx: Context, collate: Collate<T>, result: TCollateResult<T>)
                 .Button()
                 .Class("bg-white rounded-l")
                 .Color(ui.PurpleOutline)
-                .Disabled(size === 0 || size <= Number(collate.Init.Limit))
-                .Click(
-                    ctx
-                        .Call(collate.onReset, result.Query)
-                        .Replace(collate.Target),
-                )
+                .Disabled(size === 0 || size <= Number(initLimit))
+                .Click(ctx.Call(onReset, result.Query).Replace(target))
                 .Render(ui.Icon("fa fa-fw fa-undo")),
 
             ui
@@ -524,11 +564,7 @@ function Paging<T>(ctx: Context, collate: Collate<T>, result: TCollateResult<T>)
                 .Class("rounded-r")
                 .Color(ui.Purple)
                 .Disabled(size >= Number(result.Filtered))
-                .Click(
-                    ctx
-                        .Call(collate["onResize"], result.Query)
-                        .Replace(collate.Target),
-                )
+                .Click(ctx.Call(onResize, result.Query).Replace(target))
                 .Render(
                     ui.div("flex gap-2 items-center")(
                         ui.Icon("fa fa-arrow-down"),

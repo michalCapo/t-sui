@@ -366,7 +366,7 @@ export function CollateContent(ctx: Context): string {
     seed();
 
     const init: TQuery = { Limit: 10, Offset: 0, Order: "CreatedAt desc", Search: "", Filter: [] };
-    const collate = new Collate<Row>({
+    const collate = Collate<Row>({
         init: init,
         onRow: function (r: Row): string {
             return renderRow(r);

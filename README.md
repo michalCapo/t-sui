@@ -157,7 +157,7 @@ See `examples/` for practical usage.
 
 `ui.data.ts` adds Go‑style helpers for building list pages with consistent search, sort, filter, and paging controls.
 
-- `Collate<T>` orchestrates query state and renders header controls, rows, and pager.
+- `MakeCollate<T>` returns a collator model that renders header controls, rows, and pager.
 - `NormalizeForSearch(s)` lowercases and removes common diacritics for user‑friendly matching.
 - Types: `TQuery`, `TField`, `TCollateResult<T>` describe the query and results.
 
@@ -166,13 +166,13 @@ Basic usage:
 ```ts
 import ui from "./ui";
 import { Context } from "./ui.server";
-import { Collate, TQuery, TField, BOOL, SELECT } from "./ui.data";
+import { MakeCollate, TQuery, TField, BOOL, SELECT } from "./ui.data";
 
 type Row = { id: number; name: string; email: string };
 
 export function ListPage(ctx: Context): string {
   const init: TQuery = { Limit: 10, Offset: 0, Order: "name asc", Search: "", Filter: [] };
-  const c = new Collate<Row>({
+  const c = MakeCollate<Row>({
     init,
     onRow: function (r: Row): string {
       return ui.div("bg-white rounded p-3 border")(
