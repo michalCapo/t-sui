@@ -66,6 +66,40 @@ function Classes(...values: Array<string | undefined | false>): string {
     return Trim(values.filter(Boolean).join(" "));
 }
 
+// Resolve nested values from an object using dot-separated paths like
+// "Filter.0.Bool". Supports numeric indices for arrays.
+function getPath(data: unknown, path: string): unknown {
+    if (data == null) {
+        return undefined;
+    }
+    const p = String(path || "").split(".");
+    let cur: unknown = data as unknown;
+    for (let i = 0; i < p.length; i++) {
+        if (cur == null) {
+            return undefined;
+        }
+        const key = p[i];
+        const isObj = typeof cur === "object";
+        if (!isObj) {
+            return undefined;
+        }
+        if (Array.isArray(cur)) {
+            const idx = parseInt(key, 10);
+            if (Number.isNaN(idx)) {
+                return undefined;
+            }
+            cur = (cur as unknown[])[idx];
+            continue;
+        }
+        try {
+            cur = (cur as Record<string, unknown>)[key];
+        } catch (_) {
+            return undefined;
+        }
+    }
+    return cur;
+}
+
 function If(cond: boolean, value: () => string): string {
     if (cond) {
         return value();
@@ -729,16 +763,15 @@ function createBase(name: string, data?: Record<string, unknown>, as: string = "
             if (!api.data) {
                 return api.value;
             }
-            let val: unknown = undefined;
-            try {
-                val = (api.data as Record<string, unknown>)[api.name];
-            } catch (_) {
-                val = undefined;
-            }
+            let val: unknown = getPath(api.data, api.name);
             if (val == null) {
                 return api.value;
             }
             if (val instanceof Date) {
+                const time = val.getTime();
+                if (!Number.isFinite(time) || Number.isNaN(time)) {
+                    return "";
+                }
                 if (api.as === "date") {
                     return val.toISOString().slice(0, 10);
                 }
@@ -1236,9 +1269,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
             if (!state.visible) {
                 return "";
             }
-            const current = state.data
-                ? (state.data as Record<string, unknown>)[state.name]
-                : "";
+            const current = state.data ? getPath(state.data, state.name) : "";
             const selected = String(current || "");
             const opts: string[] = [];
             if (state.placeholder) {
@@ -1320,9 +1351,11 @@ function ICheckbox(name: string, data?: any) {
             return api;
         },
         Render: function (text: string): string {
-            const isChecked = state.data
-                ? Boolean((state.data as Record<string, unknown>)[state.name])
-                : false;
+            let isChecked = false;
+            if (state.data) {
+                const v = getPath(state.data, state.name);
+                isChecked = Boolean(v);
+            }
             const inputEl = input(Classes("cursor-pointer select-none"), {
                 type: "checkbox",
                 name: state.name,
@@ -1767,7 +1800,15 @@ function Timeout(timeout: number, callback: () => void) {
 }
 
 function Hidden(name: string, type: string, value: unknown): string {
-    return input("", { type: "hidden", name: name, value: String(value) });
+    // Use provided type for server-side coercion while visually hiding the input.
+    // Browsers treat unknown types as text; apply inline style to ensure it's hidden.
+    return input("", {
+        type: type,
+        name: name,
+        value: String(value),
+        style: "display:none;visibility:hidden;position:absolute;left:-9999px;top:-9999px;",
+        // Keep an id off this element to avoid collisions with visible controls.
+    });
 }
 
 export default {

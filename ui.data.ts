@@ -243,12 +243,15 @@ export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
     function onResize(ctx: Context): string {
         const query = makeQuery(state.Init);
         ctx.Body(query);
+        if (query.Limit <= 0) {
+            query.Limit = state.Init && state.Init.Limit > 0 ? state.Init.Limit : 10;
+        }
         query.Limit = query.Limit * 2;
         return render(ctx, query);
     }
 
     function onSort(ctx: Context): string {
-        const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
+        const query = makeQuery(state.Init);
         ctx.Body(query);
         return render(ctx, query);
     }
@@ -259,15 +262,19 @@ export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
     }
 
     function onSearch(ctx: Context): string {
-        const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
+        const query = makeQuery(state.Init);
         ctx.Body(query);
+        if (query.Limit <= 0) {
+            query.Limit = state.Init && state.Init.Limit > 0 ? state.Init.Limit : 10;
+        }
+        if (query.Offset < 0) {
+            query.Offset = 0;
+        }
         return render(ctx, query);
     }
 
     function onReset(ctx: Context): string {
-        const query: TQuery = { Limit: 0, Offset: 0, Order: "", Search: "", Filter: [] };
-        ctx.Body(query);
-        return render(ctx, query);
+        return render(ctx, cfg.init);
     }
 
     function Search(fields: TField[]): void {
@@ -386,73 +393,99 @@ function Filtering(ctx: Context, target: Target, targetFilter: Target, filterFie
     if (!filterFields || filterFields.length === 0) {
         return "";
     }
-    return ui.div("col-span-2 relative h-0 hidden z-20", targetFilter)(
-        ui.div("absolute top-1 right-0 rounded-lg bg-gray-100 border border-black shadow-2xl p-4")(
-            ui.form("flex flex-col", ctx.Submit(onSearch).Replace(target))(
+    return ui.div("col-span-2 relative h-0 hidden z-30", targetFilter)(
+        ui.div("absolute top-2 right-0 w-96 bg-white rounded-xl shadow-xl ring-1 ring-black/10 border border-gray-200")(
+            ui.form("flex flex-col p-4", ctx.Submit(onSearch).Replace(target))(
+                // Preserve key query fields when applying filters
                 ui.Hidden("Search", "string", query.Search),
-                ui.Map2(filterFields, function (item: TField, index: number) {
-                    if (!item.DB) {
-                        item.DB = item.Field;
-                    }
-                    const position = "Filter[" + String(index) + "]";
+                ui.Hidden("Order", "string", query.Order),
+                ui.Hidden("Limit", "number", query.Limit),
+                ui.Hidden("Offset", "number", 0),
 
-                    return [
-                        ui.Iff(item.As === ZERO_DATE)(
-                            ui.div("flex")(
-                                ui.Hidden(position + ".Field", "string", item.DB),
-                                ui.Hidden(position + ".As", "uint", item.As),
-                                ui.ICheckbox(position + ".Bool", query).Render(item.Text),
+                ui.div("flex items-center justify-between mb-3")(
+                    ui.div("font-semibold text-gray-800")("Filters"),
+                    ui.Button()
+                        .Click('window.document.getElementById(\'' + targetFilter.id + '\')?.classList.add(\'hidden\')')
+                        .Class("rounded-full bg-white hover:bg-gray-100 h-8 w-8 border border-gray-300 flex items-center justify-center")
+                        .Color(ui.White)
+                        .Render(ui.Icon("fa fa-fw fa-times")),
+                ),
+
+                ui.div("grid grid-cols-2 gap-3")(
+                    ui.Map2(filterFields, function (item: TField, index: number) {
+                        if (!item.DB) {
+                            item.DB = item.Field;
+                        }
+                        const position = "Filter." + String(index);
+
+                        return [
+                            ui.Iff(item.As === ZERO_DATE)(
+                                ui.div("col-span-2")(
+                                    ui.Hidden(position + ".Field", "string", item.DB),
+                                    ui.Hidden(position + ".As", "number", item.As),
+                                    ui.ICheckbox(position + ".Bool", query).Render(item.Text),
+                                ),
                             ),
-                        ),
-                        ui.Iff(item.As === NOT_ZERO_DATE)(
-                            ui.div("flex")(
-                                ui.Hidden(position + ".Field", "string", item.DB),
-                                ui.Hidden(position + ".As", "uint", item.As),
-                                ui.ICheckbox(position + ".Bool", query).Render(item.Text),
+
+                            ui.Iff(item.As === NOT_ZERO_DATE)(
+                                ui.div("col-span-2")(
+                                    ui.Hidden(position + ".Field", "string", item.DB),
+                                    ui.Hidden(position + ".As", "number", item.As),
+                                    ui.ICheckbox(position + ".Bool", query).Render(item.Text),
+                                ),
                             ),
-                        ),
-                        ui.Iff(item.As === SELECT)(
-                            ui.div("flex gap-1")(
-                                ui.Hidden(position + ".Field", "string", item.DB),
-                                ui.Hidden(position + ".As", "uint", item.As),
-                                ui.ISelect(position + ".Value", query)
-                                    .Options(item.Options)
-                                    .Render(item.Text),
+
+                            ui.Iff(item.As === DATES)(
+                                ui.div("col-span-2 grid grid-cols-2 gap-3")(
+                                    ui.Hidden(position + ".Field", "string", item.DB),
+                                    ui.Hidden(position + ".As", "number", item.As),
+                                    ui.IDate(position + ".Dates.From", query).Render("From"),
+                                    ui.IDate(position + ".Dates.To", query).Render("To"),
+                                ),
                             ),
-                        ),
-                        ui.Iff(item.As === DATES)(
-                            ui.div("flex")(
-                                ui.Hidden(position + ".Field", "string", item.DB),
-                                ui.Hidden(position + ".As", "uint", item.As),
-                                ui.IDate(position + ".Dates.From", query).Render("From"),
-                                ui.IDate(position + ".Dates.To", query).Render("To"),
+
+                            ui.Iff(item.As === SELECT)(
+                                ui.div("col-span-2")(
+                                    ui.Hidden(position + ".Field", "string", item.DB),
+                                    ui.Hidden(position + ".As", "number", item.As),
+                                    ui.ISelect(position + ".Value", query)
+                                        .Options(item.Options)
+                                        .Render(item.Text),
+                                ),
                             ),
-                        ),
-                        ui.Iff(item.As === BOOL)(
-                            ui.div("flex")(
-                                ui.Hidden(position + ".Field", "string", item.DB),
-                                ui.Hidden(position + ".As", "uint", item.As),
-                                ui.Hidden(position + ".Condition", "string", item.Condition),
-                                ui.ICheckbox(position + ".Bool", query).Render(item.Text),
+
+                            ui.Iff(item.As === BOOL)(
+                                ui.div("col-span-2")(
+                                    ui.Hidden(position + ".Field", "string", item.DB),
+                                    ui.Hidden(position + ".As", "number", item.As),
+                                    ui.Hidden(position + ".Condition", "string", item.Condition),
+                                    ui.ICheckbox(position + ".Bool", query).Render(item.Text),
+                                ),
                             ),
-                        ),
-                    ];
-                }),
-                ui.div("flex gap-px mt-3")(
+                        ];
+                    }),
+                ),
+
+                ui.div("flex justify-end gap-2 mt-6 pt-3 border-t border-gray-200")(
                     ui.Button()
                         .Submit()
-                        .Class("rounded-l-lg bg-white")
-                        .Color(ui.Blue)
-                        .Render(ui.Icon("fa fa-fw fa-check", { title: "Apply" })),
-                    ui.Button()
-                        .Click(
-                            'window.document.getElementById("' +
-                            targetFilter.id +
-                            '")?.classList.add("hidden")',
-                        )
-                        .Class("rounded-r-lg bg-white")
+                        .Class("rounded-full h-10 px-4 bg-white")
                         .Color(ui.GrayOutline)
-                        .Render(ui.Icon("fa fa-fw fa-times", { title: "Close" })),
+                        .Click(
+                            // Clear only Filter.* fields before submit; keep Search/Order/Limit
+                            "(function(e){try{var el=e.target;var form=null;" +
+                            "if(el && el.closest){form=el.closest('form');}" +
+                            "if(!form){var p=el;while(p && p.tagName && p.tagName.toLowerCase()!=='form'){p=p.parentElement;}form=p;}" +
+                            "if(form){var nodes=form.querySelectorAll('[name^=\\'Filter.\\']');" +
+                            "for(var i=0;i<nodes.length;i++){var it=nodes[i];var t=String(it.getAttribute('type')||'').toLowerCase();" +
+                            "if(t==='checkbox'){it.checked=false;}else{try{it.value='';}catch(_){} }} }}catch(_){}})(event)"
+                        )
+                        .Render(ui.IconLeft("fa fa-fw fa-rotate-left", "Reset")),
+                    ui.Button()
+                        .Submit()
+                        .Class("rounded-full h-10 px-4 shadow")
+                        .Color(ui.Blue)
+                        .Render(ui.IconLeft("fa fa-fw fa-check", "Apply")),
                 ),
             ),
         ),
@@ -463,12 +496,34 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
     return ui.div("flex gap-px bg-blue-800 rounded-lg")(
 
         // Search
-        ui.form("flex gap-x-2", ctx.Submit(onSearch).Replace(target))(
-            ui.IText("Search", query)
-                .Class("flex-1 p-1 w-72")
-                .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full p-3")
-                .Placeholder("Search")
-                .Render(""),
+        ui.form("flex", ctx.Submit(onSearch).Replace(target))(
+            ui.div("relative flex-1 w-72")(
+                ui.IText("Search", query)
+                    .Class("p-1 w-full")
+                    .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full p-3 pr-12")
+                    .Placeholder("Search")
+                    .Render(""),
+                ui.Iff(String(query.Search || "") !== "")(
+                    ui.div("absolute right-3 top-1/2 transform -translate-y-1/2")(
+                        ui
+                            .Button()
+                            .Class(
+                                "rounded-full bg-white hover:bg-gray-100 h-8 w-8 border border-gray-300 flex items-center justify-center"
+                            )
+                            .Click(
+                                ctx
+                                    .Call(onSearch, {
+                                        Search: "",
+                                        Order: query.Order,
+                                        Limit: query.Limit,
+                                        Offset: 0,
+                                    })
+                                    .Replace(target),
+                            )
+                            .Render(ui.Icon("fa fa-fw fa-times"))
+                    )
+                ),
+            ),
             ui.Button()
                 .Submit()
                 .Class("rounded shadow bg-white")
@@ -490,7 +545,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
             .Class("rounded-r-lg shadow bg-white")
             .Color(ui.Blue)
             .Click(
-                'window.document.getElementById("' + targetFilter.id + '")?.classList.toggle("hidden")',
+                'window.document.getElementById(\'' + targetFilter.id + '\')?.classList.toggle(\'hidden\')',
             )
             .Render(ui.IconLeft("fa fa-fw fa-chevron-down", "Filter")),
     );
@@ -508,7 +563,9 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
         let color = ui.GrayOutline;
         const field = String(sort.DB || "").toLowerCase();
         const order = String(query.Order || "").toLowerCase();
-        if (order.indexOf(field) >= 0) {
+
+
+        if (order.startsWith(field + " ") || order === field) {
             if (order.indexOf("asc") >= 0) {
                 direction = "asc";
             } else {
@@ -516,18 +573,24 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
             }
             color = ui.Purple;
         }
+
         let reverse = "desc";
         if (direction === "desc") {
             reverse = "asc";
         }
 
-        query.Order = sort.DB + " " + reverse;
+        const payload = {
+            Order: sort.DB + " " + reverse,
+            Search: query.Search,
+            Limit: query.Limit > 0 ? query.Limit : 10,
+            Offset: 0,
+        };
 
         return ui
             .Button()
             .Class("rounded bg-white")
             .Color(color)
-            .Click(ctx.Call(onSort, query).Replace(target))
+            .Click(ctx.Call(onSort, payload).Replace(target))
             .Render(
                 ui.div("flex gap-2 items-center")(
                     ui.Iff(direction === "asc")(ui.Icon("fa fa-fw fa-sort-amount-asc")),

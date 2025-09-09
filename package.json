@@ -3,8 +3,8 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "typecheck": "tsc --noEmit",
-        "predev": "npm run typecheck",
+        "check": "tsc --noEmit",
+        "predev": "npm run check",
         "dev": "node --import tsx examples/main.ts",
         "dev:watch": "node --import tsx --watch examples/main.ts"
     },

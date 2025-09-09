@@ -125,7 +125,7 @@ function copyRow(r: Row): Row {
     return x;
 }
 
-function renderRow(r: Row): string {
+function onRow(r: Row): string {
     return ui.div("bg-white rounded border border-gray-200 p-3 flex items-center gap-3")(
         ui.div("w-12 text-right font-mono text-gray-500")("#" + String(r.ID)),
         ui.div("flex-1")(
@@ -325,7 +325,7 @@ function applyQuery(all: Row[], q: TQuery): { total: number; filtered: number; d
     }
 
     // Sort
-    const parsed = parseOrder(q.Order || "", "CreatedAt", "desc");
+    const parsed = parseOrder(q.Order || "", "createdat", "desc");
     list.sort(function (a: Row, b: Row) {
         let cmp = 0;
         const f = parsed.field.toLowerCase();
@@ -365,12 +365,10 @@ function applyQuery(all: Row[], q: TQuery): { total: number; filtered: number; d
 export function CollateContent(ctx: Context): string {
     seed();
 
-    const init: TQuery = { Limit: 10, Offset: 0, Order: "CreatedAt desc", Search: "", Filter: [] };
+    const init: TQuery = { Limit: 10, Offset: 0, Order: "createdat desc", Search: "", Filter: [] };
     const collate = Collate<Row>({
-        init: init,
-        onRow: function (r: Row): string {
-            return renderRow(r);
-        },
+        init,
+        onRow,
         loader: function (q: TQuery) {
             return applyQuery(DB, q);
         },

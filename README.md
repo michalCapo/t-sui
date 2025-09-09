@@ -202,6 +202,21 @@ export function ListPage(ctx: Context): string {
 
 Note: The XLS export button is stubbed (shows a small info toast). Provide an `onExcel` callback and add server plumbing if you need downloadable files.
 
+Update: Sorting behavior
+- Sort controls now post only the `Order` field and the sort handler rebuilds the query from the initial config before applying it. This avoids accidental corruption of complex fields (like `Filter`) and fixes non-working sort buttons on the `examples/pages/collate.ts` page.
+
+UI: Filter popover refresh
+- The filter panel is redesigned as a tidy popover with a clear header, better spacing, and a two‑column grid for date ranges. Actions are right‑aligned and the close button is available both in the header and footer.
+- Footer buttons: converted to labeled pill buttons (“Apply”, “Close”) with clear affordances and spacing.
+- Added a “Reset” action that clears only filter fields before submitting, preserving Search/Order/Limit. This makes it easy to return to an unfiltered list without closing the popover.
+- The popover header uses a compact icon-only Close button for a clean look; footer contains Reset and Apply.
+
+Search clear
+- The search input contains a compact, icon-only close inside the field (top-right). It appears only when there is text, clears the search, preserves sort/page size, and resets offset to 0.
+
+Form typing and hidden fields
+- Hidden helper now emits semantic `type` values (e.g., `number`, `string`) and hides via inline style instead of `type="hidden"`. This allows the server to coerce values (like filter discriminants) correctly without exposing controls visually.
+
 ## Dark Mode
 
 - The server injects minimal dark-mode overrides so examples look correct with Tailwind’s `dark` class.
@@ -371,3 +386,8 @@ app.debug(true); // enable prefixed debug logs
 - `package.json`: Scripts and deps (uses `tsx`)
 - `tsconfig.json`: TS configuration
 - `LICENSE`: MIT
+Nested form data
+- Form inputs can now bind to nested data using dot-separated names (e.g., `Filter.0.Bool`). Internally, controls read their values via a safe path resolver, so the filter popover reflects current selections when reopened.
+
+Date input safety
+- Date, time, and datetime-local fields now render invalid dates as empty strings to avoid runtime errors (e.g., when an empty date was submitted and `new Date("")` produced an invalid value).

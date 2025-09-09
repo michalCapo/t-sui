@@ -9,26 +9,28 @@ interface Model {
     Count: number;
 }
 
+function decrement(ctx: Context): string {
+    const counter = { Count: 0 }
+    ctx.Body(counter);
+
+    counter.Count--;
+
+    if (counter.Count < 0) counter.Count = 0;
+
+    return render(ctx, counter);
+}
+
+function increment(ctx: Context): string {
+    const counter = { Count: 0 }
+    ctx.Body(counter);
+
+    counter.Count++;
+
+    return render(ctx, counter);
+}
+
 function render(ctx: Context, counter: Model): string {
     const target = ui.Target();
-
-    function decrement(ctx: Context): string {
-        ctx.Body(counter);
-
-        counter.Count--;
-
-        if (counter.Count < 0) counter.Count = 0;
-
-        return render(ctx, counter);
-    }
-
-    function increment(ctx: Context): string {
-        ctx.Body(counter);
-
-        counter.Count++;
-
-        return render(ctx, counter);
-    }
 
     return ui.div("flex gap-2 items-center bg-purple-500 rounded text-white p-px", target)(
         ui

@@ -28,6 +28,8 @@ export function ShowcaseContent(ctx: Context): string {
 }
 
 function render(ctx: Context, f: DemoForm, err?: Error): string {
+
+    actionSubmit.url = "/showcase-submit";
     function actionSubmit(ctx: Context): string {
         ctx.Body(f);
         ctx.Success("Form submitted successfully");
