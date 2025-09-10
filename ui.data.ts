@@ -1,4 +1,4 @@
-import ui, { AOption, Target } from "./ui";
+import ui, { AOption, Target, Skeleton } from "./ui";
 import { Context } from "./ui.server";
 
 // Go-style data collation helpers for server-side UI (TypeScript port)
@@ -121,86 +121,43 @@ export interface LoadResult<T> {
     data: T[];
 }
 
-export type Loader<T> = (query: TQuery) => Promise<LoadResult<T>> | LoadResult<T>;
+export type Loader<T> = (query: TQuery) => Promise<LoadResult<T>>;
+// export type Loader<T> = (query: TQuery) => Promise<LoadResult<T>> | LoadResult<T>;
 
-export interface CollateConfig<T> {
-    init: TQuery;
-    onRow?: (item: T, index: number) => string;
-    loader?: Loader<T>;
-    onExcel?: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>;
-}
+// export interface CollateConfig<T> {
+//     init: TQuery;
+//     onRow?: (item: T, index: number) => string;
+//     loader?: Loader<T>;
+//     onExcel?: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>;
+// }
 
 export interface CollateModel<T> {
-    Init: TQuery;
-    Target: Target;
-    TargetFilter: Target;
+    setSort: (fields: TField[]) => void;
+    setFilter: (fields: TField[]) => void;
+    setSearch: (fields: TField[]) => void;
+    setExcel: (fields: TField[]) => void;
 
-    SearchFields: TField[];
-    SortFields: TField[];
-    FilterFields: TField[];
-    ExcelFields: TField[];
-
-    OnRow?: (item: T, index: number) => string;
-    OnExcel?: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>;
-    Loader?: Loader<T>;
-
-    Search: (fields: TField[]) => void;
-    Sort: (fields: TField[]) => void;
-    Filter: (fields: TField[]) => void;
-    Excel: (fields: TField[]) => void;
     Row: (fn: (item: T, index: number) => string) => void;
-    Render: (ctx: Context, loader?: Loader<T>) => string;
-
-    onResize: (ctx: Context) => string;
-    onSort: (ctx: Context) => string;
-    onXLS: (ctx: Context) => string;
-    onSearch: (ctx: Context) => string;
-    onReset: (ctx: Context) => string;
+    Export: (fn: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>) => void;
+    Render: (ctx: Context) => string;
 }
 
-export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
+export function Collate<T>(init: TQuery, loader: Loader<T>): CollateModel<T> {
     const state = {
-        Init: makeQuery(cfg.init),
+        Init: makeQuery(init),
         Target: ui.Target(),
         TargetFilter: ui.Target(),
         SearchFields: [] as TField[],
         SortFields: [] as TField[],
         FilterFields: [] as TField[],
         ExcelFields: [] as TField[],
-        OnRow: cfg.onRow as ((item: T, index: number) => string) | undefined,
-        OnExcel: cfg.onExcel,
-        Loader: cfg.loader as Loader<T> | undefined,
+        OnRow: undefined as undefined | ((item: T, index: number) => string),
+        OnExcel: undefined as undefined | ((items: T[]) => Promise<{ filename: string; mime: string; content: string }>),
+        Loader: loader as Loader<T>,
     };
 
-    function Load(query: TQuery): TCollateResult<T> {
-        const out: TCollateResult<T> = {
-            Total: 0,
-            Filtered: 0,
-            Data: [],
-            Query: query,
-        };
-        const load = state.Loader;
-        if (!load) {
-            return out;
-        }
-        const res = load(query);
-        if (res && typeof (res as Promise<LoadResult<T>>).then === "function") {
-            return out;
-        }
-        const r = res as LoadResult<T>;
-        if (!r) {
-            return out;
-        }
-        out.Total = r.total;
-        out.Filtered = r.filtered;
-        out.Data = r.data;
-        return out;
-    }
-
-    function render(ctx: Context, query: TQuery): string {
-        const result = Load(query);
-
-        const header = ui.div("flex flex-col")(
+    function renderUI(ctx: Context, query: TQuery, result?: TCollateResult<T>, loading?: boolean): string {
+        const header = ui.div("flex flex-col" + (loading ? " pointer-events-none" : ""))(
             ui.div("flex gap-x-2")(
                 Sorting(ctx, state.SortFields, state.Target, onSort, query),
                 ui.Flex1,
@@ -226,6 +183,17 @@ export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
                 ),
             ),
         );
+        if (loading || !result) {
+            const skeletonRows = Skeleton.List(ui.Target(), 6);
+            const skeletonPager = ui.div("flex items-center justify-center")(
+                ui.div("mx-4 font-bold text-lg")("\u00A0"),
+                ui.div("flex gap-px flex-1 justify-end")(
+                    ui.div("bg-gray-200 h-9 w-10 rounded-l border")(),
+                    ui.div("bg-gray-200 h-9 w-36 rounded-r border")(),
+                ),
+            );
+            return ui.div("flex flex-col gap-2 mt-2", state.Target)(header, skeletonRows, skeletonPager);
+        }
 
         const rows = renderRows(result.Data, state.OnRow);
         const pager = Paging(
@@ -247,13 +215,15 @@ export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
             query.Limit = state.Init && state.Init.Limit > 0 ? state.Init.Limit : 10;
         }
         query.Limit = query.Limit * 2;
-        return render(ctx, query);
+        triggerLoad(ctx, query);
+        return renderUI(ctx, query, undefined, true);
     }
 
     function onSort(ctx: Context): string {
         const query = makeQuery(state.Init);
         ctx.Body(query);
-        return render(ctx, query);
+        triggerLoad(ctx, query);
+        return renderUI(ctx, query, undefined, true);
     }
 
     function onXLS(ctx: Context): string {
@@ -270,26 +240,29 @@ export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
         if (query.Offset < 0) {
             query.Offset = 0;
         }
-        return render(ctx, query);
+        triggerLoad(ctx, query);
+        return renderUI(ctx, query, undefined, true);
     }
 
     function onReset(ctx: Context): string {
-        return render(ctx, cfg.init);
+        const base = makeQuery(state.Init);
+        triggerLoad(ctx, base);
+        return renderUI(ctx, base, undefined, true);
     }
 
-    function Search(fields: TField[]): void {
+    function setSearch(fields: TField[]): void {
         state.SearchFields = fields;
     }
 
-    function Sort(fields: TField[]): void {
+    function setSort(fields: TField[]): void {
         state.SortFields = fields;
     }
 
-    function Filter(fields: TField[]): void {
+    function setFilter(fields: TField[]): void {
         state.FilterFields = fields;
     }
 
-    function Excel(fields: TField[]): void {
+    function setExcel(fields: TField[]): void {
         state.ExcelFields = fields;
     }
 
@@ -297,37 +270,47 @@ export function Collate<T>(cfg: CollateConfig<T>): CollateModel<T> {
         state.OnRow = fn;
     }
 
-    function Render(ctx: Context, loader?: Loader<T>): string {
-        if (loader) {
-            state.Loader = loader;
-        }
+    function Render(ctx: Context): string {
         const q = makeQuery(state.Init);
-        return render(ctx, q);
+        triggerLoad(ctx, q);
+        return renderUI(ctx, q, undefined, true);
+    }
+
+    function triggerLoad(ctx: Context, query: TQuery): void {
+        const resPromise = state.Loader ? state.Loader(query) : Promise.resolve({ total: 0, filtered: 0, data: [] as T[] });
+        resPromise
+            .then(function (r: LoadResult<T>) {
+                const out: TCollateResult<T> = {
+                    Total: r && typeof r.total === "number" ? r.total : 0,
+                    Filtered: r && typeof r.filtered === "number" ? r.filtered : 0,
+                    Data: r && r.data ? r.data : ([] as T[]),
+                    Query: query,
+                };
+                return out;
+            })
+            .then(function (out: TCollateResult<T>) {
+                setTimeout(function () {
+                    try { ctx.Patch(state.Target.Replace, renderUI(ctx, query, out, false)); } catch (_) { }
+                }, 200);
+            })
+            .catch(function (_err: unknown) {
+                // In case of loader errors, keep UX graceful
+                const empty: TCollateResult<T> = { Total: 0, Filtered: 0, Data: [], Query: query };
+                setTimeout(function () {
+                    try { ctx.Patch(state.Target.Replace, renderUI(ctx, query, empty, false)); } catch (_) { }
+                }, 200);
+            });
     }
 
     return {
-        Init: state.Init,
-        Target: state.Target,
-        TargetFilter: state.TargetFilter,
-        SearchFields: state.SearchFields,
-        SortFields: state.SortFields,
-        FilterFields: state.FilterFields,
-        ExcelFields: state.ExcelFields,
-        OnRow: state.OnRow as (item: T, index: number) => string,
-        OnExcel: state.OnExcel,
-        Loader: state.Loader as Loader<T>,
-        Search: Search,
-        Sort: Sort,
-        Filter: Filter,
-        Excel: Excel,
+        setSearch: setSearch,
+        setSort: setSort,
+        setFilter: setFilter,
+        setExcel: setExcel,
         Row: Row,
+        Export: function (_fn: (items: T[]) => Promise<{ filename: string; mime: string; content: string }>): void { /* stub */ },
         Render: Render,
-        onResize: onResize,
-        onSort: onSort,
-        onXLS: onXLS,
-        onSearch: onSearch,
-        onReset: onReset,
-    } satisfies CollateModel<T>;
+    } as CollateModel<T>;
 }
 
 function makeQuery(def: TQuery): TQuery {
@@ -498,9 +481,18 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
         // Search
         ui.form("flex", ctx.Submit(onSearch).Replace(target))(
             ui.div("relative flex-1 w-72")(
+                ui.div("absolute left-3 top-1/2 transform -translate-y-1/2")(
+                    ui
+                        .Button()
+                        .Submit()
+                        .Class(
+                            "rounded-full bg-white hover:bg-gray-100 h-8 w-8 border border-gray-300 flex items-center justify-center"
+                        )
+                        .Render(ui.Icon("fa fa-fw fa-search"))
+                ),
                 ui.IText("Search", query)
                     .Class("p-1 w-full")
-                    .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full p-3 pr-12")
+                    .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full py-3 pl-12 pr-12")
                     .Placeholder("Search")
                     .Render(""),
                 ui.Iff(String(query.Search || "") !== "")(
@@ -524,11 +516,6 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
                     )
                 ),
             ),
-            ui.Button()
-                .Submit()
-                .Class("rounded shadow bg-white")
-                .Color(ui.Blue)
-                .Render(ui.Icon("fa fa-fw fa-search")),
         ),
 
         // Excel

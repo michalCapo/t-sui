@@ -172,18 +172,9 @@ type Row = { id: number; name: string; email: string };
 
 export function ListPage(ctx: Context): string {
   const init: TQuery = { Limit: 10, Offset: 0, Order: "name asc", Search: "", Filter: [] };
-  const c = MakeCollate<Row>({
-    init,
-    onRow: function (r: Row): string {
-      return ui.div("bg-white rounded p-3 border")(
-        ui.div("font-bold")(r.name),
-        ui.div("text-gray-600 text-sm")(r.email),
-      );
-    },
-    loader: function (_q: TQuery) {
-      // Replace with your data source
-      return { total: 0, filtered: 0, data: [] };
-    },
+  const c = Collate<Row>(init, function (_q: TQuery) {
+    // Replace with your data source
+    return Promise.resolve({ total: 0, filtered: 0, data: [] });
   });
 
   // Optional controls
@@ -193,8 +184,8 @@ export function ListPage(ctx: Context): string {
   const sortFields: TField[] = [
     { DB: "name", Field: "name", Text: "Name", Value: "", As: BOOL, Condition: "", Options: [], Bool: false, Dates: { From: new Date(0), To: new Date(0) } },
   ];
-  c.Search(searchFields);
-  c.Sort(sortFields);
+  c.setSearch(searchFields);
+  c.setSort(sortFields);
 
   return ui.div("p-4")(ui.div("text-2xl font-bold")("List"), c.Render(ctx));
 }
@@ -204,6 +195,12 @@ Note: The XLS export button is stubbed (shows a small info toast). Provide an `o
 
 Update: Sorting behavior
 - Sort controls now post only the `Order` field and the sort handler rebuilds the query from the initial config before applying it. This avoids accidental corruption of complex fields (like `Filter`) and fixes non-working sort buttons on the `examples/pages/collate.ts` page.
+
+Update: Collate initial patch reliability
+- Collate now renders a skeleton immediately, then patches in results after a brief delay to ensure the WebSocket connection is ready. This fixes cases where a very fast loader would resolve before the client connected, leaving only the skeleton visible.
+
+Refactor: Collate rendering
+- `renderContent` and `renderLoading` were merged into a single internal function that renders either the skeleton or data based on state. This reduces duplication and keeps the header consistent.
 
 UI: Filter popover refresh
 - The filter panel is redesigned as a tidy popover with a clear header, better spacing, and a two‑column grid for date ranges. Actions are right‑aligned and the close button is available both in the header and footer.

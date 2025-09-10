@@ -8,6 +8,7 @@ import {
     DATES,
     SELECT,
     NormalizeForSearch,
+    LoadResult,
 } from "../../ui.data";
 
 class Row {
@@ -125,29 +126,6 @@ function copyRow(r: Row): Row {
     return x;
 }
 
-function onRow(r: Row): string {
-    return ui.div("bg-white rounded border border-gray-200 p-3 flex items-center gap-3")(
-        ui.div("w-12 text-right font-mono text-gray-500")("#" + String(r.ID)),
-        ui.div("flex-1")(
-            ui.div("font-semibold")(
-                r.Name + ui.space + ui.div("inline text-gray-500 text-sm")("(" + r.Role + ")"),
-            ),
-            ui.div("text-gray-600 text-sm")(
-                r.Email + " · " + r.City,
-            ),
-        ),
-        ui.div("text-gray-500 text-sm")(
-            r.CreatedAt.toISOString().slice(0, 10),
-        ),
-        ui.div("ml-2")(
-            ui.Button()
-                .Class("w-20 text-center px-2 py-1 rounded")
-                .Color(r.Active ? ui.Green : ui.Gray)
-                .Render(r.Active ? "Active" : "Inactive"),
-        ),
-    );
-}
-
 function buildFilters(): TField[] {
     const fields: TField[] = [];
     // Active (BOOL)
@@ -250,7 +228,7 @@ function parseOrder(s: string, defField: string, defDir: string): { field: strin
     return result;
 }
 
-function applyQuery(all: Row[], q: TQuery): { total: number; filtered: number; data: Row[] } {
+async function applyQuery(all: Row[], q: TQuery): Promise<{ total: number; filtered: number; data: Row[] }> {
     const total = all.length;
     let list: Row[] = [];
     for (let i = 0; i < all.length; i++) list.push(copyRow(all[i]));
@@ -362,20 +340,37 @@ function applyQuery(all: Row[], q: TQuery): { total: number; filtered: number; d
     return { total: total, filtered: filtered, data: paged };
 }
 
+seed()
+
 export function CollateContent(ctx: Context): string {
-    seed();
-
     const init: TQuery = { Limit: 10, Offset: 0, Order: "createdat desc", Search: "", Filter: [] };
-    const collate = Collate<Row>({
-        init,
-        onRow,
-        loader: function (q: TQuery) {
-            return applyQuery(DB, q);
-        },
-    });
+    const data = (q: TQuery) => applyQuery(DB, q);
+    const collate = Collate<Row>(init, data);
 
-    collate.Filter(buildFilters());
-    collate.Sort(buildSort());
+    collate.setFilter(buildFilters());
+    collate.setSort(buildSort());
+    collate.Row(function (r: Row, _: number): string {
+        return ui.div("bg-white rounded border border-gray-200 p-3 flex items-center gap-3")(
+            ui.div("w-12 text-right font-mono text-gray-500")("#" + String(r.ID)),
+            ui.div("flex-1")(
+                ui.div("font-semibold")(
+                    r.Name + ui.space + ui.div("inline text-gray-500 text-sm")("(" + r.Role + ")"),
+                ),
+                ui.div("text-gray-600 text-sm")(
+                    r.Email + " · " + r.City,
+                ),
+            ),
+            ui.div("text-gray-500 text-sm")(
+                r.CreatedAt.toISOString().slice(0, 10),
+            ),
+            ui.div("ml-2")(
+                ui.Button()
+                    .Class("w-20 text-center px-2 py-1 rounded")
+                    .Color(r.Active ? ui.Green : ui.Gray)
+                    .Render(r.Active ? "Active" : "Inactive"),
+            ),
+        );
+    });
 
     const card = ui.div("flex flex-col gap-4 mb-4")(
         ui.div("text-3xl font-bold")("Data Collation"),

@@ -566,19 +566,45 @@ export class Context {
 
         const body: BodyItem[] = [];
         const values = action.values || [];
+        function pushValue(prefix: string, v: any): void {
+            if (v == null) {
+                body.push({ name: prefix, type: "string", value: "" });
+                return;
+            }
+            // Dates
+            if (v instanceof Date) {
+                body.push({ name: prefix, type: typeOf(v), value: valueToString(v) });
+                return;
+            }
+            const t = typeof v;
+            if (t === "string" || t === "number" || t === "boolean") {
+                body.push({ name: prefix, type: typeOf(v), value: valueToString(v) });
+                return;
+            }
+            if (Array.isArray(v)) {
+                for (let i = 0; i < v.length; i++) {
+                    pushValue(prefix + "." + String(i), v[i]);
+                }
+                return;
+            }
+            if (t === "object") {
+                const entries = Object.entries(v);
+                for (let j = 0; j < entries.length; j++) {
+                    const kv = entries[j];
+                    pushValue(prefix + "." + String(kv[0]), kv[1]);
+                }
+                return;
+            }
+            // Fallback
+            body.push({ name: prefix, type: "string", value: String(v) });
+        }
         for (let i = 0; i < values.length; i++) {
             const item = values[i];
             if (item == null) continue;
             const entries = Object.entries(item);
             for (let j = 0; j < entries.length; j++) {
                 const kv = entries[j];
-                const name = kv[0];
-                const value = kv[1];
-                body.push({
-                    name: name,
-                    type: typeOf(value),
-                    value: valueToString(value),
-                });
+                pushValue(String(kv[0]), kv[1]);
             }
         }
 
@@ -886,11 +912,35 @@ function setPath(obj: any, path: string, value: any) {
     let current = obj;
     for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
-        if (!(part in current) || typeof current[part] !== "object")
-            current[part] = {};
+        const next = parts[i + 1];
+        const nextIsIndex = /^[0-9]+$/.test(String(next || ""));
+        if (!(part in current) || typeof current[part] !== "object") {
+            current[part] = nextIsIndex ? [] : {};
+        }
         current = current[part];
     }
-    current[parts[parts.length - 1]] = value;
+    const last = parts[parts.length - 1];
+    if (/^[0-9]+$/.test(String(last))) {
+        const idx = parseInt(String(last), 10);
+        if (!Array.isArray(current)) {
+            // Convert to array if needed
+            const tmp: any[] = [];
+            try {
+                const keys = Object.keys(current);
+                for (let k = 0; k < keys.length; k++) {
+                    const key = keys[k];
+                    const n = parseInt(key, 10);
+                    if (!Number.isNaN(n)) {
+                        tmp[n] = current[key];
+                    }
+                }
+            } catch (_) {}
+            current = tmp;
+        }
+        current[idx] = value;
+    } else {
+        current[last] = value;
+    }
 }
 
 export const __post = ui.Trim(`
