@@ -346,11 +346,11 @@ const h = setInterval(function () {
 ## Development Notes
 
 - Run TypeScript with `tsx` (no build step needed). Use `tsc --noEmit` only to type-check if desired.
-- Coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
+- Coding conventions live in `AGENTS.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
 - Formatting: Prettier is configured for the Go-style rules. Tabs, width 4, `printWidth` 100,
   trailing commas, and no spaces inside object braces. Run `npx prettier --write .` to format.
   Import grouping/order and language constraints (no arrows/spread/ternary/destructuring) are
-  manual per `coding.md`.
+	manual per `AGENTS.md`.
 
 - 2025-09-06: Internal cleanup to remove all `as any` casts and improve typing in `ui.ts` (no public API changes). This aligns with the Go-style formatting guide’s “Important” rules.
 - 2025-09-06: Replace SSE (`/__live`, `/__sse`) with native WebSocket server at `/__ws`; existing helpers now use WS. Sessions are still tracked via stored `sid`.

@@ -1,18 +1,23 @@
-# Go‑Style TypeScript Formatting Guide
+# Go‑Style TypeScript Guide (Single Source of Truth)
 
-This project follows a Go‑inspired style, adapted from Effective Go, applied to TypeScript.
-The goal is mechanical, uncontroversial formatting and simple, readable code.
-
-Use these rules consistently. Prefer clarity over cleverness.
+This repository uses a Go‑inspired style for TypeScript: simple constructs, explicit types, and
+boring, mechanical formatting. This document replaces the former `coding.md` and is the single
+source of truth for coding and formatting conventions.
 
 See the project overview and usage in `README.md`.
 
-## Important
+## Important (at a glance)
 
-- dont use `(<variable> as any)`
-- always update `readme.md` when you change the code
-- coding conventions live in `coding.md` (Go-like style, avoid spread/ternary/destructuring, explicit defaults, etc.).
-- use `tsc --noEmit` for type-checking.
+- Never write `(<variable> as any)`; avoid `any` entirely. Use `unknown` and narrow.
+- Write TS like Go: no spread, no ternary, no destructuring, no arrow functions.
+- Initialize new object literals with all fields and explicit defaults.
+- Prefer `const`; use `let` only when required; never `var`.
+- Use `tsx` to run TypeScript; do not emit JS for runtime. Use `tsc --noEmit` for type checks.
+- Imports from Node builtins must use the `node:` prefix.
+- Return errors as values when practical (Result pattern below) or throw at clear boundaries.
+- One import per line; keep imports grouped and alphabetized.
+- Tabs for indentation, max line width ~100, always use braces.
+- When you modify code or behavior, also update `README.md` where relevant.
 
 ## Philosophy
 
@@ -23,14 +28,14 @@ See the project overview and usage in `README.md`.
 ## Core Rules (Project Specific)
 
 - Write TypeScript as you would Go, using simple language constructs.
-- Imports from Node builtins must use the `node:` prefix (e.g., `import fs from 'node:fs'`).
+- Imports from Node builtins must use the `node:` prefix (e.g., `import fs from "node:fs"`).
 - Do not use the spread operator (`...`).
-- Do not use the ternary operator (`cond ? a : b`).
+- Do not use the ternary operator.
 - Do not use object or array destructuring.
 - Do not use arrow functions; prefer named `function` declarations.
 - Do not use the `any` type. Prefer `unknown` and narrow as needed.
 - Return errors as values where practical (see Error Handling).
-- When creating new objects, initialize all fields with defaults (no implicit “zero values”).
+- When creating new objects, initialize all fields with defaults (no implicit zero values).
 - Always use `tsx` to run TypeScript. Do not emit JavaScript for runtime.
 - If using `tsc`, run with `--noEmit` to type‑check only.
 
@@ -38,28 +43,28 @@ See the project overview and usage in `README.md`.
 
 - Indentation: use tabs (or a consistent 2/4‑space equivalent if required). Never mix.
 - Braces: opening `{` on the same line. Always use braces, even for single‑line blocks.
-    ```ts
-    if (x < y) {
-    	foo();
-    } else {
-    	bar();
-    }
-    ```
+        ```ts
+        if (x < y) {
+		foo();
+        } else {
+		bar();
+        }
+        ```
 - Line length: target ≤ 100 chars. Break long expressions with a continued indent.
 - Spacing: one space after keywords; spaces around binary operators; no extra spaces inside `()`, `[]`, `{}`.
-    ```ts
-    foo(x, y); // ok
-    foo(x, y); // avoid
-    ```
+        ```ts
+        foo(x, y); // ok
+        foo(x, y); // avoid
+        ```
 - Blank lines: group related logic; avoid excessive vertical whitespace.
 - Trailing commas: allowed in multiline literals and imports to produce cleaner diffs.
 
 ## Imports
 
 - Group in this order, with a blank line between groups:
-    - Node builtins (with `node:` prefix)
-    - Third‑party packages
-    - Internal/local modules (relative or workspace paths)
+        - Node builtins (with `node:` prefix)
+        - Third‑party packages
+        - Internal/local modules (relative or workspace paths)
 - Within each group, order alphabetically by module specifier.
 - One import per line; avoid combining unrelated names in a single statement.
 
@@ -90,14 +95,15 @@ import { logger } from "./endpoint/lib/server.utils.ts";
 - One declaration per line. Group related constants near usage.
 - Always provide explicit return types for exported functions; local inference is acceptable.
 - Initialize object literals with all fields, using explicit defaults.
-    ```ts
-    type Cfg = { host: string; port: number; secure: boolean };
-    const cfg: Cfg = { host: "", port: 0, secure: false };
-    ```
+        ```ts
+        type Cfg = { host: string; port: number; secure: boolean };
+        const cfg: Cfg = { host: "", port: 0, secure: false };
+        ```
 
 ## Control Flow
 
-- Prefer straightforward `if/else`, `for`, and `switch`. Avoid the ternary operator.
+- Prefer straightforward `if/else`, `for`, and `switch`.
+- Avoid the ternary operator; use an `if/else` for clarity.
 - Use guard clauses for error/edge cases to minimize nesting.
 - Avoid clever one‑liners; prioritize readability.
 
@@ -105,21 +111,23 @@ import { logger } from "./endpoint/lib/server.utils.ts";
 
 - Prefer explicit error values. For synchronous code, return a discriminated union:
 
-    ```ts
-    type Ok<T> = { ok: true; value: T };
-    type Err<E = unknown> = { ok: false; error: E };
-    type Result<T, E = unknown> = Ok<T> | Err<E>;
+        ```ts
+        type Ok<T> = { ok: true; value: T };
+        type Err<E = unknown> = { ok: false; error: E };
+        type Result<T, E = unknown> = Ok<T> | Err<E>;
 
-    function parseIntSafe(s: string): Result<number, string> {
-    	const n = Number.parseInt(s, 10);
-    	if (Number.isNaN(n)) return { ok: false, error: "not a number" };
-    	return { ok: true, value: n };
-    }
-    ```
+        function parseIntSafe(s: string): Result<number, string> {
+		const n = Number.parseInt(s, 10);
+		if (Number.isNaN(n)) {
+			return { ok: false, error: "not a number" };
+		}
+		return { ok: true, value: n };
+        }
+        ```
 
 - For async code, either:
-    - return `Promise<Result<T, E>>`, or
-    - throw and catch at boundaries (routes, jobs) to translate into `Result` or HTTP errors.
+        - return `Promise<Result<T, E>>`, or
+        - throw and catch at boundaries (routes, jobs) to translate into `Result` or HTTP errors.
 - Never swallow errors. Log with context via the shared logger.
 
 ## Functions
@@ -132,23 +140,23 @@ import { logger } from "./endpoint/lib/server.utils.ts";
 
 - Use line comments `//` for code; `/** ... */` for API docs and types.
 - Doc comments for exported items should start with the identifier name and describe behavior:
-    ```ts
-    // startAdmin launches the admin HTTP server on the configured port.
-    export function startAdmin(cfg: Cfg): void {
-    	/* ... */
-    }
-    ```
+        ```ts
+        // startAdmin launches the admin HTTP server on the configured port.
+        export function startAdmin(cfg: Cfg): void {
+		/* ... */
+        }
+        ```
 - Comments explain “why” more than “what”. Keep them up to date.
 
 ## File Layout and Order
 
 - One major export per file when practical; keep files focused.
 - Order within a file:
-    - Imports (grouped as above)
-    - Module‑level types and constants
-    - Public exports
-    - Internal helpers
-    - Module side‑effects (avoid when possible)
+        - Imports (grouped as above)
+        - Module‑level types and constants
+        - Public exports
+        - Internal helpers
+        - Module side‑effects (avoid when possible)
 
 ## Collections and Literals
 
@@ -159,6 +167,13 @@ import { logger } from "./endpoint/lib/server.utils.ts";
 
 - Keep async flows simple. Prefer sequential `await` or small, explicit `Promise.all` groups.
 - Timeouts, retries, and backoffs should be explicit and configurable.
+
+## Development workflow
+
+- Run TS with `tsx`. Do not emit JS artifacts for runtime.
+- Type-check locally with `tsc --noEmit` or `npm run typecheck`.
+- Formatting: Prettier is configured in the repo to align with these rules (tabs, width 100,
+    trailing commas). See `README.md` for commands.
 
 ## Example (Before / After)
 
@@ -181,7 +196,13 @@ function readText(path: string): string {
 	return fs.readFileSync(path, "utf8");
 }
 
-const value = cond ? /* avoid ternary */ A() : B(); // replace with if/else in real code
+// Use if/else instead of a ternary in real code
+let value: string;
+if (cond) {
+	value = A();
+} else {
+	value = B();
+}
 ```
 
 ---
