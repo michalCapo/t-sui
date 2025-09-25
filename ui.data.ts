@@ -542,6 +542,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
     if (!sortFields || sortFields.length === 0) {
         return "";
     }
+
     return ui.div("flex gap-1")(ui.Map(sortFields, function (sort: TField): string {
         if (!sort.DB) {
             sort.DB = sort.Field;
@@ -575,7 +576,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
 
         return ui
             .Button()
-            .Class("rounded bg-white")
+            .Class("bg-white rounded")
             .Color(color)
             .Click(ctx.Call(onSort, payload).Replace(target))
             .Render(

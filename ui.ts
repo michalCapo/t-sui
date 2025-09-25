@@ -116,28 +116,28 @@ function Iff(cond: boolean) {
     };
 }
 
-function Map<T>(values: T[], iter: (value: T, i: number) => string): string {
+function Map<T>(values: T[], iter: (value: T, i: number, first: boolean, last: boolean) => string): string {
     const out: string[] = [];
     for (let i = 0; i < values.length; i++) {
-        out.push(iter(values[i], i));
+        out.push(iter(values[i], i, i === 0, i === values.length - 1));
     }
     return out.join(" ");
 }
 
 
-function Map2<T>(items: T[], fn: (item: T, index: number) => string[]): string {
+function Map2<T>(items: T[], fn: (item: T, index: number, first: boolean, last: boolean) => string[]): string {
     const out: string[] = [];
     for (let i = 0; i < items.length; i++) {
-        const part = fn(items[i], i);
+        const part = fn(items[i], i, i === 0, i === items.length - 1);
         out.push(part.join(" "));
     }
     return out.join(" ");
 }
 
-function For(from: number, to: number, iter: (i: number) => string): string {
+function For(from: number, to: number, iter: (i: number, first: boolean, last: boolean) => string): string {
     const out: string[] = [];
     for (let i = from; i < to; i++) {
-        out.push(iter(i));
+        out.push(iter(i, i === from, i === to - 1));
     }
     return out.join(" ");
 }
