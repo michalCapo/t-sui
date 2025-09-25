@@ -796,11 +796,7 @@ export class Context {
         displayMessage(this, message, "bg-blue-700 text-white");
     }
 
-    Patch(
-        target: { id: string; swap: Swap },
-        html: string | Promise<string>,
-        clear?: () => void,
-    ): void {
+    Patch(target: { id: string; swap: Swap }, html: string | Promise<string>, clear?: () => void): void {
         // Track the target id for this session so the server can react to client-reported invalid targets.
         try {
             const sid = this.sessionID;
@@ -934,7 +930,7 @@ function setPath(obj: any, path: string, value: any) {
                         tmp[n] = current[key];
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
             current = tmp;
         }
         current[idx] = value;
