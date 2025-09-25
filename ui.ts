@@ -394,61 +394,9 @@ function IconEnd(css: string, text: string): string {
 
 function Label(css: string, ...attr: Attr[]) {
     return function (text: string) {
-        // return (
-        //     '<label class=\"' +
-        //     css +
-        //     '\" ' +
-        //     renderAttrs(attr) +
-        //     ">" +
-        //     text +
-        //     "</label>"
-        // );
-
         return label(css, ...attr)(text);
     };
 }
-
-// function renderAttrs(attr: Attr[]): string {
-//     let out = "";
-//     for (let i = 0; i < attr.length; i++) {
-//         const a = attr[i];
-//         const keys = Object.keys(a as object);
-//         let part = "";
-//         for (let j = 0; j < keys.length; j++) {
-//             const k = keys[j] as keyof Attr;
-//             const v = a[k];
-//             // Skip internal target-related fields so they don't render as attributes
-//             const kl = String(k).toLowerCase();
-//             if (
-//                 kl === "skeleton" ||
-//                 kl === "replace" ||
-//                 kl === "append" ||
-//                 kl === "prepend" ||
-//                 kl === "render"
-//             ) {
-//                 continue;
-//             }
-//             if (v === undefined || v === false) {
-//                 continue;
-//             }
-//             let val = String(v);
-//             if (v === true) {
-//                 val = String(k);
-//             }
-//             if (part.length > 0) {
-//                 part += " ";
-//             }
-//             part += String(k) + '="' + val + '"';
-//         }
-//         if (part) {
-//             if (out.length > 0) {
-//                 out += " ";
-//             }
-//             out += part;
-//         }
-//     }
-//     return out;
-// }
 
 function makeId(): string {
     return "i" + RandomString(15);
