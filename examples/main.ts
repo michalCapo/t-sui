@@ -67,9 +67,7 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
             links += a(route.Title);
         }
 
-        const nav = ui.div(
-            "bg-white dark:bg-gray-900 shadow mb-6 fixed top-0 left-0 right-0 z-10",
-        )(
+        const nav = ui.div("bg-white dark:bg-gray-900 shadow mb-6 fixed top-0 left-0 right-0 z-10")(
             ui.div("max-w-5xl mx-auto px-4 py-2 flex items-center gap-2")(
                 ui.div("flex flex-nowrap gap-1 overflow-auto")(links),
                 ui.div("flex-1")(),
