@@ -55,13 +55,31 @@ export interface Target {
 const re = /\s{4,}/g;
 const re2 = /[\t\n]+/g;
 const re3 = /"/g;
+const reCommentHtml = /<!--[\s\S]*?-->/g;
+const reCommentBlock = /\/\*[\s\S]*?\*\//g;
+const reCommentLine = /^[\t ]*\/\/.*$/gm;
 
+// Remove inline comments before normalizing whitespace in multi-line strings
 function Trim(s: string): string {
-    return s.replace(re2, "").replace(re, " ").trim();
+    return s
+        .replace(reCommentHtml, " ")
+        .replace(reCommentBlock, " ")
+        .replace(reCommentLine, " ")
+        .replace(re2, " ")
+        .replace(re, " ")
+        .trim();
+
 }
 
 function Normalize(s: string): string {
-    return s.replace(re3, "&quot;").replace(re2, "").replace(re, " ").trim();
+    return s
+        .replace(reCommentHtml, " ")
+        .replace(reCommentBlock, " ")
+        .replace(reCommentLine, " ")
+        .replace(re3, "&quot;")
+        .replace(re2, "")
+        .replace(re, " ")
+        .trim();
 }
 
 function Classes(...values: Array<string | undefined | false>): string {

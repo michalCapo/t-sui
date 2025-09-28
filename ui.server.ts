@@ -38,14 +38,14 @@ function safeJsonParse<T>(jsonString: string, maxLength = 1000000): T | undefine
 
 // Security headers configuration
 function setSecurityHeaders(res: ServerResponse, isSecure = false): void {
-    // Content Security Policy - restrictive but functional
+    // Content Security Policy - updated to allow external stylesheets
     const csp = [
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline'",  // Allow inline scripts for framework functionality
-        "style-src 'self' 'unsafe-inline'",   // Allow inline styles
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",   // Allow external stylesheets from CDNJS
+        "font-src 'self' https://cdnjs.cloudflare.com",  // Allow fonts from CDNJS
         "img-src 'self' data: https:",
         "connect-src 'self' ws: wss:",        // Allow WebSocket connections
-        "font-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'"
@@ -1605,6 +1605,39 @@ export const __load = ui.Trim(`
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 document.title = doc.title;
+
+                const collectedScripts = [];
+                if (doc.head) {
+                    const headScripts = doc.head.querySelectorAll('script');
+                    for (let i = 0; i < headScripts.length; i++) {
+                        const scriptEl = headScripts[i];
+                        collectedScripts.push({
+                            target: 'head',
+                            src: scriptEl.getAttribute('src') || '',
+                            type: scriptEl.getAttribute('type') || '',
+                            text: scriptEl.textContent || '',
+                        });
+                        if (scriptEl.parentNode) {
+                            scriptEl.parentNode.removeChild(scriptEl);
+                        }
+                    }
+                }
+                if (doc.body) {
+                    const bodyScripts = doc.body.querySelectorAll('script');
+                    for (let i = 0; i < bodyScripts.length; i++) {
+                        const scriptEl = bodyScripts[i];
+                        collectedScripts.push({
+                            target: 'body',
+                            src: scriptEl.getAttribute('src') || '',
+                            type: scriptEl.getAttribute('type') || '',
+                            text: scriptEl.textContent || '',
+                        });
+                        if (scriptEl.parentNode) {
+                            scriptEl.parentNode.removeChild(scriptEl);
+                        }
+                    }
+                }
+
                 // Safer body replacement
                 try {
                     // Clear body safely
@@ -1620,12 +1653,25 @@ export const __load = ui.Trim(`
                     console.warn('Safe body replacement failed, using innerHTML:', e);
                     document.body.innerHTML = doc.body.innerHTML;
                 }
-                const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
-                for (let i = 0; i < scripts.length; i++) {
+
+                for (let i = 0; i < collectedScripts.length; i++) {
+                    const info = collectedScripts[i];
                     const newScript = document.createElement('script');
-                    newScript.textContent = scripts[i].textContent;
-                    document.body.appendChild(newScript);
+                    if (info.type) {
+                        newScript.type = info.type;
+                    }
+                    if (info.src) {
+                        newScript.src = info.src;
+                    } else {
+                        newScript.text = info.text;
+                    }
+                    if (info.target === 'head') {
+                        document.head.appendChild(newScript);
+                    } else {
+                        document.body.appendChild(newScript);
+                    }
                 }
+
                 window.history.pushState({}, doc.title, href);
             })
             .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
