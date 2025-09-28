@@ -1337,7 +1337,7 @@ function ICheckbox(name: string, data?: any) {
                 state.error && "invalid",
             );
             return div(wrapperClass)(
-                label("flex items-center gap-2")(inputEl + " " + text),
+                label("flex items-center gap-2 cursor-pointer select-none")(inputEl + " " + text),
             );
         },
     };
@@ -1409,7 +1409,7 @@ function IRadio(name: string, data?: any) {
                 state.error && "invalid",
             );
             return div(wrapperCls)(
-                label(Classes("flex items-center gap-2", state.cssLabel))(
+                label(Classes("flex items-center gap-2 cursor-pointer select-none", state.cssLabel))(
                     inputEl + " " + text,
                 ),
             );
@@ -1462,7 +1462,7 @@ function IRadioButtons(name: string, data?: any) {
                 const o = state.options[i];
                 const active = selected === o.id;
                 const cls = Classes(
-                    "px-3 py-2 border rounded",
+                    "px-3 py-2 border rounded cursor-pointer select-none",
                     active && "bg-blue-700 text-white",
                 );
                 const inputEl = input("", {

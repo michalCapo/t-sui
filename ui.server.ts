@@ -1531,16 +1531,22 @@ export const __submit = ui.Trim(`
                 for (var i = 0; i < found.length; i++) {
                     var item = found[i];
                     var name = item.getAttribute('name');
-                    var type = item.getAttribute('type');
+                    var typeAttr = item.getAttribute('type');
                     var value = item.value;
-                    if (type === 'checkbox') { value = String(item.checked); }
+                    if (typeAttr === 'checkbox') {
+                        value = String(item.checked);
+                    }
+                    var finalType = typeAttr;
+                    if (finalType == null || finalType === '') {
+                        finalType = 'string';
+                    }
                     if (name != null) {
                         var newBody = [];
                         for (var b = 0; b < body.length; b++) {
                             if (body[b].name !== name) { newBody.push(body[b]); }
                         }
                         body = newBody;
-                        body.push({ name: name, type: type, value: value });
+                        body.push({ name: name, type: finalType, value: value });
                     }
                 }
                 var L = __loader.start();
