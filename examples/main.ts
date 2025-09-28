@@ -14,6 +14,7 @@ import { ShowcaseContent } from "./pages/showcase";
 import { AppendContent } from "./pages/append";
 import { OthersContent } from "./pages/others";
 import { CollateContent } from "./pages/collate";
+import { CaptchaContent } from "./pages/captcha";
 
 type Route = { Path: string; Title: string };
 const routes: Route[] = [
@@ -31,6 +32,7 @@ const routes: Route[] = [
     { Path: "/append", Title: "Append" },
     { Path: "/others", Title: "Others" },
     { Path: "/collate", Title: "Collate" },
+    { Path: "/captcha", Title: "Captcha" },
 ];
 
 const app = MakeApp("en");
@@ -100,6 +102,7 @@ app.Page("/table", layout("Table", TableContent));
 app.Page("/append", layout("Append", AppendContent));
 app.Page("/others", layout("Others", OthersContent));
 app.Page("/collate", layout("Collate", CollateContent));
+app.Page("/captcha", layout("Captcha", CaptchaContent));
 
 app.Debug(true);
 app.AutoReload(true);

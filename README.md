@@ -39,6 +39,7 @@ There are two main modules (plus optional data helpers):
 - `ui.ts`: HTML builder and components. Exports a default `ui` object with functions like `div`, `form`, `Button`, `IText`, `INumber`, `ISelect`, `SimpleTable`, etc.
 - `ui.server.ts`: Minimal HTTP server + routing + client helpers. Exposes `App`, `MakeApp`, and `Context` with methods for registering pages/actions and wiring partial updates.
 - `ui.data.ts`: Optional Go‑style data collation helpers (search/sort/filter/paging) built on top of `ui` and `Context`.
+- `ui.captcha3.ts`: Drag-and-drop CAPTCHA component with server-backed session helpers.
 
 ### Sessions (Online Clients)
 
@@ -148,7 +149,8 @@ app.Listen(1422);
 ## API Highlights
 
 - Layout primitives: `div`, `span`, `form`, `a`, `label`, `img`, `input`, `ul`, `li`, `canvas`
-- Components: `Button`, `IText`, `IPassword`, `IArea`, `INumber`, `IDate`, `ITime`, `IDateTime`, `ISelect`, `ICheckbox`, `IRadio`, `IRadioButtons`, `SimpleTable`
+- Components: `Button`, `IText`, `IPassword`, `IArea`, `INumber`, `IDate`, `ITime`, `IDateTime`, `ISelect`, `ICheckbox`, `IRadio`, `IRadioButtons`, `SimpleTable`, `Captcha3`
+- CAPTCHA: `import { Captcha3 } from "./ui.captcha3";` renders the drag-and-drop puzzle and exposes `Validate*` helpers for server checks.
 - Utilities: `Classes`, `Trim`, `Normalize`, `Map`, `For`, size presets `XS|SM|MD|ST|LG|XL`, color presets `Blue|Red|Green|...`
 - Server: `App`, `MakeApp(lang)`, `app.Page(path, fn)`, `app.Listen(port)`
 - Context: `ctx.Body(out)`, `ctx.Call(fn).Render/Replace(target)`, `ctx.Send(fn).Render/Replace(target)`, `ctx.Submit(fn).Render/Replace(target)`, `ctx.Load(href)`, `ctx.Success/Error/Info(msg)`, `ctx.Patch(target, html, clear?)`

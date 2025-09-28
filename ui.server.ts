@@ -8,6 +8,10 @@ import ui, { Attr, Target, Swap } from "./ui";
 // Internal: associate parsed request bodies without mutating IncomingMessage
 const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
 
+export function RequestBody(req: IncomingMessage): BodyItem[] | undefined {
+	return REQ_BODY.get(req);
+}
+
 export type ActionType = "POST" | "FORM";
 
 export const GET = "GET";

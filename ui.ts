@@ -1759,6 +1759,11 @@ function Hidden(name: string, type: string, value: unknown): string {
     });
 }
 
+function Script(body: string): string {
+    const safeBody = String(body || "");
+    return "<script>" + safeBody + "</script>";
+}
+
 export default {
     Trim,
     Normalize,
@@ -1835,4 +1840,5 @@ export default {
     Interval,
     Timeout,
     Hidden,
+    script: Script,
 };
