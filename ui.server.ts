@@ -5,6 +5,117 @@ import crypto from "node:crypto";
 import type { Socket } from "node:net";
 import ui, { Attr, Target, Swap } from "./ui";
 
+// Enhanced input validation and sanitization functions
+function validateAndSanitizeInput(input: string, maxLength = 1000000): string {
+    if (!input || typeof input !== 'string') {
+        return '';
+    }
+    if (input.length > maxLength) {
+        throw new Error(`Input too large: ${input.length} > ${maxLength}`);
+    }
+    // Basic sanitization - remove potential dangerous characters
+    return input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
+}
+
+function safeJsonParse<T>(jsonString: string, maxLength = 1000000): T | undefined {
+    try {
+        if (!jsonString || typeof jsonString !== 'string') {
+            return undefined;
+        }
+        if (jsonString.length > maxLength) {
+            throw new Error(`JSON string too large: ${jsonString.length} > ${maxLength}`);
+        }
+        // Basic JSON structure validation
+        if (!jsonString.trim().startsWith('{') && !jsonString.trim().startsWith('[')) {
+            throw new Error('Invalid JSON structure');
+        }
+        return JSON.parse(jsonString) as T;
+    } catch (error) {
+        console.warn('JSON parsing failed:', error);
+        return undefined;
+    }
+}
+
+// Security headers configuration
+function setSecurityHeaders(res: ServerResponse, isSecure = false): void {
+    // Content Security Policy - restrictive but functional
+    const csp = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",  // Allow inline scripts for framework functionality
+        "style-src 'self' 'unsafe-inline'",   // Allow inline styles
+        "img-src 'self' data: https:",
+        "connect-src 'self' ws: wss:",        // Allow WebSocket connections
+        "font-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'"
+    ].join('; ');
+    
+    res.setHeader('Content-Security-Policy', csp);
+    
+    // Additional security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    
+    // HSTS for HTTPS connections
+    if (isSecure) {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    
+    // Remove server information
+    res.removeHeader('X-Powered-By');
+}
+
+// Rate limiting implementation (simple in-memory)
+class RateLimiter {
+    private requests = new Map<string, { count: number; resetTime: number }>();
+    private maxRequests: number;
+    private windowMs: number;
+
+    constructor(maxRequests = 100, windowMs = 60000) { // 100 requests per minute
+        this.maxRequests = maxRequests;
+        this.windowMs = windowMs;
+    }
+
+    isAllowed(identifier: string): boolean {
+        const now = Date.now();
+        const record = this.requests.get(identifier);
+        
+        if (!record || now > record.resetTime) {
+            // Reset or create new record
+            this.requests.set(identifier, { count: 1, resetTime: now + this.windowMs });
+            return true;
+        }
+        
+        if (record.count >= this.maxRequests) {
+            return false;
+        }
+        
+        record.count++;
+        return true;
+    }
+
+    cleanup(): void {
+        const now = Date.now();
+        for (const [key, record] of this.requests.entries()) {
+            if (now > record.resetTime) {
+                this.requests.delete(key);
+            }
+        }
+    }
+}
+
+// Helper function to get client IP address
+function getClientIP(req: IncomingMessage): string {
+    const forwarded = req.headers['x-forwarded-for'] as string;
+    if (forwarded) {
+        return forwarded.split(',')[0].trim();
+    }
+    return req.socket.remoteAddress || 'unknown';
+}
+
 // Internal: associate parsed request bodies without mutating IncomingMessage
 const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
 
@@ -44,6 +155,38 @@ export class App {
         }
     > = new Map();
     _sessionTTLms: number = 60000;
+    _rateLimiter: RateLimiter = new RateLimiter(100, 60000); // 100 requests per minute
+    _securityEnabled: boolean = true;
+
+    // Security configuration methods
+    configureRateLimit(maxRequests: number, windowMs: number): void {
+        this._rateLimiter = new RateLimiter(maxRequests, windowMs);
+    }
+
+    disableSecurity(): void {
+        this._securityEnabled = false;
+        console.warn('Security features disabled - not recommended for production');
+    }
+
+    enableSecurity(): void {
+        this._securityEnabled = true;
+    }
+
+    _cleanupExpiredSessions(): void {
+        const now = Date.now();
+        const expiredSessions: string[] = [];
+        
+        for (const [id, session] of this._sessions.entries()) {
+            if (now - session.lastSeen > this._sessionTTLms) {
+                expiredSessions.push(id);
+            }
+        }
+        
+        for (const id of expiredSessions) {
+            this._sessions.delete(id);
+            this._log("Expired session cleaned up:", id);
+        }
+    }
 
     _touchSession(id: string): void {
         if (!id) {
@@ -354,6 +497,21 @@ export class App {
             return "Not found";
         }
 
+        // Apply security headers if enabled
+        if (this._securityEnabled) {
+            setSecurityHeaders(res, isSecure(req));
+        }
+
+        // Rate limiting check if enabled
+        if (this._securityEnabled) {
+            const clientIp = getClientIP(req);
+            if (!this._rateLimiter.isAllowed(clientIp)) {
+                res.statusCode = 429;
+                res.setHeader('Retry-After', '60');
+                return "Too Many Requests";
+            }
+        }
+
         // Resolve session id from cookie `tsui__sid`; create if missing and set cookie
         let sid = "";
         try {
@@ -401,6 +559,15 @@ export class App {
 
     Listen(port = 1422): void {
         const self = this;
+        
+        // Start periodic cleanup for rate limiter and sessions
+        if (this._securityEnabled) {
+            setInterval(() => {
+                this._rateLimiter.cleanup();
+                this._cleanupExpiredSessions();
+            }, 60000); // Cleanup every minute
+        }
+        
         const server = http.createServer(async function (
             req: IncomingMessage,
             res: ServerResponse,
@@ -432,10 +599,31 @@ export class App {
                 try {
                     let parsed: BodyItem[] | undefined = undefined;
                     if (body) {
-                        parsed = JSON.parse(body) as BodyItem[];
+                        // Enhanced input validation and parsing
+                        const sanitizedBody = validateAndSanitizeInput(body, 1000000);
+                        parsed = safeJsonParse<BodyItem[]>(sanitizedBody);
+                        
+                        // Additional validation for BodyItem array
+                        if (parsed && Array.isArray(parsed)) {
+                            // Validate each item in the array
+                            for (const item of parsed) {
+                                if (!item || typeof item !== 'object' || 
+                                    typeof item.name !== 'string' || 
+                                    typeof item.type !== 'string' || 
+                                    typeof item.value !== 'string') {
+                                    parsed = undefined;
+                                    break;
+                                }
+                                // Sanitize individual fields
+                                item.name = validateAndSanitizeInput(item.name, 1000);
+                                item.type = validateAndSanitizeInput(item.type, 100);
+                                item.value = validateAndSanitizeInput(item.value, 10000);
+                            }
+                        }
                     }
                     REQ_BODY.set(req, parsed);
-                } catch {
+                } catch (error) {
+                    console.warn('Request body parsing failed:', error);
                     REQ_BODY.set(req, undefined);
                 }
 
@@ -445,6 +633,12 @@ export class App {
             } catch (err) {
                 console.error("Request handler error:", err);
                 res.statusCode = 500;
+                
+                // Apply security headers even for error pages
+                if (self._securityEnabled) {
+                    setSecurityHeaders(res, isSecure(req));
+                }
+                
                 res.setHeader("Content-Type", "text/html; charset=utf-8");
                 const page =
                     "<!DOCTYPE html>\n" +
@@ -1638,10 +1832,26 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
         socket.destroy();
         return;
     }
+    
+    // Rate limiting for WebSocket connections if security is enabled
+    if (app._securityEnabled) {
+        const clientIp = getClientIP(req);
+        if (!app._rateLimiter.isAllowed(clientIp)) {
+            socket.destroy();
+            return;
+        }
+    }
+    
     const key = String(
         (req.headers && (req.headers["sec-websocket-key"] as string)) || "",
     );
     if (!key) {
+        socket.destroy();
+        return;
+    }
+    
+    // Basic validation of WebSocket key format
+    if (key.length !== 24 || !/^[A-Za-z0-9+/]+=*$/.test(key)) {
         socket.destroy();
         return;
     }
@@ -1801,7 +2011,8 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                 const text = payload.toString("utf8");
                 let msg: any = {};
                 try {
-                    msg = JSON.parse(text);
+                    // Use safer JSON parsing for WebSocket messages
+                    msg = safeJsonParse(text, 10000) || {};
                 } catch (_) {
                     msg = {};
                 }
