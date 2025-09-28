@@ -26,7 +26,7 @@ Prereqs: Node 18+ recommended.
     - Option B: `npm run dev` (if your script points to `examples/main.ts`)
 - Open `http://localhost:1422` and try the routes:
     - `/` Showcase
-    - `/button`, `/text`, `/password`, `/number`, `/date`, `/area`, `/select`, `/checkbox`, `/radio`, `/table`, `/others`
+    - `/button`, `/text`, `/password`, `/number`, `/date`, `/area`, `/select`, `/checkbox`, `/radio`, `/table`, `/append`, `/others`
 
 The examples demonstrate components, form handling, partial updates, and client helpers.
 
@@ -92,6 +92,7 @@ Note:
 
 - When passing a `ui.Target()` object into an element helper (e.g., `ui.div('...', target)(...)`), only the `id` is rendered as an attribute. Internal control fields `Skeleton`, `Replace`, `Append`, `Prepend`, and `Render` are ignored during attribute rendering.
 - Swap semantics: `Render` swaps `innerHTML`, `Replace` swaps `outerHTML`, `Append` inserts at the end of the target element, and `Prepend` inserts at the beginning of the target element.
+- Demo route `/append` mirrors the Go example for Append/Prepend swaps and shows how to insert items at either end of a container.
 
 Example (copy‑paste to run):
 

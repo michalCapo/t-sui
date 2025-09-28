@@ -11,6 +11,7 @@ import { CheckboxContent } from "./pages/checkbox";
 import { RadioContent } from "./pages/radio";
 import { TableContent } from "./pages/table";
 import { ShowcaseContent } from "./pages/showcase";
+import { AppendContent } from "./pages/append";
 import { OthersContent } from "./pages/others";
 import { CollateContent } from "./pages/collate";
 
@@ -27,6 +28,7 @@ const routes: Route[] = [
     { Path: "/checkbox", Title: "Checkbox" },
     { Path: "/radio", Title: "Radio" },
     { Path: "/table", Title: "Table" },
+    { Path: "/append", Title: "Append" },
     { Path: "/others", Title: "Others" },
     { Path: "/collate", Title: "Collate" },
 ];
@@ -69,7 +71,7 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
 
         const nav = ui.div("bg-white dark:bg-gray-900 shadow mb-6 fixed top-0 left-0 right-0 z-10")(
             ui.div("max-w-5xl mx-auto px-4 py-2 flex items-center gap-2")(
-                ui.div("flex flex-nowrap gap-1 overflow-auto")(links),
+                ui.div("flex flex-wrap gap-1 overflow-auto")(links),
                 ui.div("flex-1")(),
                 ui.ThemeSwitcher("ml-auto"),
             ),
@@ -79,7 +81,7 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
         return app.HTML(
             title,
             "bg-gray-100 dark:bg-gray-900 min-h-screen",
-            nav + ui.div("pt-16 max-w-5xl mx-auto px-2")(content),
+            nav + ui.div("pt-24 max-w-5xl mx-auto px-2")(content),
         );
     };
 }
@@ -95,6 +97,7 @@ app.Page("/select", layout("Select", SelectContent));
 app.Page("/checkbox", layout("Checkbox", CheckboxContent));
 app.Page("/radio", layout("Radio", RadioContent));
 app.Page("/table", layout("Table", TableContent));
+app.Page("/append", layout("Append", AppendContent));
 app.Page("/others", layout("Others", OthersContent));
 app.Page("/collate", layout("Collate", CollateContent));
 
