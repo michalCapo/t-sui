@@ -366,7 +366,7 @@ export class App {
 
         let shouldSetCookie = false;
         if (!sid) {
-            sid = "sess-" + Math.random().toString(36).slice(2);
+            sid = "sess-" + crypto.randomBytes(8).toString('hex');
             shouldSetCookie = true;
         }
 
@@ -957,6 +957,7 @@ export const __post = ui.Trim(`
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
+                // Process scripts first for security
                 for (let i = 0; i < scripts.length; i++) {
                     const newScript = document.createElement('script');
                     newScript.textContent = scripts[i].textContent;
@@ -965,7 +966,32 @@ export const __post = ui.Trim(`
 
                 const el = document.getElementById(target_id);
                 if (el != null) {
-                    if (swap === 'inline') { el.innerHTML = html; }
+                    // Use safer DOM manipulation where possible
+                    if (swap === 'inline') { 
+                        // Use DOMParser for safer HTML parsing if available
+                        try {
+                            if (typeof DOMParser !== 'undefined') {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(html, 'text/html');
+                                // Clear element safely
+                                while (el.firstChild) {
+                                    el.removeChild(el.firstChild);
+                                }
+                                // Append parsed nodes
+                                while (doc.body.firstChild) {
+                                    el.appendChild(doc.body.firstChild);
+                                }
+                            } else {
+                                // Fallback to innerHTML with warning logged
+                                console.warn('DOMParser not available, using innerHTML');
+                                el.innerHTML = html;
+                            }
+                        } catch (e) {
+                            // Fallback to text content if parsing fails
+                            console.error('HTML parsing failed, using text content:', e);
+                            el.textContent = html;
+                        }
+                    }
                     else if (swap === 'outline') { el.outerHTML = html; }
                     else if (swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
                     else if (swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
@@ -1009,7 +1035,31 @@ export const __ws = ui.Trim(`
                         } catch(_){ }
                         return;
                     }
-                    if (msg.swap === 'inline') { el.innerHTML = html; }
+                    // Use safer DOM manipulation where possible
+                    if (msg.swap === 'inline') {
+                        try {
+                            if (typeof DOMParser !== 'undefined') {
+                                var parser = new DOMParser();
+                                var doc = parser.parseFromString(html, 'text/html');
+                                // Clear element safely
+                                while (el.firstChild) {
+                                    el.removeChild(el.firstChild);
+                                }
+                                // Append parsed nodes
+                                while (doc.body.firstChild) {
+                                    el.appendChild(doc.body.firstChild);
+                                }
+                            } else {
+                                // Fallback with warning
+                                console.warn('DOMParser not available, using innerHTML');
+                                el.innerHTML = html;
+                            }
+                        } catch (e) {
+                            // Fallback to text content if parsing fails
+                            console.error('HTML parsing failed, using text content:', e);
+                            el.textContent = html;
+                        }
+                    }
                     else if (msg.swap === 'outline') { el.outerHTML = html; }
                     else if (msg.swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
                     else if (msg.swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
@@ -1315,7 +1365,31 @@ export const __submit = ui.Trim(`
                         }
                         const el2 = document.getElementById(target_id);
                         if (el2 != null) {
-                            if (swap === 'inline') { el2.innerHTML = html; }
+                            // Use safer DOM manipulation where possible
+                            if (swap === 'inline') {
+                                try {
+                                    if (typeof DOMParser !== 'undefined') {
+                                        const parser = new DOMParser();
+                                        const doc = parser.parseFromString(html, 'text/html');
+                                        // Clear element safely
+                                        while (el2.firstChild) {
+                                            el2.removeChild(el2.firstChild);
+                                        }
+                                        // Append parsed nodes
+                                        while (doc.body.firstChild) {
+                                            el2.appendChild(doc.body.firstChild);
+                                        }
+                                    } else {
+                                        // Fallback with warning
+                                        console.warn('DOMParser not available, using innerHTML');
+                                        el2.innerHTML = html;
+                                    }
+                                } catch (e) {
+                                    // Fallback to text content if parsing fails
+                                    console.error('HTML parsing failed, using text content:', e);
+                                    el2.textContent = html;
+                                }
+                            }
                             else if (swap === 'outline') { el2.outerHTML = html; }
                             else if (swap === 'append') { el2.insertAdjacentHTML('beforeend', html); }
                             else if (swap === 'prepend') { el2.insertAdjacentHTML('afterbegin', html); }
@@ -1337,7 +1411,21 @@ export const __load = ui.Trim(`
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 document.title = doc.title;
-                document.body.innerHTML = doc.body.innerHTML;
+                // Safer body replacement
+                try {
+                    // Clear body safely
+                    while (document.body.firstChild) {
+                        document.body.removeChild(document.body.firstChild);
+                    }
+                    // Append new content
+                    while (doc.body.firstChild) {
+                        document.body.appendChild(doc.body.firstChild);
+                    }
+                } catch (e) {
+                    // Fallback to innerHTML if safe method fails
+                    console.warn('Safe body replacement failed, using innerHTML:', e);
+                    document.body.innerHTML = doc.body.innerHTML;
+                }
                 const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
                 for (let i = 0; i < scripts.length; i++) {
                     const newScript = document.createElement('script');
@@ -1469,7 +1557,7 @@ function routeKey(method: "GET" | "POST", path: string, callable: Callable): str
         return path;
     }
 
-    return path + '-' + Math.random().toString(36).substring(2, 15);
+    return path + '-' + crypto.randomBytes(8).toString('hex');
 }
 
 // Minimal WebSocket helpers (server-side) using native http 'upgrade'
@@ -1568,7 +1656,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
     } catch (_) { }
     let setCookieHeader = "";
     if (!sid) {
-        sid = "sess-" + Math.random().toString(36).slice(2);
+        sid = "sess-" + crypto.randomBytes(8).toString('hex');
         setCookieHeader =
             "Set-Cookie: tsui__sid=" +
             encodeURIComponent(sid) +

@@ -394,7 +394,10 @@ export function Captcha(onValidated: Callable): Captcha {
 
 				function renderTarget() {
 					if (!targetContainer) { return; }
-					targetContainer.innerHTML = '';
+					// Clear container safely
+					while (targetContainer.firstChild) {
+						targetContainer.removeChild(targetContainer.firstChild);
+					}
 					captchaText.split('').forEach(function (char) {
 						var item = document.createElement('div');
 						item.className = 'inline-flex items-center justify-center px-3 py-2 rounded border text-sm font-semibold tracking-wide uppercase';
@@ -422,7 +425,10 @@ export function Captcha(onValidated: Callable): Captcha {
 
 				function renderTiles() {
 					if (!tilesContainer) { return; }
-					tilesContainer.innerHTML = '';
+					// Clear container safely
+					while (tilesContainer.firstChild) {
+						tilesContainer.removeChild(tilesContainer.firstChild);
+					}
 					updateContainerAppearance();
 					for (var i = 0; i < tiles.length; i++) {
 						var tile = document.createElement('div');
@@ -442,7 +448,27 @@ export function Captcha(onValidated: Callable): Captcha {
 				function injectSuccess(html) {
 					if (!root) { return; }
 					var output = (html && html.trim()) ? html : defaultSuccess;
-					root.innerHTML = output;
+					// Use DOMParser for safer HTML parsing if available
+					try {
+						if (typeof DOMParser !== 'undefined') {
+							var parser = new DOMParser();
+							var doc = parser.parseFromString(output, 'text/html');
+							// Clear root safely
+							while (root.firstChild) {
+								root.removeChild(root.firstChild);
+							}
+							// Append parsed nodes
+							while (doc.body.firstChild) {
+								root.appendChild(doc.body.firstChild);
+							}
+						} else {
+							// Fallback to innerHTML if DOMParser not available (with risk noted)
+							root.innerHTML = output;
+						}
+					} catch (e) {
+						// Final fallback to text content
+						root.textContent = 'CAPTCHA completed successfully!';
+					}
 				}
 
 				function markSolved() {

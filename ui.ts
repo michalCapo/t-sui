@@ -1,5 +1,7 @@
 //Typescript server-side UI library (components + related utilities)
 
+import crypto from "node:crypto";
+
 export type Swap = "inline" | "outline" | "none" | "append" | "prepend";
 
 export interface Attr {
@@ -143,13 +145,11 @@ function For(from: number, to: number, iter: (i: number, first: boolean, last: b
 }
 
 function RandomString(n = 20): string {
-    const letters =
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz";
-    let s = "";
-    for (let i = 0; i < n; i++) {
-        s += letters[Math.floor(Math.random() * letters.length)];
-    }
-    return s;
+    // Use cryptographically secure random bytes for better security
+    const bytes = crypto.randomBytes(Math.ceil(n * 3 / 4));
+    return bytes.toString('base64')
+        .replace(/[+/=]/g, '')  // Remove special chars that aren't safe for IDs
+        .slice(0, n);
 }
 
 const XS = " p-1";
