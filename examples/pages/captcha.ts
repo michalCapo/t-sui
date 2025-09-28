@@ -1,6 +1,6 @@
 import ui from "../../ui";
 import { Context } from "../../ui.server";
-import { Captcha3 } from "../../ui.captcha";
+import { Captcha } from "../../ui.captcha";
 
 function onValidated(ctx: Context): string {
     return ui.div("text-green-600")("Captcha validated successfully!");
@@ -14,7 +14,7 @@ export function CaptchaContent(ctx: Context): string {
         ),
 
         ui.div("bg-white p-6 rounded-lg shadow w-full")(
-            Captcha3(onValidated).Render(ctx),
+            Captcha(onValidated).Render(ctx),
         ),
 
     );

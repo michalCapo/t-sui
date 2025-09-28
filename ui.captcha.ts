@@ -213,111 +213,118 @@ function findBodyValue(items: BodyItem[] | undefined, name: string): string {
     return "";
 }
 
-// todo - convert class into function like ui.data.Collate
-export class Captcha3Component {
-    private sessionFieldName: string;
-    private arrangementFieldName: string;
-    private clientVerifiedFieldName: string;
-    private characterCount: number;
-    private sessionLifetime: number;
-    private attemptLimit: number;
-    private onValidated: Callable;
+export interface Captcha {
+    SessionField(name: string): Captcha;
+    ArrangementField(name: string): Captcha;
+    ClientVerifiedField(name: string): Captcha;
+    Count(n: number): Captcha;
+    Lifetime(ms: number): Captcha;
+    Attempts(limit: number): Captcha;
+    SessionFieldName(): string;
+    ArrangementFieldName(): string;
+    ClientVerifiedFieldName(): string;
+    Render(ctx?: Context): string;
+    ValidateValues(sessionID: string, arrangement: string): CaptchaValidationResult;
+    Validate(sessionID: string, arrangement: string): CaptchaValidationResult;
+    ValidateRequest(req: IncomingMessage): CaptchaValidationResult;
+}
 
-    constructor(onValidated: Callable) {
-        this.sessionFieldName = "captcha_session";
-        this.arrangementFieldName = "captcha_arrangement";
-        this.clientVerifiedFieldName = "captcha_client_verified";
-        this.characterCount = 4;
-        this.sessionLifetime = defaultCaptchaLifetime;
-        this.attemptLimit = defaultCaptchaAttempts;
-        this.onValidated = onValidated;
-    }
+export function Captcha(onValidated: Callable): Captcha {
+    const state = {
+        sessionFieldName: "captcha_session",
+        arrangementFieldName: "captcha_arrangement",
+        clientVerifiedFieldName: "captcha_client_verified",
+        characterCount: 4,
+        sessionLifetime: defaultCaptchaLifetime,
+        attemptLimit: defaultCaptchaAttempts,
+        onValidated: onValidated,
+    };
 
-    SessionField(name: string): Captcha3Component {
+    function sessionField(name: string): Captcha {
         if (name) {
-            this.sessionFieldName = name;
+            state.sessionFieldName = name;
         }
-        return this;
+        return component;
     }
 
-    ArrangementField(name: string): Captcha3Component {
+    function arrangementField(name: string): Captcha {
         if (name) {
-            this.arrangementFieldName = name;
+            state.arrangementFieldName = name;
         }
-        return this;
+        return component;
     }
 
-    ClientVerifiedField(name: string): Captcha3Component {
+    function clientVerifiedField(name: string): Captcha {
         if (name) {
-            this.clientVerifiedFieldName = name;
+            state.clientVerifiedFieldName = name;
         }
-        return this;
+        return component;
     }
 
-    Count(n: number): Captcha3Component {
+    function count(n: number): Captcha {
         if (n > 0) {
-            this.characterCount = n;
+            state.characterCount = n;
         }
-        return this;
+        return component;
     }
 
-    Lifetime(ms: number): Captcha3Component {
+    function lifetime(ms: number): Captcha {
         if (ms > 0) {
-            this.sessionLifetime = ms;
+            state.sessionLifetime = ms;
         }
-        return this;
+        return component;
     }
 
-    Attempts(limit: number): Captcha3Component {
+    function attempts(limit: number): Captcha {
         if (limit > 0) {
-            this.attemptLimit = limit;
+            state.attemptLimit = limit;
         }
-        return this;
+        return component;
     }
 
-    SessionFieldName(): string {
-        if (!this.sessionFieldName) {
+    function sessionFieldName(): string {
+        if (!state.sessionFieldName) {
             return "captcha_session";
         }
-        return this.sessionFieldName;
+        return state.sessionFieldName;
     }
 
-    ArrangementFieldName(): string {
-        if (!this.arrangementFieldName) {
+    function arrangementFieldName(): string {
+        if (!state.arrangementFieldName) {
             return "captcha_arrangement";
         }
-        return this.arrangementFieldName;
+        return state.arrangementFieldName;
     }
 
-    ClientVerifiedFieldName(): string {
-        if (!this.clientVerifiedFieldName) {
+    function clientVerifiedFieldName(): string {
+        if (!state.clientVerifiedFieldName) {
             return "captcha_client_verified";
         }
-        return this.clientVerifiedFieldName;
+        return state.clientVerifiedFieldName;
     }
 
-    private characterCountValue(): number {
-        if (this.characterCount <= 0) {
+    function characterCountValue(): number {
+        if (state.characterCount <= 0) {
             return 5;
         }
-        return this.characterCount;
+        return state.characterCount;
     }
 
-    private lifetimeValue(): number {
-        if (this.sessionLifetime <= 0) {
+    function lifetimeValue(): number {
+        if (state.sessionLifetime <= 0) {
             return defaultCaptchaLifetime;
         }
-        return this.sessionLifetime;
+        return state.sessionLifetime;
     }
 
-    private attemptLimitValue(): number {
-        if (this.attemptLimit <= 0) {
+    function attemptLimitValue(): number {
+        if (state.attemptLimit <= 0) {
             return defaultCaptchaAttempts;
         }
-        return this.attemptLimit;
+        return state.attemptLimit;
     }
 
-    Render(ctx?: Context): string {
+    function render(ctx?: Context): string {
         let sessionID: string;
         try {
             sessionID = generateSecureID("captcha_session_");
@@ -329,9 +336,9 @@ export class Captcha3Component {
         try {
             session = createCaptchaSession(
                 sessionID,
-                this.characterCountValue(),
-                this.lifetimeValue(),
-                this.attemptLimitValue(),
+                characterCountValue(),
+                lifetimeValue(),
+                attemptLimitValue(),
             );
         } catch (_) {
             return renderCaptchaError("Error generating CAPTCHA. Please refresh the page and try again.");
@@ -350,8 +357,8 @@ export class Captcha3Component {
 
         let successPath = "";
         try {
-            if (ctx && this.onValidated) {
-                const callable = ctx.Callable(this.onValidated);
+            if (ctx && state.onValidated) {
+                const callable = ctx.Callable(state.onValidated);
                 if (callable && callable.url) {
                     successPath = callable.url;
                 }
@@ -362,12 +369,12 @@ export class Captcha3Component {
 
         const scrambled = shuffleStringSecure(session.text);
         const defaultSuccess = ui.div("text-green-600")("Captcha validated successfully!");
-        const script = `setTimeout(function () {
+        const scriptSource = `setTimeout(function () {
 				var root = document.getElementById('${rootID}');
 				var tilesContainer = document.getElementById('${tilesID}');
 				var targetContainer = document.getElementById('${targetID}');
-				var arrangementInput = root ? root.querySelector('input[name="${escapeJS(this.ArrangementFieldName())}"]') : null;
-				var verifiedInput = root ? root.querySelector('input[name="${escapeJS(this.ClientVerifiedFieldName())}"]') : null;
+				var arrangementInput = root ? root.querySelector('input[name="${escapeJS(arrangementFieldName())}"]') : null;
+				var verifiedInput = root ? root.querySelector('input[name="${escapeJS(clientVerifiedFieldName())}"]') : null;
 				if (!root || !tilesContainer) { return; }
 
 				var captchaText = '${escapeJS(session.text)}';
@@ -533,7 +540,6 @@ export class Captcha3Component {
 			}, 250);
 		`;
 
-
         return ui.div("flex flex-col items-start gap-3 w-full", { id: rootID })(
             ui.div("")(
                 ui.span("text-sm text-gray-600 mb-2")(
@@ -547,32 +553,46 @@ export class Captcha3Component {
                     { id: tilesID },
                 )(),
             ),
-            ui.Hidden(this.SessionFieldName(), "string", sessionID),
-            ui.Hidden(this.ArrangementFieldName(), "string", scrambled),
-            ui.Hidden(this.ClientVerifiedFieldName(), "bool", "false"),
-            ui.script(script),
+            ui.Hidden(sessionFieldName(), "string", sessionID),
+            ui.Hidden(arrangementFieldName(), "string", scrambled),
+            ui.Hidden(clientVerifiedFieldName(), "bool", "false"),
+            ui.script(scriptSource),
         );
     }
 
-    ValidateValues(sessionID: string, arrangement: string): CaptchaValidationResult {
+    function validateValues(sessionID: string, arrangement: string): CaptchaValidationResult {
         return validateCaptcha(sessionID, arrangement);
     }
 
-    Validate(sessionID: string, arrangement: string): CaptchaValidationResult {
-        return this.ValidateValues(sessionID, arrangement);
+    function validate(sessionID: string, arrangement: string): CaptchaValidationResult {
+        return validateValues(sessionID, arrangement);
     }
 
-    ValidateRequest(req: IncomingMessage): CaptchaValidationResult {
+    function validateRequest(req: IncomingMessage): CaptchaValidationResult {
         if (!req) {
             return { ok: false, error: new Error("missing request") };
         }
         const items = RequestBody(req);
-        const sessionID = findBodyValue(items, this.SessionFieldName());
-        const arrangement = findBodyValue(items, this.ArrangementFieldName());
-        return this.ValidateValues(sessionID, arrangement);
+        const sessionID = findBodyValue(items, sessionFieldName());
+        const arrangement = findBodyValue(items, arrangementFieldName());
+        return validateValues(sessionID, arrangement);
     }
-}
 
-export function Captcha3(onValidated: Callable): Captcha3Component {
-    return new Captcha3Component(onValidated);
+    const component = {
+        SessionField: sessionField,
+        ArrangementField: arrangementField,
+        ClientVerifiedField: clientVerifiedField,
+        Count: count,
+        Lifetime: lifetime,
+        Attempts: attempts,
+        SessionFieldName: sessionFieldName,
+        ArrangementFieldName: arrangementFieldName,
+        ClientVerifiedFieldName: clientVerifiedFieldName,
+        Render: render,
+        ValidateValues: validateValues,
+        Validate: validate,
+        ValidateRequest: validateRequest,
+    };
+
+    return component;
 }
