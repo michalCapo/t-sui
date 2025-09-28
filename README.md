@@ -10,7 +10,11 @@ A tiny server-side UI toolkit in TypeScript that renders HTML strings and ships 
 - Dev autoreload via WebSocket
 - Deferred fragments via WebSocket with skeleton placeholders
 
-License: MIT (see `LICENSE`).
+## Lighthouse Snapshot
+
+The examples server (`npx tsx examples/main.ts`) scores well on Lighthouse when running locally without extra tweaking. The screenshot below shows a representative run against the showcase route:
+
+![Lighthouse scores for the examples app](docs/lighthouse-scores.png)
 
 ## Quick Start
 
