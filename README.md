@@ -24,7 +24,7 @@ Prereqs: Node 18+ recommended.
 - Start the examples server:
     - Option A: `npx tsx examples/main.ts`
     - Option B: `npm run dev` (if your script points to `examples/main.ts`)
-- Open `http://localhost:1422` and try the routes:
+- Open `http://localhost:1423` and try the routes:
     - `/` Showcase
     - `/button`, `/text`, `/password`, `/number`, `/date`, `/area`, `/select`, `/checkbox`, `/radio`, `/table`, `/append`, `/others`
 
@@ -78,10 +78,10 @@ function Home(_ctx: Context): string {
 
 app.Page("/", Home);
 app.AutoReload(true);
-app.Listen(1422);
+app.Listen(1423);
 ```
 
-Run with `npx tsx examples/minimal.ts` and open `http://localhost:1422`.
+Run with `npx tsx examples/minimal.ts` and open `http://localhost:1423`.
 
 ## Forms and Actions (Partial Updates)
 
@@ -143,7 +143,7 @@ function Save(ctx: Context): string {
 
 app.Page("/forms", Page);
 app.AutoReload(true);
-app.Listen(1422);
+app.Listen(1423);
 ```
 
 ## API Highlights
@@ -270,7 +270,7 @@ function Page(ctx: Context): string {
 
 app.Page("/deferred", Page);
 app.AutoReload(true);
-app.Listen(1422);
+app.Listen(1423);
 ```
 
 Notes:

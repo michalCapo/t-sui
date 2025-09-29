@@ -78,6 +78,7 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
                 ui.ThemeSwitcher("ml-auto"),
             ),
         );
+
         const content = body(ctx);
         // Add top padding to avoid content being overlapped by the fixed navbar
         return app.HTML(
