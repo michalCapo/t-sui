@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { IncomingMessage } from "node:http";
 
 import ui from "./ui";
-import { BodyItem, Callable, Context, RequestBody } from "./ui.server";
+import { BodyItem, Callable, Context } from "./ui.server";
 
 const defaultCaptchaLength = 6;
 const defaultCaptchaLifetime = 5 * 60 * 1000;
@@ -226,7 +226,7 @@ export interface Captcha {
     Render(ctx?: Context): string;
     ValidateValues(sessionID: string, arrangement: string): CaptchaValidationResult;
     Validate(sessionID: string, arrangement: string): CaptchaValidationResult;
-    ValidateRequest(req: IncomingMessage): CaptchaValidationResult;
+    // ValidateRequest(req: IncomingMessage): CaptchaValidationResult;
 }
 
 export function Captcha(onValidated: Callable): Captcha {
@@ -594,15 +594,15 @@ export function Captcha(onValidated: Callable): Captcha {
         return validateValues(sessionID, arrangement);
     }
 
-    function validateRequest(req: IncomingMessage): CaptchaValidationResult {
-        if (!req) {
-            return { ok: false, error: new Error("missing request") };
-        }
-        const items = RequestBody(req);
-        const sessionID = findBodyValue(items, sessionFieldName());
-        const arrangement = findBodyValue(items, arrangementFieldName());
-        return validateValues(sessionID, arrangement);
-    }
+    // function validateRequest(req: IncomingMessage): CaptchaValidationResult {
+    //     if (!req) {
+    //         return { ok: false, error: new Error("missing request") };
+    //     }
+    //     const items = RequestBody(req);
+    //     const sessionID = findBodyValue(items, sessionFieldName());
+    //     const arrangement = findBodyValue(items, arrangementFieldName());
+    //     return validateValues(sessionID, arrangement);
+    // }
 
     const component = {
         SessionField: sessionField,
@@ -617,7 +617,7 @@ export function Captcha(onValidated: Callable): Captcha {
         Render: render,
         ValidateValues: validateValues,
         Validate: validate,
-        ValidateRequest: validateRequest,
+        // ValidateRequest: validateRequest,
     };
 
     return component;

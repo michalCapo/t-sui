@@ -126,10 +126,13 @@ function getClientIP(req: IncomingMessage): string {
 }
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
-const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
 
-export function RequestBody(req: IncomingMessage): BodyItem[] | undefined {
-    return REQ_BODY.get(req);
+const REQ_BODY = new Map<string, BodyItem[] | undefined>();
+
+function setRequestBody(sessionId: string, body: BodyItem[] | undefined): void {
+    if (sessionId) {
+        REQ_BODY.set(sessionId, body);
+    }
 }
 
 export type ActionType = "POST" | "FORM";
@@ -567,7 +570,7 @@ export class App {
     }
 
     Listen(port = 1422): void {
-        const self = this;
+        // const self = this;
 
         // Start periodic cleanup for rate limiter and sessions
         if (this._securityEnabled) {
@@ -593,6 +596,14 @@ export class App {
             try {
                 const url = req.url as string;
                 const path = url.split("?")[0];
+
+                // Extract session ID early for body storage
+                let sid = "";
+                try {
+                    const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
+                    const cookies = parseCookies(cookieHeader);
+                    sid = String(cookies["tsui__sid"] || "");
+                } catch (_) { }
 
                 let body = "";
                 await new Promise(function (resolve) {
@@ -639,10 +650,10 @@ export class App {
                             }
                         }
                     }
-                    REQ_BODY.set(req, parsed);
+                    setRequestBody(sid, parsed);
                 } catch (error) {
                     console.warn('Request body parsing failed:', error);
-                    REQ_BODY.set(req, undefined);
+                    setRequestBody(sid, undefined);
                 }
 
                 const html = await self._dispatch(path, req, res);
@@ -752,19 +763,19 @@ export class App {
             },
             async fetch(req: any, server: any) {
                 try {
+                    // Extract session ID early for all requests
+                    let sid = "";
+                    try {
+                        const cookieHeader = String(req.headers.get("cookie") || "");
+                        const cookies = parseCookies(cookieHeader);
+                        sid = String(cookies["tsui__sid"] || "");
+                    } catch (_) { }
+
                     const url = new URL(req.url);
                     const path = url.pathname;
 
                     // Handle WebSocket upgrade
                     if (path === "/__ws") {
-                        // Extract session ID from cookies
-                        let sid = "";
-                        try {
-                            const cookieHeader = String(req.headers.get("cookie") || "");
-                            const cookies = parseCookies(cookieHeader);
-                            sid = String(cookies["tsui__sid"] || "");
-                        } catch (_) { }
-
                         let setCookieValue = "";
                         if (!sid) {
                             sid = "sess-" + crypto.randomBytes(8).toString('hex');
@@ -819,10 +830,10 @@ export class App {
                                 }
                             }
                         }
-                        REQ_BODY.set((req as any), parsed);
+                        setRequestBody(sid, parsed);
                     } catch (error) {
                         console.warn('Request body parsing failed:', error);
-                        REQ_BODY.set((req as any), undefined);
+                        setRequestBody(sid, undefined);
                     }
 
                     // Create mock IncomingMessage and ServerResponse for compatibility
@@ -913,7 +924,7 @@ export class Context {
     }
 
     Body<T extends object>(output: T): void {
-        const data = this.req ? REQ_BODY.get(this.req) : undefined;
+        const data = REQ_BODY.get(this.sessionID);
         if (!Array.isArray(data)) return;
         for (let i = 0; i < data.length; i++) {
             const item = data[i];
