@@ -83,8 +83,8 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
         // Add top padding to avoid content being overlapped by the fixed navbar
         return app.HTML(
             title,
-            "bg-gray-100 dark:bg-gray-900 min-h-screen",
-            nav + ui.div("pt-24 max-w-5xl mx-auto px-2")(content),
+            "bg-white bg-gray-200 dark:bg-gray-900 min-h-screen",
+            nav + ui.div("pt-24 max-w-5xl mx-auto px-2 py-8")(content),
         );
     };
 }

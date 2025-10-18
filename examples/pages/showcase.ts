@@ -58,7 +58,7 @@ function render(ctx: Context, f: DemoForm, err?: Error): string {
     }
 
     return ui.div("grid gap-4 sm:gap-6 items-start w-full", demoTarget)(
-        ui.form("flex flex-col gap-4 bg-white p-6 rounded-lg shadow w-full", demoTarget, ctx.Submit(actionSubmit).Replace(demoTarget))(
+        ui.form("flex flex-col gap-4 bg-white p-6 rounded-lg shadow w-full border border-gray-200", demoTarget, ctx.Submit(actionSubmit).Replace(demoTarget))(
             ui.div("text-xl font-bold")("Component Showcase Form"),
             errorMessage,
 

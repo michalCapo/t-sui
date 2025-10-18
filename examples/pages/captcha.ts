@@ -13,7 +13,7 @@ export function CaptchaContent(ctx: Context): string {
             "CAPTCHA component with server-side validation.",
         ),
 
-        ui.div("bg-white p-6 rounded-lg shadow w-full")(
+        ui.div("bg-white p-6 rounded-lg shadow w-full border border-gray-200")(
             Captcha(onValidated).Render(ctx),
         ),
 
