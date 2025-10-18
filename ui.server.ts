@@ -5,6 +5,9 @@ import crypto from "node:crypto";
 import type { Socket } from "node:net";
 import ui, { Attr, Target, Swap } from "./ui";
 
+// Runtime detection
+const IS_BUN = typeof (globalThis as any).Bun !== 'undefined';
+
 // Enhanced input validation and sanitization functions
 function validateAndSanitizeInput(input: string, maxLength = 1000000): string {
     if (!input || typeof input !== 'string') {
@@ -50,20 +53,20 @@ function setSecurityHeaders(res: ServerResponse, isSecure = false): void {
         "base-uri 'self'",
         "form-action 'self'"
     ].join('; ');
-    
+
     res.setHeader('Content-Security-Policy', csp);
-    
+
     // Additional security headers
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    
+
     // HSTS for HTTPS connections
     if (isSecure) {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
-    
+
     // Remove server information
     res.removeHeader('X-Powered-By');
 }
@@ -82,17 +85,17 @@ class RateLimiter {
     isAllowed(identifier: string): boolean {
         const now = Date.now();
         const record = this.requests.get(identifier);
-        
+
         if (!record || now > record.resetTime) {
             // Reset or create new record
             this.requests.set(identifier, { count: 1, resetTime: now + this.windowMs });
             return true;
         }
-        
+
         if (record.count >= this.maxRequests) {
             return false;
         }
-        
+
         record.count++;
         return true;
     }
@@ -113,14 +116,20 @@ function getClientIP(req: IncomingMessage): string {
     if (forwarded) {
         return forwarded.split(',')[0].trim();
     }
-    return req.socket.remoteAddress || 'unknown';
+    try {
+        const socket = (req as any).socket;
+        if (socket && socket.remoteAddress) {
+            return socket.remoteAddress;
+        }
+    } catch (_) { }
+    return 'unknown';
 }
 
 // Internal: associate parsed request bodies without mutating IncomingMessage
 const REQ_BODY = new WeakMap<IncomingMessage, BodyItem[] | undefined>();
 
 export function RequestBody(req: IncomingMessage): BodyItem[] | undefined {
-	return REQ_BODY.get(req);
+    return REQ_BODY.get(req);
 }
 
 export type ActionType = "POST" | "FORM";
@@ -142,7 +151,7 @@ export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
-    _wsClients: Set<{ socket: Socket; sid: string; lastPong: number }> =
+    _wsClients: Set<{ socket: any; sid: string; lastPong: number }> =
         new Set();
     _debugEnabled: boolean = false;
     _sessions: Map<
@@ -175,13 +184,13 @@ export class App {
     _cleanupExpiredSessions(): void {
         const now = Date.now();
         const expiredSessions: string[] = [];
-        
+
         for (const [id, session] of this._sessions.entries()) {
             if (now - session.lastSeen > this._sessionTTLms) {
                 expiredSessions.push(id);
             }
         }
-        
+
         for (const id of expiredSessions) {
             this._sessions.delete(id);
             this._log("Expired session cleaned up:", id);
@@ -559,7 +568,7 @@ export class App {
 
     Listen(port = 1422): void {
         const self = this;
-        
+
         // Start periodic cleanup for rate limiter and sessions
         if (this._securityEnabled) {
             setInterval(() => {
@@ -567,7 +576,16 @@ export class App {
                 this._cleanupExpiredSessions();
             }, 60000); // Cleanup every minute
         }
-        
+
+        if (IS_BUN) {
+            return this._listenBun(port);
+        }
+        return this._listenNode(port);
+    }
+
+    private _listenNode(port: number): void {
+        const self = this;
+
         const server = http.createServer(async function (
             req: IncomingMessage,
             res: ServerResponse,
@@ -602,14 +620,14 @@ export class App {
                         // Enhanced input validation and parsing
                         const sanitizedBody = validateAndSanitizeInput(body, 1000000);
                         parsed = safeJsonParse<BodyItem[]>(sanitizedBody);
-                        
+
                         // Additional validation for BodyItem array
                         if (parsed && Array.isArray(parsed)) {
                             // Validate each item in the array
                             for (const item of parsed) {
-                                if (!item || typeof item !== 'object' || 
-                                    typeof item.name !== 'string' || 
-                                    typeof item.type !== 'string' || 
+                                if (!item || typeof item !== 'object' ||
+                                    typeof item.name !== 'string' ||
+                                    typeof item.type !== 'string' ||
                                     typeof item.value !== 'string') {
                                     parsed = undefined;
                                     break;
@@ -633,12 +651,12 @@ export class App {
             } catch (err) {
                 console.error("Request handler error:", err);
                 res.statusCode = 500;
-                
+
                 // Apply security headers even for error pages
                 if (self._securityEnabled) {
                     setSecurityHeaders(res, isSecure(req));
                 }
-                
+
                 res.setHeader("Content-Type", "text/html; charset=utf-8");
                 const page =
                     "<!DOCTYPE html>\n" +
@@ -706,6 +724,166 @@ export class App {
             handleUpgrade(self, req, socket);
         });
         server.listen(port, "0.0.0.0");
+        console.log("Listening on http://0.0.0.0:" + String(port));
+    }
+
+    private _listenBun(port: number): void {
+        const self = this;
+        const Bun = (globalThis as any).Bun;
+
+        const server = Bun.serve({
+            port: port,
+            hostname: "0.0.0.0",
+            websocket: {
+                open: function (ws: any) {
+                    handleUpgradeBun(self, ws);
+                },
+                message: function (ws: any, msg: any) {
+                    handleBunMessage(self, ws, msg);
+                },
+                close: function (ws: any) {
+                    handleBunClose(self, ws);
+                },
+                error: function (ws: any, err: any) {
+                    try {
+                        ws.close();
+                    } catch (_) { }
+                },
+            },
+            async fetch(req: any, server: any) {
+                try {
+                    const url = new URL(req.url);
+                    const path = url.pathname;
+
+                    // Handle WebSocket upgrade
+                    if (path === "/__ws") {
+                        // Extract session ID from cookies
+                        let sid = "";
+                        try {
+                            const cookieHeader = String(req.headers.get("cookie") || "");
+                            const cookies = parseCookies(cookieHeader);
+                            sid = String(cookies["tsui__sid"] || "");
+                        } catch (_) { }
+
+                        let setCookieValue = "";
+                        if (!sid) {
+                            sid = "sess-" + crypto.randomBytes(8).toString('hex');
+                            setCookieValue =
+                                "tsui__sid=" +
+                                encodeURIComponent(sid) +
+                                "; Path=/; HttpOnly; SameSite=Lax";
+                        }
+
+                        // Use server.upgrade() with data attachment
+                        if (server.upgrade(req, {
+                            data: {
+                                sid: sid,
+                                setCookie: setCookieValue,
+                            },
+                        })) {
+                            return;
+                        }
+                        return new Response("WebSocket upgrade failed", { status: 400 });
+                    }
+
+                    let body = "";
+                    if (req.method === "POST" || req.method === "PUT") {
+                        try {
+                            body = await req.text();
+                            if (body.length > 1_000_000) {
+                                return new Response("Request body too large", { status: 413 });
+                            }
+                        } catch (e) {
+                            body = "";
+                        }
+                    }
+
+                    try {
+                        let parsed: BodyItem[] | undefined = undefined;
+                        if (body) {
+                            const sanitizedBody = validateAndSanitizeInput(body, 1000000);
+                            parsed = safeJsonParse<BodyItem[]>(sanitizedBody);
+
+                            if (parsed && Array.isArray(parsed)) {
+                                for (const item of parsed) {
+                                    if (!item || typeof item !== 'object' ||
+                                        typeof item.name !== 'string' ||
+                                        typeof item.type !== 'string' ||
+                                        typeof item.value !== 'string') {
+                                        parsed = undefined;
+                                        break;
+                                    }
+                                    item.name = validateAndSanitizeInput(item.name, 1000);
+                                    item.type = validateAndSanitizeInput(item.type, 100);
+                                    item.value = validateAndSanitizeInput(item.value, 10000);
+                                }
+                            }
+                        }
+                        REQ_BODY.set((req as any), parsed);
+                    } catch (error) {
+                        console.warn('Request body parsing failed:', error);
+                        REQ_BODY.set((req as any), undefined);
+                    }
+
+                    // Create mock IncomingMessage and ServerResponse for compatibility
+                    const mockReq = {
+                        url: req.url,
+                        method: req.method,
+                        headers: Object.fromEntries(req.headers),
+                    } as unknown as IncomingMessage;
+
+                    const mockRes = new ServerResponse(mockReq);
+
+                    const html = await self._dispatch(path, mockReq, mockRes);
+
+                    const headers: Record<string, string> = {};
+                    const headersObj = mockRes.getHeaders();
+                    if (typeof headersObj === 'object' && headersObj !== null) {
+                        for (const key in headersObj) {
+                            const val = headersObj[key];
+                            if (typeof val === 'string') {
+                                headers[key] = val;
+                            } else if (typeof val === 'number') {
+                                headers[key] = String(val);
+                            } else if (Array.isArray(val)) {
+                                headers[key] = val.join(',');
+                            }
+                        }
+                    }
+
+                    if (!headers["Content-Type"]) {
+                        headers["Content-Type"] = "text/html; charset=utf-8";
+                    }
+
+                    if (self._securityEnabled) {
+                        headers["Content-Security-Policy"] = [
+                            "default-src 'self'",
+                            "script-src 'self' 'unsafe-inline'",
+                            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+                            "font-src 'self' https://cdnjs.cloudflare.com",
+                            "img-src 'self' data: https:",
+                            "connect-src 'self' ws: wss:",
+                            "object-src 'none'",
+                            "base-uri 'self'",
+                            "form-action 'self'"
+                        ].join('; ');
+                        headers["X-Content-Type-Options"] = "nosniff";
+                        headers["X-Frame-Options"] = "DENY";
+                        headers["X-XSS-Protection"] = "1; mode=block";
+                        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+                    }
+
+                    return new Response(html, {
+                        status: mockRes.statusCode || 200,
+                        headers: headers,
+                    });
+                } catch (err) {
+                    console.error("Request handler error:", err);
+                    return new Response("Internal Server Error", { status: 500 });
+                }
+            }
+        });
+
         console.log("Listening on http://0.0.0.0:" + String(port));
     }
 }
@@ -1749,8 +1927,10 @@ function isSecure(req: IncomingMessage): boolean {
             const first = xf.split(",")[0].trim().toLowerCase();
             return first === "https";
         }
-    } catch (_) { }
-    return false;
+        return false;
+    } catch (_) {
+        return false;
+    }
 }
 
 function parseCookies(header: string): { [k: string]: string } {
@@ -1845,7 +2025,20 @@ function wsFrame(data: string): Buffer {
     return Buffer.concat([header, payload]);
 }
 
-function wsSend(socket: Socket, data: string): void {
+function wsSend(socket: any, data: string): void {
+    if (!socket) {
+        return;
+    }
+    // Bun ServerWebSocket
+    if (typeof socket.send === 'function' && typeof socket.write !== 'function') {
+        try {
+            socket.send(data);
+        } catch (e: any) {
+            // Ignore send errors
+        }
+        return;
+    }
+    // Node.js Socket
     if (!socket.writable) {
         return;
     }
@@ -1857,8 +2050,19 @@ function wsSend(socket: Socket, data: string): void {
 }
 
 // Send a WebSocket Ping (opcode 0x9). Browsers auto-respond with Pong.
-function wsPing(socket: Socket, payload?: string): void {
-    if (!socket || !socket.writable) {
+function wsPing(socket: any, payload?: string): void {
+    if (!socket) {
+        return;
+    }
+    // Bun ServerWebSocket has ping method
+    if (typeof socket.ping === 'function') {
+        try {
+            socket.ping();
+        } catch (_) { }
+        return;
+    }
+    // Node.js Socket ping
+    if (!socket.writable) {
         return;
     }
     try {
@@ -1884,7 +2088,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
         socket.destroy();
         return;
     }
-    
+
     // Rate limiting for WebSocket connections if security is enabled
     if (app._securityEnabled) {
         const clientIp = getClientIP(req);
@@ -1893,7 +2097,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
             return;
         }
     }
-    
+
     const key = String(
         (req.headers && (req.headers["sec-websocket-key"] as string)) || "",
     );
@@ -1901,7 +2105,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
         socket.destroy();
         return;
     }
-    
+
     // Basic validation of WebSocket key format
     if (key.length !== 24 || !/^[A-Za-z0-9+/]+=*$/.test(key)) {
         socket.destroy();
@@ -2102,4 +2306,128 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
         }
         // Other frames ignored
     });
+}
+
+// Bun-specific WebSocket handlers
+function handleUpgradeBun(app: App, ws: any): void {
+    const sid = String((ws.data && ws.data.sid) || "");
+    if (!sid) {
+        try {
+            ws.close();
+        } catch (_) { }
+        return;
+    }
+
+    app._touchSession(sid);
+    const record = { socket: ws, sid: sid, lastPong: Date.now() };
+    app._wsClients.add(record);
+    wsSend(ws, JSON.stringify({ type: "hello", ok: true }));
+
+    // Heartbeat: touch session + ping; drop if no pong within 75s
+    let heartbeat: any = 0;
+    try {
+        heartbeat = setInterval(function () {
+            try {
+                if (sid) {
+                    app._touchSession(sid);
+                }
+                const now = Date.now();
+                const age = now - record.lastPong;
+                if (age > 75000) {
+                    try {
+                        ws.close();
+                    } catch (_) { }
+                    return;
+                }
+                wsPing(ws);
+            } catch (_) { }
+        }, 25000);
+    } catch (_) { }
+
+    // Store heartbeat cleanup function
+    (ws as any)._heartbeat = heartbeat;
+}
+
+function handleBunMessage(app: App, ws: any, msg: any): void {
+    try {
+        // Find record
+        let record: any = null;
+        const it = app._wsClients.values();
+        while (true) {
+            const n = it.next();
+            if (n.done) {
+                break;
+            }
+            const c = n.value;
+            if (c.socket === ws) {
+                record = c;
+                break;
+            }
+        }
+
+        if (!record) {
+            return;
+        }
+
+        record.lastPong = Date.now();
+
+        const text = typeof msg === 'string' ? msg : String(msg);
+        let parsedMsg: any = {};
+        try {
+            parsedMsg = safeJsonParse(text, 10000) || {};
+        } catch (_) {
+            parsedMsg = {};
+        }
+
+        const msgType = String((parsedMsg && parsedMsg.type) || "");
+        if (msgType === "ping") {
+            try {
+                wsSend(
+                    ws,
+                    JSON.stringify({ type: "pong", t: Date.now() }),
+                );
+            } catch (_) { }
+        } else if (msgType === "invalid") {
+            try {
+                const id = String((parsedMsg && parsedMsg.id) || "");
+                const sid = String(record.sid || "");
+                if (sid) {
+                    app._touchSession(sid);
+                    const rec = app._sessions.get(sid);
+                    if (rec && rec.targets) {
+                        const fn = rec.targets.get(id);
+                        if (typeof fn === "function") {
+                            try {
+                                fn();
+                            } catch (_) { }
+                        }
+                        try {
+                            rec.targets.delete(id);
+                        } catch (_) { }
+                    }
+                }
+            } catch (_) { }
+        }
+    } catch (_) { }
+}
+
+function handleBunClose(app: App, ws: any): void {
+    try {
+        if ((ws as any)._heartbeat) {
+            clearInterval((ws as any)._heartbeat);
+            (ws as any)._heartbeat = 0;
+        }
+    } catch (_) { }
+
+    const it = app._wsClients.values();
+    while (true) {
+        const n = it.next();
+        if (n.done) {
+            break;
+        }
+        const c = n.value;
+        if (c.socket === ws) {
+            app._wsClients.delete(c);
+        }
+    }
 }

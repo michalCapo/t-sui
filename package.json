@@ -6,7 +6,8 @@
         "check": "tsc --noEmit",
         "predev": "npm run check",
         "dev": "node --import tsx examples/main.ts",
-        "dev:watch": "node --import tsx --watch examples/main.ts"
+        "dev:watch": "node --import tsx --watch examples/main.ts",
+        "dev:bun": "bun examples/main.ts"
     },
     "devDependencies": {
         "@types/node": "^22.18.1",

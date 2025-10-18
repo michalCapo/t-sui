@@ -18,19 +18,33 @@ The examples server (`npx tsx examples/main.ts`) scores well on Lighthouse when 
 
 ## Quick Start
 
-Prereqs: Node 18+ recommended.
+Prereqs: Node 18+ recommended (or Bun 1.0+).
 
 - Install deps: `npm install`
 - Start the examples server:
-    - Option A: `npx tsx examples/main.ts`
-    - Option B: `npm run dev` (if your script points to `examples/main.ts`)
+    - Option A (Node.js): `npx tsx examples/main.ts`
+    - Option B (Node.js with npm script): `npm run dev`
+    - Option C (Bun): `bun examples/main.ts` or `npm run dev:bun`
 - Open `http://localhost:1423` and try the routes:
     - `/` Showcase
     - `/button`, `/text`, `/password`, `/number`, `/date`, `/area`, `/select`, `/checkbox`, `/radio`, `/table`, `/append`, `/others`
 
 The examples demonstrate components, form handling, partial updates, and client helpers.
 
-Note: Examples include a high‑contrast SVG favicon (blue rounded square with white “UI”) embedded as a data URL. To change it, edit `examples/main.ts:34` and adjust colors or text in `addFavicon()`.
+Note: Examples include a high‑contrast SVG favicon (blue rounded square with white "UI") embedded as a data URL. To change it, edit `examples/main.ts:34` and adjust colors or text in `addFavicon()`.
+
+## Runtime Support
+
+The `ui.server.ts` module automatically detects the runtime environment and uses the appropriate server implementation:
+
+- **Node.js (18+)**: Uses the built-in `http` module with manual WebSocket upgrade handling.
+- **Bun (1.0+)**: Uses Bun's native `serve()` API with built-in WebSocket support for better performance and simpler code.
+
+Both runtimes support:
+- WebSocket connections for real-time patches (clock updates, deferred content, etc.)
+- Session management via cookies
+- Form submissions and partial DOM updates
+- Development features (auto-reload, hot updates)
 
 ## How It Works
 
