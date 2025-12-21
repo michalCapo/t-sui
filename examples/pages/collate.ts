@@ -1,6 +1,6 @@
 import ui from "../../ui";
 import { Context } from "../../ui.server";
-import { Collate, TQuery, TField, BOOL, DATES, SELECT } from "../../ui.data";
+import { TQuery, TField, BOOL, DATES, SELECT, createCollate } from "../../ui.data";
 import { data, Row } from "./collate-data";
 
 const Active: TField = {
@@ -51,10 +51,10 @@ const Email: TField = {
     Dates: { From: new Date(0), To: new Date(0) },
 };
 
-export function CollateContent(ctx: Context): string {
-    const init: TQuery = { Limit: 10, Offset: 0, Order: "createdat desc", Search: "", Filter: [] };
-    const collate = Collate<Row>(init, data);
+const init: TQuery = { Limit: 10, Offset: 0, Order: "createdat desc", Search: "", Filter: [] };
+const collate = createCollate<Row>(init, data);
 
+export function CollateContent(ctx: Context): string {
     const Role: TField = {
         DB: "Role",
         Field: "Role",

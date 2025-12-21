@@ -142,7 +142,13 @@ export interface CollateModel<T> {
     Render: (ctx: Context) => string;
 }
 
-export function Collate<T>(init: TQuery, loader: Loader<T>): CollateModel<T> {
+export function createCollate<T>(init: TQuery, loader: Loader<T>) {
+    const uid = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+    return Collate(uid, init, loader);
+}
+
+function Collate<T>(uid: string, init: TQuery, loader: Loader<T>): CollateModel<T> {
     const state = {
         Init: makeQuery(init),
         Target: ui.Target(),
@@ -208,6 +214,7 @@ export function Collate<T>(init: TQuery, loader: Loader<T>): CollateModel<T> {
         return ui.div("flex flex-col gap-2 mt-2", state.Target)(header, rows, pager);
     }
 
+    onResize.url = "/resize-" + uid;
     function onResize(ctx: Context): string {
         const query = makeQuery(state.Init);
         ctx.Body(query);
@@ -219,6 +226,7 @@ export function Collate<T>(init: TQuery, loader: Loader<T>): CollateModel<T> {
         return renderUI(ctx, query, undefined, true);
     }
 
+    onSort.url = "/sort-" + uid;
     function onSort(ctx: Context): string {
         const query = makeQuery(state.Init);
         ctx.Body(query);
@@ -226,11 +234,13 @@ export function Collate<T>(init: TQuery, loader: Loader<T>): CollateModel<T> {
         return renderUI(ctx, query, undefined, true);
     }
 
+    onXLS.url = "/xls-" + uid;
     function onXLS(ctx: Context): string {
         ctx.Info("Export not implemented in this build.");
         return "";
     }
 
+    onSearch.url = "/search-" + uid;
     function onSearch(ctx: Context): string {
         const query = makeQuery(state.Init);
         ctx.Body(query);
@@ -244,6 +254,7 @@ export function Collate<T>(init: TQuery, loader: Loader<T>): CollateModel<T> {
         return renderUI(ctx, query, undefined, true);
     }
 
+    onReset.url = "/reset-" + uid;
     function onReset(ctx: Context): string {
         const base = makeQuery(state.Init);
         triggerLoad(ctx, base);
