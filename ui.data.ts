@@ -572,7 +572,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
             } else {
                 direction = "desc";
             }
-            color = ui.PurpleOutline;
+            color = ui.BlueOutline;
         }
 
         let reverse = "desc";
@@ -618,7 +618,7 @@ function Paging<T>(ctx: Context, result: TCollateResult<T>, initLimit: number, o
             ui
                 .Button()
                 .Class("bg-white rounded-l")
-                .Color(ui.PurpleOutline)
+                .Color(ui.BlueOutline)
                 .Disabled(size === 0 || size <= Number(initLimit))
                 .Click(ctx.Call(onReset, result.Query).Replace(target))
                 .Render(ui.Icon("fa fa-fw fa-undo")),
@@ -626,7 +626,7 @@ function Paging<T>(ctx: Context, result: TCollateResult<T>, initLimit: number, o
             ui
                 .Button()
                 .Class("rounded-r bg-white")
-                .Color(ui.PurpleOutline)
+                .Color(ui.BlueOutline)
                 .Disabled(size >= Number(result.Filtered))
                 .Click(ctx.Call(onResize, result.Query).Replace(target))
                 .Render(
