@@ -44,11 +44,11 @@ function setSecurityHeaders(res: ServerResponse, isSecure = false): void {
     // Content Security Policy - updated to allow external stylesheets
     const csp = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",  // Allow inline scripts for framework functionality
-        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",   // Allow external stylesheets from CDNJS
-        "font-src 'self' https://cdnjs.cloudflare.com",  // Allow fonts from CDNJS
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",  // Allow inline scripts for framework functionality
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com ",   // Allow external stylesheets from CDNJS
+        "font-src 'self' https://cdnjs.cloudflare.com ",  // Allow fonts from CDNJS
         "img-src 'self' data: https:",
-        "connect-src 'self' ws: wss:",        // Allow WebSocket connections
+        "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",        // Allow WebSocket connections
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'"
@@ -286,7 +286,7 @@ export class App {
             '<meta charset=\"UTF-8\">',
             '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
             '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
-            '<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css\" integrity=\"sha512-wnea99uKIC3TJF7v4eKk4Y+lMz2Mklv18+r4na2Gn1abDRPPOeef95xTzdwGD9e6zXJBteMIhZ1+68QC5byJZw==\" crossorigin=\"anonymous\" referrerpolicy=\"no-referrer\" />',
+            '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>',
             script([
                 __stringify,
                 __loader,
@@ -869,11 +869,11 @@ export class App {
                     if (self._securityEnabled) {
                         headers["Content-Security-Policy"] = [
                             "default-src 'self'",
-                            "script-src 'self' 'unsafe-inline'",
-                            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
-                            "font-src 'self' https://cdnjs.cloudflare.com",
+                            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+                            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com ",
+                            "font-src 'self' https://cdnjs.cloudflare.com ",
                             "img-src 'self' data: https:",
-                            "connect-src 'self' ws: wss:",
+                            "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",
                             "object-src 'none'",
                             "base-uri 'self'",
                             "form-action 'self'"
