@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import ui, { AOption, Target, Skeleton } from "./ui";
 import { Context } from "./ui.server";
 
@@ -387,6 +388,7 @@ function Filtering(ctx: Context, target: Target, targetFilter: Target, filterFie
     if (!filterFields || filterFields.length === 0) {
         return "";
     }
+
     return ui.div("col-span-2 relative h-0 hidden z-30", targetFilter)(
         ui.div("absolute top-2 right-0 w-96 bg-white rounded-xl shadow-xl ring-1 ring-black/10 border border-gray-200")(
             ui.form("flex flex-col p-4", ctx.Submit(onSearch).Replace(target))(
@@ -540,7 +542,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
         (filterFields && filterFields.length > 0) &&
         ui.Button()
             .Submit()
-            .Class("rounded-r-lg shadow bg-white")
+            .Class("rounded-r-lg shadow")
             .Color(ui.Blue)
             .Click(
                 'window.document.getElementById(\'' + targetFilter.id + '\')?.classList.toggle(\'hidden\')',
@@ -559,7 +561,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
             sort.DB = sort.Field;
         }
         let direction = "";
-        let color = ui.GrayOutline;
+        let color = ui.GrayOutline
         const field = String(sort.DB || "").toLowerCase();
         const order = String(query.Order || "").toLowerCase();
 
@@ -570,7 +572,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
             } else {
                 direction = "desc";
             }
-            color = ui.Purple;
+            color = ui.PurpleOutline;
         }
 
         let reverse = "desc";
@@ -587,7 +589,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
 
         return ui
             .Button()
-            .Class("bg-white rounded")
+            .Class("rounded bg-white")
             .Color(color)
             .Click(ctx.Call(onSort, payload).Replace(target))
             .Render(
@@ -623,8 +625,8 @@ function Paging<T>(ctx: Context, result: TCollateResult<T>, initLimit: number, o
 
             ui
                 .Button()
-                .Class("rounded-r")
-                .Color(ui.Purple)
+                .Class("rounded-r bg-white")
+                .Color(ui.PurpleOutline)
                 .Disabled(size >= Number(result.Filtered))
                 .Click(ctx.Call(onResize, result.Query).Replace(target))
                 .Render(
