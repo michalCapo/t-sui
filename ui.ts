@@ -212,7 +212,7 @@ const GrayOutline =
 const White =
     " bg-white text-black hover:bg-gray-200 border-gray-200 flex items-center justify-center";
 const WhiteOutline =
-    " border border-white text-balck hover:text-black hover:bg-white flex items-center justify-center";
+    " border border-white text-black hover:text-black hover:bg-white flex items-center justify-center";
 
 const space = "&nbsp;";
 
