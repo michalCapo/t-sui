@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import ui, { AOption, Target, Skeleton } from "./ui";
 import { Context } from "./ui.server";
 
@@ -489,7 +488,7 @@ function Filtering(ctx: Context, target: Target, targetFilter: Target, filterFie
 }
 
 function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Target, filterFields: TField[], excelFields: TField[], onSearch: (ctx: Context) => string, onXLS: (ctx: Context) => string): string {
-    return ui.div("flex gap-px bg-blue-800 rounded-lg")(
+    return ui.div("flex gap-px bg-blue-500 rounded-lg")(
 
         // Search
         ui.form("flex", ctx.Submit(onSearch).Replace(target))(
@@ -504,7 +503,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
                         .Render(ui.Icon("fa fa-fw fa-search"))
                 ),
                 ui.IText("Search", query)
-                    .Class("p-1 w-full")
+                    .Class("p-px w-full")
                     .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full py-3 pl-12 pr-12")
                     .Placeholder("Search")
                     .Render(""),
@@ -543,7 +542,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
         ui.Button()
             .Submit()
             .Class("rounded-r-lg shadow")
-            .Color(ui.Blue)
+            .Color("bg-blue-500 text-white hover:bg-blue-700 border-gray-300 flex items-center justify-center")
             .Click(
                 'window.document.getElementById(\'' + targetFilter.id + '\')?.classList.toggle(\'hidden\')',
             )
