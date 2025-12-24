@@ -415,6 +415,84 @@ ui.Hidden("userId", "number", 123)
 
 ---
 
+## Form Association (Form Instance)
+
+The `ui.Form` class allows form inputs and submit buttons to be placed anywhere in your layout while still being associated with a form via the HTML `form` attribute. This is useful when you want to separate form controls visually or create complex layouts.
+
+### Basic Usage
+
+```typescript
+import ui from "./ui";
+import { Context, MakeApp } from "./ui.server";
+
+const app = MakeApp("en");
+
+class ContactForm {
+    Name = "";
+    Email = "";
+    Message = "";
+}
+
+function FormAssocPage(ctx: Context): string {
+    const target = ui.Target();
+    const form = new ContactForm();
+
+    // Create a Form instance with the submit handler
+    const f = new ui.Form(ctx.Submit(Save).Replace(target));
+
+    return app.HTML(
+        "Form Association Demo",
+        "bg-gray-100 min-h-screen",
+        ui.div("max-w-2xl mx-auto p-6 space-y-4")(
+            f.Render(),  // Render the hidden form element (required)
+            ui.div("", { id: target.id.replace("t", "result") })(),
+
+            // Inputs can be placed anywhere
+            ui.div("grid grid-cols-2 gap-4")(
+                f.Text("Name", form).Required().Render("Name"),
+                f.Text("Email", form).Required().Render("Email"),
+            ),
+
+            f.Area("Message", form).Render("Message"),
+
+            // Submit button can also be placed anywhere
+            f.Button().Submit().Color(ui.Blue).Render("Send"),
+        ),
+    );
+}
+
+function Save(ctx: Context): string {
+    const form = new ContactForm();
+    ctx.Body(form);
+    return ui.div("p-4 bg-green-100")("Thanks, " + form.Name + "!");
+}
+
+app.Page("/form-assoc", FormAssocPage);
+app.Listen(1423);
+```
+
+### Form Instance Methods
+
+The `ui.Form` instance provides methods for all input components that automatically associate with the form:
+
+- `f.Text(name, data)` — Text input
+- `f.Password(name, data)` — Password input
+- `f.Area(name, data)` — Textarea
+- `f.Number(name, data)` — Number input
+- `f.Date(name, data)` — Date input
+- `f.Time(name, data)` — Time input
+- `f.DateTime(name, data)` — DateTime input
+- `f.Select(name, data)` — Select dropdown
+- `f.Checkbox(name, data)` — Checkbox
+- `f.Radio(name, data)` — Radio button
+- `f.RadioButtons(name, data)` — Radio button group
+- `f.Button()` — Submit button
+- `f.Render()` — Renders the hidden form element (required)
+
+**Important:** Always call `f.Render()` to output the hidden form element that all inputs and buttons reference via the `form` attribute.
+
+---
+
 ## Button Component
 
 ```typescript
