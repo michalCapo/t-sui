@@ -15,6 +15,7 @@ import { AppendContent } from "./pages/append";
 import { OthersContent } from "./pages/others";
 import { CollateContent } from "./pages/collate";
 import { CaptchaContent } from "./pages/captcha";
+import { FormAssocContent } from "./pages/form-assoc";
 
 type Route = { Path: string; Title: string };
 const routes: Route[] = [
@@ -33,6 +34,7 @@ const routes: Route[] = [
     { Path: "/others", Title: "Others" },
     { Path: "/collate", Title: "Collate" },
     { Path: "/captcha", Title: "Captcha" },
+    { Path: "/form-assoc", Title: "Form Association" },
 ];
 
 const app = MakeApp("en");
@@ -104,6 +106,7 @@ app.Page("/append", layout("Append", AppendContent));
 app.Page("/others", layout("Others", OthersContent));
 app.Page("/collate", layout("Collate", CollateContent));
 app.Page("/captcha", layout("Captcha", CaptchaContent));
+app.Page("/form-assoc", layout("Form Association", FormAssocContent));
 
 app.Debug(true);
 app.AutoReload(true);

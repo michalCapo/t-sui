@@ -36,6 +36,7 @@ export interface Attr {
     disabled?: boolean;
     required?: boolean;
     readonly?: boolean;
+    form?: string;
 }
 
 export interface AOption {
@@ -313,6 +314,9 @@ function attributes(...attrs: Attr[]): string {
         if (a.readonly) {
             result.push('readonly="readonly"');
         }
+        if (a.form) {
+            result.push('form="' + a.form + '"');
+        }
     }
     return result.join(" ");
 }
@@ -507,6 +511,7 @@ function Button(...attrs: Attr[]) {
         target: {} as Attr,
         visible: true,
         disabled: false,
+        formId: "",
         extra: (function () {
             const out: Attr[] = [];
             for (let i = 0; i < attrs.length; i++) {
@@ -556,6 +561,10 @@ function Button(...attrs: Attr[]) {
             state.extra.push({ href: v });
             return api;
         },
+        Form(formId: string) {
+            state.formId = formId;
+            return api;
+        },
         Render(text: string): string {
             if (!state.visible) {
                 return "";
@@ -581,6 +590,7 @@ function Button(...attrs: Attr[]) {
                     id: state.target.id,
                     onclick: state.onclick,
                     class: cls,
+                    form: state.formId || undefined,
                 });
                 // return "<div " + renderAttrs(merged) + ">" + text + "</div>";
                 return div(cls, ...merged)(text);
@@ -589,6 +599,7 @@ function Button(...attrs: Attr[]) {
                 id: state.target.id,
                 onclick: state.onclick,
                 class: cls,
+                form: state.formId || undefined,
             });
             // return "<button " + renderAttrs(merged) + ">" + text + "</button>";
             return button(cls, ...merged)(text);
@@ -617,6 +628,7 @@ interface BaseAPI {
     required: boolean;
     disabled: boolean;
     readonly: boolean;
+    formId: string;
     Class: (...v: string[]) => BaseAPI;
     ClassLabel: (...v: string[]) => BaseAPI;
     ClassInput: (...v: string[]) => BaseAPI;
@@ -632,6 +644,7 @@ interface BaseAPI {
     Value: (v: string) => BaseAPI;
     Change: (code: string) => BaseAPI;
     Click: (code: string) => BaseAPI;
+    Form: (formId: string) => BaseAPI;
     If: (v: boolean) => BaseAPI;
     resolveValue: () => string;
     Render: (label: string) => string;
@@ -660,6 +673,7 @@ function createBase(name: string, data?: Record<string, unknown>, as: string = "
         required: false,
         disabled: false,
         readonly: false,
+        formId: "",
 
         Class: function (...v: string[]) {
             api.css = v.join(" ");
@@ -719,6 +733,10 @@ function createBase(name: string, data?: Record<string, unknown>, as: string = "
         },
         Click: function (code: string) {
             api.onclick = code;
+            return api;
+        },
+        Form: function (formId: string) {
+            api.formId = formId;
             return api;
         },
         If: function (v: boolean) {
@@ -807,6 +825,7 @@ function IText(name: string, data?: any) {
                     pattern: base.pattern,
                     placeholder: base.placeholder,
                     autocomplete: base.autocomplete,
+                    form: base.formId || undefined,
                 },
             ),
         );
@@ -845,6 +864,7 @@ function IPassword(name: string, data?: any) {
                     disabled: base.disabled,
                     value: value,
                     placeholder: base.placeholder,
+                    form: base.formId || undefined,
                 },
             ),
         );
@@ -889,6 +909,7 @@ function IArea(name: string, data?: any) {
                     readonly: base.readonly,
                     placeholder: base.placeholder,
                     rows: rows,
+                    form: base.formId || undefined,
                 },
             )(value),
         );
@@ -974,6 +995,7 @@ function INumber(name: string, data?: any) {
                     max: maxStr,
                     step: stepStr,
                     placeholder: base.placeholder,
+                    form: base.formId || undefined,
                 },
             ),
         );
@@ -1034,6 +1056,7 @@ function IDate(name: string, data?: any) {
                     min: min,
                     max: max,
                     placeholder: base.placeholder,
+                    form: base.formId || undefined,
                 },
             ),
         );
@@ -1092,6 +1115,7 @@ function ITime(name: string, data?: any) {
                     min: min,
                     max: max,
                     placeholder: base.placeholder,
+                    form: base.formId || undefined,
                 },
             ),
         );
@@ -1150,6 +1174,7 @@ function IDateTime(name: string, data?: any) {
                     min: min,
                     max: max,
                     placeholder: base.placeholder,
+                    form: base.formId || undefined,
                 },
             ),
         );
@@ -1170,6 +1195,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
         disabled: false,
         placeholder: "",
         options: [] as AOption[],
+        formId: "",
         target: {} as Attr,
         onchange: "",
         empty: false,
@@ -1231,6 +1257,10 @@ function ISelect<T = unknown>(name: string, data?: T) {
             state.error = v;
             return api;
         },
+        Form: function (formId: string) {
+            state.formId = formId;
+            return api;
+        },
         Render: function (label: string): string {
             if (!state.visible) {
                 return "";
@@ -1265,6 +1295,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
                 disabled: state.disabled,
                 placeholder: state.placeholder,
                 onchange: state.onchange,
+                form: state.formId || undefined,
             };
             return div(
                 Classes(
@@ -1293,6 +1324,7 @@ function ICheckbox(name: string, data?: any) {
         size: MD,
         required: false,
         disabled: false,
+        formId: "",
         error: false,
     };
     const api = {
@@ -1316,6 +1348,10 @@ function ICheckbox(name: string, data?: any) {
             state.error = v;
             return api;
         },
+        Form: function (formId: string) {
+            state.formId = formId;
+            return api;
+        },
         Render: function (text: string): string {
             let isChecked = false;
             if (state.data) {
@@ -1328,6 +1364,7 @@ function ICheckbox(name: string, data?: any) {
                 checked: isChecked ? "checked" : undefined,
                 required: state.required,
                 disabled: state.disabled,
+                form: state.formId || undefined,
             });
             const wrapperClass = Classes(
                 state.css,
@@ -1355,6 +1392,7 @@ function IRadio(name: string, data?: any) {
         target: {} as Attr,
         disabled: false,
         required: false,
+        formId: "",
         error: false,
     };
     const api = {
@@ -1386,6 +1424,10 @@ function IRadio(name: string, data?: any) {
             state.error = v;
             return api;
         },
+        Form: function (formId: string) {
+            state.formId = formId;
+            return api;
+        },
         Render: function (text: string): string {
             const selected = state.data
                 ? String(
@@ -1400,6 +1442,7 @@ function IRadio(name: string, data?: any) {
                 checked: selected === state.valueSet ? "checked" : undefined,
                 disabled: state.disabled,
                 required: state.required,
+                form: state.formId || undefined,
             });
             const wrapperCls = Classes(
                 state.css,
@@ -1427,6 +1470,7 @@ function IRadioButtons(name: string, data?: any) {
         options: [] as AOption[],
         required: false,
         disabled: false,
+        formId: "",
         error: false,
     };
     const api = {
@@ -1448,6 +1492,10 @@ function IRadioButtons(name: string, data?: any) {
         },
         Error: function (v = true) {
             state.error = v;
+            return api;
+        },
+        Form: function (formId: string) {
+            state.formId = formId;
             return api;
         },
         Render: function (text: string): string {
@@ -1472,6 +1520,7 @@ function IRadioButtons(name: string, data?: any) {
                     checked: active ? "checked" : undefined,
                     disabled: state.disabled,
                     required: state.required,
+                    form: state.formId || undefined,
                 });
                 items += label(cls)(inputEl + " " + o.value);
             }
@@ -1782,6 +1831,68 @@ function Script(body: string): string {
     return "<script>" + safeBody + "</script>";
 }
 
+class Form {
+    formId: string;
+    onSubmit: Attr;
+
+    constructor(onSubmit: Attr) {
+        this.formId = "i" + RandomString(15);
+        this.onSubmit = onSubmit;
+    }
+
+    Text(name: string, data?: any): ReturnType<typeof IText> {
+        return IText(name, data).Form(this.formId) as any;
+    }
+
+    Password(name: string, data?: any): ReturnType<typeof IPassword> {
+        return IPassword(name, data).Form(this.formId) as any;
+    }
+
+    Area(name: string, data?: any): ReturnType<typeof IArea> {
+        return IArea(name, data).Form(this.formId) as any;
+    }
+
+    Number(name: string, data?: any): ReturnType<typeof INumber> {
+        return INumber(name, data).Form(this.formId) as any;
+    }
+
+    Date(name: string, data?: any): ReturnType<typeof IDate> {
+        return IDate(name, data).Form(this.formId) as any;
+    }
+
+    Time(name: string, data?: any): ReturnType<typeof ITime> {
+        return ITime(name, data).Form(this.formId) as any;
+    }
+
+    DateTime(name: string, data?: any): ReturnType<typeof IDateTime> {
+        return IDateTime(name, data).Form(this.formId) as any;
+    }
+
+    Select<T = unknown>(name: string, data?: T): ReturnType<typeof ISelect<T>> {
+        return ISelect<T>(name, data).Form(this.formId) as any;
+    }
+
+    Checkbox(name: string, data?: any): ReturnType<typeof ICheckbox> {
+        return ICheckbox(name, data).Form(this.formId) as any;
+    }
+
+    Radio(name: string, data?: any): ReturnType<typeof IRadio> {
+        return IRadio(name, data).Form(this.formId) as any;
+    }
+
+    RadioButtons(name: string, data?: any): ReturnType<typeof IRadioButtons> {
+        return IRadioButtons(name, data).Form(this.formId) as any;
+    }
+
+    Button(): ReturnType<typeof Button> {
+        return Button().Form(this.formId) as any;
+    }
+
+    Render(): string {
+        return form("hidden", { id: this.formId, ...this.onSubmit })();
+    }
+}
+
 export default {
     Trim,
     Normalize,
@@ -1859,4 +1970,5 @@ export default {
     Timeout,
     Hidden,
     script: Script,
+    Form,
 };

@@ -27,7 +27,7 @@ Prereqs: Node 18+ recommended (or Bun 1.0+).
     - Option C (Bun): `bun examples/main.ts` or `npm run dev:bun`
 - Open `http://localhost:1423` and try the routes:
     - `/` Showcase
-    - `/button`, `/text`, `/password`, `/number`, `/date`, `/area`, `/select`, `/checkbox`, `/radio`, `/table`, `/append`, `/others`
+    - `/button`, `/text`, `/password`, `/number`, `/date`, `/area`, `/select`, `/checkbox`, `/radio`, `/table`, `/append`, `/others`, `/form-assoc`
 
 The examples demonstrate components, form handling, partial updates, and client helpers.
 
@@ -160,10 +160,83 @@ app.AutoReload(true);
 app.Listen(1423);
 ```
 
+## Form Association
+
+The `FormInstance` feature allows form inputs and submit buttons to be placed anywhere in your layout while still being associated with a form via the HTML `form` attribute. This is useful when you want to separate form controls visually or create complex layouts.
+
+```ts
+// examples/form-assoc.ts
+import ui from "./ui";
+import { MakeApp, Context } from "./ui.server";
+
+const app = MakeApp("en");
+
+class ContactForm {
+	Name = "";
+	Email = "";
+	Message = "";
+}
+
+function Page(ctx: Context): string {
+	const form = new ContactForm();
+
+	// Create a FormInstance with the submit handler
+	const f = ui.FormNew(ctx.Submit(Save).Replace("#result"));
+
+	return app.HTML(
+		"Form Association Demo",
+		"bg-gray-100 min-h-screen",
+		ui.div("max-w-2xl mx-auto p-6 space-y-4")(
+			f.Render(), // Render the hidden form element
+			ui.div("", { id: "result" })(),
+
+			// Inputs can be placed anywhere
+			ui.div("grid grid-cols-2 gap-4")(
+				f.Text("Name", form).Required().Render("Name"),
+				f.Text("Email", form).Required().Render("Email"),
+			),
+
+			f.Area("Message", form).Render("Message"),
+
+			// Submit button can also be placed anywhere
+			f.Button().Submit().Color(ui.Blue).Render("Send"),
+		),
+	);
+}
+
+function Save(ctx: Context): string {
+	const form = new ContactForm();
+	ctx.Body(form);
+	return ui.div("p-4 bg-green-100")("Thanks, " + form.Name + "!");
+}
+
+app.Page("/form-assoc", Page);
+app.Listen(1423);
+```
+
+### FormInstance Methods
+
+The `FormInstance` provides methods for all input components that automatically associate with the form:
+
+- `f.Text(name, data)` — Text input
+- `f.Password(name, data)` — Password input
+- `f.Area(name, data)` — Textarea
+- `f.Number(name, data)` — Number input
+- `f.Date(name, data)` — Date input
+- `f.Time(name, data)` — Time input
+- `f.DateTime(name, data)` — DateTime input
+- `f.Select(name, data)` — Select dropdown
+- `f.Checkbox(name, data)` — Checkbox
+- `f.Radio(name, data)` — Radio button
+- `f.RadioButtons(name, data)` — Radio button group
+- `f.Button()` — Submit button
+- `f.Render()` — Renders the hidden form element (required)
+
 ## API Highlights
 
 - Layout primitives: `div`, `span`, `form`, `a`, `label`, `img`, `input`, `ul`, `li`, `canvas`
 - Components: `Button`, `IText`, `IPassword`, `IArea`, `INumber`, `IDate`, `ITime`, `IDateTime`, `ISelect`, `ICheckbox`, `IRadio`, `IRadioButtons`, `SimpleTable`, `Captcha`
+- Form helpers: `FormInstance`, `FormNew` — Create form associations for layouts where inputs and buttons are placed outside the form element
 - CAPTCHA: `import { Captcha } from "./ui.captcha";` renders the drag-and-drop puzzle and exposes `Validate*` helpers for server checks.
 - Utilities: `Classes`, `Trim`, `Normalize`, `Map`, `For`, size presets `XS|SM|MD|ST|LG|XL`, color presets `Blue|Red|Green|...`
 - Server: `App`, `MakeApp(lang)`, `app.Page(path, fn)`, `app.Listen(port)`
