@@ -1,12 +1,44 @@
 // Typpescript server for server-side rendering using the combined UI library
 
-import http, { IncomingMessage, ServerResponse } from "node:http";
+import http, { IncomingMessage, Server, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import type { Socket } from "node:net";
 import ui, { Attr, Target, Swap } from "./ui";
 
 // Runtime detection
-const IS_BUN = typeof (globalThis as any).Bun !== 'undefined';
+const IS_BUN = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
+
+// Type definitions for WebSocket sockets (works for both Bun and Node.js)
+interface WebSocketLike {
+    send?(data: string | Buffer): void | Promise<void>;
+    write?(data: string | Buffer): boolean;
+    ping?(data?: string | Buffer): void;
+    close?(code?: number, reason?: string | Buffer): void;
+    writable?: boolean;
+    destroy?(): void;
+    data?: unknown;
+    on?(event: string, listener: (...args: unknown[]) => void): void;
+    removeListener?(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+interface WebSocketClient {
+    socket: WebSocketLike;
+    sid: string;
+    lastPong: number;
+}
+
+interface BunLikeServer {
+    upgrade?(req: IncomingMessage, options?: { data?: { sid: string; setCookie: string } }): boolean;
+}
+
+// Type for action values (recursive definition)
+type ActionValue = string | number | boolean | Date | null | undefined | ActionValue[] | { [key: string]: ActionValue };
+
+interface PostAction {
+    method: Callable;
+    target?: Attr;
+    values?: ActionValue[];
+}
 
 // Enhanced input validation and sanitization functions
 function validateAndSanitizeInput(input: string, maxLength = 1000000): string {
@@ -154,8 +186,7 @@ export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
-    _wsClients: Set<{ socket: any; sid: string; lastPong: number }> =
-        new Set();
+    _wsClients: Set<WebSocketClient> = new Set();
     _debugEnabled: boolean = false;
     _sessions: Map<
         string,
@@ -571,7 +602,7 @@ export class App {
         return html;
     }
 
-    Listen(port = 1422): void {
+    async Listen(port = 1422): Promise<ServerListenResult> {
         // const self = this;
 
         // Start periodic cleanup for rate limiter and sessions
@@ -588,7 +619,7 @@ export class App {
         return this._listenNode(port);
     }
 
-    private _listenNode(port: number): void {
+    private async _listenNode(port: number): Promise<ServerListenResult> {
         const self = this;
 
         const server = http.createServer(async function (
@@ -736,11 +767,19 @@ export class App {
         server.on("upgrade", function (req: IncomingMessage, socket: Socket) {
             handleUpgrade(self, req, socket);
         });
-        server.listen(port, "0.0.0.0");
-        console.log("Listening on http://0.0.0.0:" + String(port));
+        // Wait for the server to start listening to get the actual port
+        await new Promise<void>((resolve) => {
+            server.once('listening', resolve);
+            server.listen(port, "0.0.0.0");
+        });
+        // Get the actual port (useful when port is 0 for random port assignment)
+        const addr = server.address() as { port: number } | null;
+        const actualPort = addr?.port ?? port;
+        console.log("Listening on http://0.0.0.0:" + String(actualPort));
+        return { server, port: actualPort };
     }
 
-    private _listenBun(port: number): void {
+    private _listenBun(port: number): Promise<ServerListenResult> {
         const self = this;
         const Bun = (globalThis as any).Bun;
 
@@ -748,22 +787,24 @@ export class App {
             port: port,
             hostname: "0.0.0.0",
             websocket: {
-                open: function (ws: any) {
+                open: function (ws: WebSocketLike) {
                     handleUpgradeBun(self, ws);
                 },
-                message: function (ws: any, msg: any) {
+                message: function (ws: WebSocketLike, msg: string | Buffer) {
                     handleBunMessage(self, ws, msg);
                 },
-                close: function (ws: any) {
+                close: function (ws: WebSocketLike) {
                     handleBunClose(self, ws);
                 },
-                error: function (ws: any, err: any) {
+                error: function (ws: WebSocketLike, err: Error) {
                     try {
-                        ws.close();
+                        if (ws && ws.close) {
+                            ws.close();
+                        }
                     } catch (_) { }
                 },
             },
-            async fetch(req: any, server: any) {
+            async fetch(req: { url: string | URL; headers: { get(name: string): string | null }; method?: string; text?: () => Promise<string> }, server: BunLikeServer) {
                 try {
                     // Extract session ID early for all requests
                     let sid = "";
@@ -788,7 +829,7 @@ export class App {
                         }
 
                         // Use server.upgrade() with data attachment
-                        if (server.upgrade(req, {
+                        if (server.upgrade?.(req as unknown as IncomingMessage, {
                             data: {
                                 sid: sid,
                                 setCookie: setCookieValue,
@@ -802,7 +843,7 @@ export class App {
                     let body = "";
                     if (req.method === "POST" || req.method === "PUT") {
                         try {
-                            body = await req.text();
+                            body = await req.text?.() || "";
                             if (body.length > 1_000_000) {
                                 return new Response("Request body too large", { status: 413 });
                             }
@@ -839,10 +880,18 @@ export class App {
                     }
 
                     // Create mock IncomingMessage and ServerResponse for compatibility
+                    // Convert Headers-like object to a plain object
+                    const reqHeadersObj: Record<string, string> = {};
+                    const headersLike = req.headers as unknown as Headers;
+                    // Try to iterate over headers if it's a proper Headers object
+                    headersLike.forEach?.((value: string, key: string) => {
+                        reqHeadersObj[key] = value;
+                    });
+
                     const mockReq = {
                         url: req.url,
                         method: req.method,
-                        headers: Object.fromEntries(req.headers),
+                        headers: reqHeadersObj,
                     } as unknown as IncomingMessage;
 
                     const mockRes = new ServerResponse(mockReq);
@@ -897,8 +946,17 @@ export class App {
             }
         });
 
-        console.log("Listening on http://0.0.0.0:" + String(port));
+        // Bun.serve returns the actual port used (useful when port is 0 for random assignment)
+        const actualPort = server.port;
+        console.log("Listening on http://0.0.0.0:" + String(actualPort));
+        return Promise.resolve({ server: server as unknown as Server, port: actualPort });
     }
+}
+
+// Result type for Listen method - contains both server and actual port
+export interface ServerListenResult {
+    server: Server;
+    port: number;
 }
 
 // Debug control: enable or disable server logs. When enabled, logs are prefixed with 'tsui:'.
@@ -948,14 +1006,14 @@ export class Context {
     Post(
         as: ActionType,
         swap: Swap,
-        action: { method: Callable; target?: Attr; values?: any[] },
+        action: PostAction,
     ): string {
         const path = this.app.pathOf(action.method);
         if (!path) throw new Error("Function not registered.");
 
         const body: BodyItem[] = [];
         const values = action.values || [];
-        function pushValue(prefix: string, v: any): void {
+        function pushValue(prefix: string, v: ActionValue): void {
             if (v == null) {
                 body.push({ name: prefix, type: "string", value: "" });
                 return;
@@ -1038,34 +1096,34 @@ export class Context {
                 return self.Post("FORM", "inline", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             Replace: function (target: Attr) {
                 return self.Post("FORM", "outline", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             Append: function (target: Attr) {
                 return self.Post("FORM", "append", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             Prepend: function (target: Attr) {
                 return self.Post("FORM", "prepend", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             None: function () {
                 return self.Post("FORM", "none", {
                     method: callable,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
         };
@@ -1079,34 +1137,34 @@ export class Context {
                 return self.Post("POST", "inline", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             Replace: function (target: Attr) {
                 return self.Post("POST", "outline", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             Append: function (target: Attr) {
                 return self.Post("POST", "append", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             Prepend: function (target: Attr) {
                 return self.Post("POST", "prepend", {
                     method: callable,
                     target: target,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
             None: function () {
                 return self.Post("POST", "none", {
                     method: callable,
-                    values: values,
+                    values: values as unknown as ActionValue[],
                 });
             },
         };
@@ -1121,7 +1179,7 @@ export class Context {
                     onsubmit: self.Post("FORM", "inline", {
                         method: callable,
                         target: target,
-                        values: values,
+                        values: values as unknown as ActionValue[],
                     }),
                 };
             },
@@ -1130,7 +1188,7 @@ export class Context {
                     onsubmit: self.Post("FORM", "outline", {
                         method: callable,
                         target: target,
-                        values: values,
+                        values: values as unknown as ActionValue[],
                     }),
                 };
             },
@@ -1139,7 +1197,7 @@ export class Context {
                     onsubmit: self.Post("FORM", "append", {
                         method: callable,
                         target: target,
-                        values: values,
+                        values: values as unknown as ActionValue[],
                     }),
                 };
             },
@@ -1148,7 +1206,7 @@ export class Context {
                     onsubmit: self.Post("FORM", "prepend", {
                         method: callable,
                         target: target,
-                        values: values,
+                        values: values as unknown as ActionValue[],
                     }),
                 };
             },
@@ -1156,7 +1214,7 @@ export class Context {
                 return {
                     onsubmit: self.Post("FORM", "none", {
                         method: callable,
-                        values: values,
+                        values: values as unknown as ActionValue[],
                     }),
                 };
             },
@@ -1254,7 +1312,7 @@ function displayMessage(ctx: Context, message: string, color: string) {
     ctx.append.push(ui.Trim(script1));
 }
 
-function typeOf(v: any): string {
+function typeOf(v: unknown): string {
     if (v instanceof Date) return "Time";
     const t = typeof v;
     if (t === "number") {
@@ -1266,12 +1324,12 @@ function typeOf(v: any): string {
     return "string";
 }
 
-function valueToString(v: any): string {
+function valueToString(v: unknown): string {
     if (v instanceof Date) return v.toUTCString();
     return String(v);
 }
 
-function coerce(type: string, value: string): any {
+function coerce(type: string, value: string): unknown {
     switch (type) {
         case "date":
         case "time":
@@ -1292,39 +1350,39 @@ function coerce(type: string, value: string): any {
     }
 }
 
-function setPath(obj: any, path: string, value: any) {
+function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
     const parts = path.split(".");
-    let current = obj;
+    let current: Record<string, unknown> | unknown[] = obj;
     for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
         const next = parts[i + 1];
         const nextIsIndex = /^[0-9]+$/.test(String(next || ""));
-        if (!(part in current) || typeof current[part] !== "object") {
-            current[part] = nextIsIndex ? [] : {};
+        if (!(part in current) || typeof (current as Record<string, unknown>)[part] !== "object") {
+            (current as Record<string, unknown>)[part] = nextIsIndex ? [] : {};
         }
-        current = current[part];
+        current = (current as Record<string, unknown>)[part] as Record<string, unknown> | unknown[];
     }
     const last = parts[parts.length - 1];
     if (/^[0-9]+$/.test(String(last))) {
         const idx = parseInt(String(last), 10);
         if (!Array.isArray(current)) {
             // Convert to array if needed
-            const tmp: any[] = [];
+            const tmp: unknown[] = [];
             try {
-                const keys = Object.keys(current);
+                const keys = Object.keys(current as Record<string, unknown>);
                 for (let k = 0; k < keys.length; k++) {
                     const key = keys[k];
                     const n = parseInt(key, 10);
                     if (!Number.isNaN(n)) {
-                        tmp[n] = current[key];
+                        tmp[n] = (current as Record<string, unknown>)[key];
                     }
                 }
             } catch (_) { }
             current = tmp;
         }
-        current[idx] = value;
+        (current as unknown[])[idx] = value;
     } else {
-        current[last] = value;
+        (current as Record<string, unknown>)[last] = value;
     }
 }
 
@@ -2038,7 +2096,7 @@ function wsFrame(data: string): Buffer {
     return Buffer.concat([header, payload]);
 }
 
-function wsSend(socket: any, data: string): void {
+function wsSend(socket: WebSocketLike, data: string): void {
     if (!socket) {
         return;
     }
@@ -2046,7 +2104,7 @@ function wsSend(socket: any, data: string): void {
     if (typeof socket.send === 'function' && typeof socket.write !== 'function') {
         try {
             socket.send(data);
-        } catch (e: any) {
+        } catch (e: unknown) {
             // Ignore send errors
         }
         return;
@@ -2056,14 +2114,14 @@ function wsSend(socket: any, data: string): void {
         return;
     }
     try {
-        socket.write(wsFrame(data));
-    } catch (e: any) {
+        socket.write?.(wsFrame(data));
+    } catch (e: unknown) {
         console.error(e);
     }
 }
 
 // Send a WebSocket Ping (opcode 0x9). Browsers auto-respond with Pong.
-function wsPing(socket: any, payload?: string): void {
+function wsPing(socket: WebSocketLike, payload?: string): void {
     if (!socket) {
         return;
     }
@@ -2090,7 +2148,7 @@ function wsPing(socket: any, payload?: string): void {
             Buffer.from([0x89]),
             encodeLength(body.length),
         ]);
-        socket.write(Buffer.concat([header, body]));
+        socket.write?.(Buffer.concat([header, body]));
     } catch (_) { }
 }
 
@@ -2161,7 +2219,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
     app._wsClients.add(record);
     wsSend(socket, JSON.stringify({ type: "hello", ok: true }));
     // Heartbeat: touch session + ping; drop if no pong within 75s
-    let heartbeat: any = 0;
+    let heartbeat: ReturnType<typeof setInterval> | 0 = 0;
     try {
         heartbeat = setInterval(function () {
             try {
@@ -2278,14 +2336,14 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
         if (opcode === 0x1) {
             try {
                 const text = payload.toString("utf8");
-                let msg: any = {};
+                let msg: { type?: string; id?: string; [key: string]: unknown } = {};
                 try {
                     // Use safer JSON parsing for WebSocket messages
-                    msg = safeJsonParse(text, 10000) || {};
+                    msg = safeJsonParse<{ type?: string; id?: string }>(text, 10000) || {};
                 } catch (_) {
                     msg = {};
                 }
-                const t = String((msg && msg.type) || "");
+                const t = String(msg.type || "");
                 if (t === "ping") {
                     try {
                         wsSend(
@@ -2295,7 +2353,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                     } catch (_) { }
                 } else if (t === "invalid") {
                     try {
-                        const id = String((msg && msg.id) || "");
+                        const id = String(msg.id || "");
                         const sid2 = String(record.sid || "");
                         if (sid2) {
                             app._touchSession(sid2);
@@ -2322,11 +2380,12 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
 }
 
 // Bun-specific WebSocket handlers
-function handleUpgradeBun(app: App, ws: any): void {
-    const sid = String((ws.data && ws.data.sid) || "");
+function handleUpgradeBun(app: App, ws: WebSocketLike): void {
+    const wsData = ws.data as Record<string, unknown> | undefined;
+    const sid = String((wsData && wsData.sid) || "");
     if (!sid) {
         try {
-            ws.close();
+            ws.close?.();
         } catch (_) { }
         return;
     }
@@ -2337,7 +2396,7 @@ function handleUpgradeBun(app: App, ws: any): void {
     wsSend(ws, JSON.stringify({ type: "hello", ok: true }));
 
     // Heartbeat: touch session + ping; drop if no pong within 75s
-    let heartbeat: any = 0;
+    let heartbeat: ReturnType<typeof setInterval> | 0 = 0;
     try {
         heartbeat = setInterval(function () {
             try {
@@ -2348,7 +2407,7 @@ function handleUpgradeBun(app: App, ws: any): void {
                 const age = now - record.lastPong;
                 if (age > 75000) {
                     try {
-                        ws.close();
+                        ws.close?.();
                     } catch (_) { }
                     return;
                 }
@@ -2358,13 +2417,13 @@ function handleUpgradeBun(app: App, ws: any): void {
     } catch (_) { }
 
     // Store heartbeat cleanup function
-    (ws as any)._heartbeat = heartbeat;
+    (ws as Record<string, unknown>)._heartbeat = heartbeat;
 }
 
-function handleBunMessage(app: App, ws: any, msg: any): void {
+function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): void {
     try {
         // Find record
-        let record: any = null;
+        let record: WebSocketClient | null = null;
         const it = app._wsClients.values();
         while (true) {
             const n = it.next();
@@ -2385,14 +2444,14 @@ function handleBunMessage(app: App, ws: any, msg: any): void {
         record.lastPong = Date.now();
 
         const text = typeof msg === 'string' ? msg : String(msg);
-        let parsedMsg: any = {};
+        let parsedMsg: { type?: string; id?: string; [key: string]: unknown } = {};
         try {
-            parsedMsg = safeJsonParse(text, 10000) || {};
+            parsedMsg = safeJsonParse<{ type?: string; id?: string }>(text, 10000) || {};
         } catch (_) {
             parsedMsg = {};
         }
 
-        const msgType = String((parsedMsg && parsedMsg.type) || "");
+        const msgType = String(parsedMsg.type || "");
         if (msgType === "ping") {
             try {
                 wsSend(
@@ -2402,7 +2461,7 @@ function handleBunMessage(app: App, ws: any, msg: any): void {
             } catch (_) { }
         } else if (msgType === "invalid") {
             try {
-                const id = String((parsedMsg && parsedMsg.id) || "");
+                const id = String(parsedMsg.id || "");
                 const sid = String(record.sid || "");
                 if (sid) {
                     app._touchSession(sid);
@@ -2424,11 +2483,12 @@ function handleBunMessage(app: App, ws: any, msg: any): void {
     } catch (_) { }
 }
 
-function handleBunClose(app: App, ws: any): void {
+function handleBunClose(app: App, ws: WebSocketLike): void {
     try {
-        if ((ws as any)._heartbeat) {
-            clearInterval((ws as any)._heartbeat);
-            (ws as any)._heartbeat = 0;
+        const wsWithHeartbeat = ws as Record<string, unknown>;
+        if (wsWithHeartbeat._heartbeat) {
+            clearInterval(wsWithHeartbeat._heartbeat as ReturnType<typeof setInterval>);
+            wsWithHeartbeat._heartbeat = 0;
         }
     } catch (_) { }
 

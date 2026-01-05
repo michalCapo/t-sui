@@ -653,9 +653,9 @@ interface BaseAPI {
     Format: (fmt: string) => BaseAPI;
 }
 
-function createBase(name: string, data?: Record<string, unknown>, as: string = "text"): BaseAPI {
+function createBase(name: string, data?: (Record<string, unknown>) | object, as: string = "text"): BaseAPI {
     const api = {
-        data,
+        data: data as Record<string, unknown> | undefined,
         rows: 0,
         placeholder: "",
         css: "",
@@ -789,7 +789,7 @@ function createBase(name: string, data?: Record<string, unknown>, as: string = "
     return api;
 }
 
-function IText(name: string, data?: any) {
+function IText(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "text");
 
@@ -834,7 +834,7 @@ function IText(name: string, data?: any) {
     return base;
 }
 
-function IPassword(name: string, data?: any) {
+function IPassword(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "password");
 
@@ -873,7 +873,7 @@ function IPassword(name: string, data?: any) {
     return base;
 }
 
-function IArea(name: string, data?: any) {
+function IArea(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "text");
 
@@ -918,7 +918,7 @@ function IArea(name: string, data?: any) {
     return base;
 }
 
-function INumber(name: string, data?: any) {
+function INumber(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "number");
     const local = {
@@ -945,7 +945,7 @@ function INumber(name: string, data?: any) {
             return "";
         }
 
-        let value: any = base.resolveValue();
+        let value: unknown = base.resolveValue();
 
         if (local.valueFormat && value) {
             if (local.valueFormat.includes("%.2f")) {
@@ -990,7 +990,7 @@ function INumber(name: string, data?: any) {
                     onclick: base.onclick,
                     required: base.required,
                     disabled: base.disabled,
-                    value: value,
+                    value: String(value ?? ''),
                     min: minStr,
                     max: maxStr,
                     step: stepStr,
@@ -1004,7 +1004,7 @@ function INumber(name: string, data?: any) {
     return base;
 }
 
-function IDate(name: string, data?: any) {
+function IDate(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "date");
     const local = {
@@ -1065,7 +1065,7 @@ function IDate(name: string, data?: any) {
     return base;
 }
 
-function ITime(name: string, data?: any) {
+function ITime(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "time");
     const local = {
@@ -1124,7 +1124,7 @@ function ITime(name: string, data?: any) {
     return base;
 }
 
-function IDateTime(name: string, data?: any) {
+function IDateTime(name: string, data?: Record<string, unknown>) {
     const target = Target();
     const base = createBase(name, data, "datetime-local");
     const local = {
@@ -1316,7 +1316,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
 }
 
 // Checkbox
-function ICheckbox(name: string, data?: any) {
+function ICheckbox(name: string, data?: Record<string, unknown>) {
     const state = {
         data: data,
         name: name,
@@ -1381,7 +1381,7 @@ function ICheckbox(name: string, data?: any) {
     return api;
 }
 
-function IRadio(name: string, data?: any) {
+function IRadio(name: string, data?: Record<string, unknown>) {
     const state = {
         data: data,
         name: name,
@@ -1461,7 +1461,7 @@ function IRadio(name: string, data?: any) {
     return api;
 }
 
-function IRadioButtons(name: string, data?: any) {
+function IRadioButtons(name: string, data?: Record<string, unknown>) {
     const state = {
         target: Target(),
         data: data,
@@ -1840,31 +1840,31 @@ class Form {
         this.onSubmit = onSubmit;
     }
 
-    Text(name: string, data?: any): ReturnType<typeof IText> {
+    Text(name: string, data?: Record<string, unknown>): ReturnType<typeof IText> {
         return IText(name, data).Form(this.formId) as any;
     }
 
-    Password(name: string, data?: any): ReturnType<typeof IPassword> {
+    Password(name: string, data?: Record<string, unknown>): ReturnType<typeof IPassword> {
         return IPassword(name, data).Form(this.formId) as any;
     }
 
-    Area(name: string, data?: any): ReturnType<typeof IArea> {
+    Area(name: string, data?: Record<string, unknown>): ReturnType<typeof IArea> {
         return IArea(name, data).Form(this.formId) as any;
     }
 
-    Number(name: string, data?: any): ReturnType<typeof INumber> {
+    Number(name: string, data?: Record<string, unknown>): ReturnType<typeof INumber> {
         return INumber(name, data).Form(this.formId) as any;
     }
 
-    Date(name: string, data?: any): ReturnType<typeof IDate> {
+    Date(name: string, data?: Record<string, unknown>): ReturnType<typeof IDate> {
         return IDate(name, data).Form(this.formId) as any;
     }
 
-    Time(name: string, data?: any): ReturnType<typeof ITime> {
+    Time(name: string, data?: Record<string, unknown>): ReturnType<typeof ITime> {
         return ITime(name, data).Form(this.formId) as any;
     }
 
-    DateTime(name: string, data?: any): ReturnType<typeof IDateTime> {
+    DateTime(name: string, data?: Record<string, unknown>): ReturnType<typeof IDateTime> {
         return IDateTime(name, data).Form(this.formId) as any;
     }
 
@@ -1872,15 +1872,15 @@ class Form {
         return ISelect<T>(name, data).Form(this.formId) as any;
     }
 
-    Checkbox(name: string, data?: any): ReturnType<typeof ICheckbox> {
+    Checkbox(name: string, data?: Record<string, unknown>): ReturnType<typeof ICheckbox> {
         return ICheckbox(name, data).Form(this.formId) as any;
     }
 
-    Radio(name: string, data?: any): ReturnType<typeof IRadio> {
+    Radio(name: string, data?: Record<string, unknown>): ReturnType<typeof IRadio> {
         return IRadio(name, data).Form(this.formId) as any;
     }
 
-    RadioButtons(name: string, data?: any): ReturnType<typeof IRadioButtons> {
+    RadioButtons(name: string, data?: Record<string, unknown>): ReturnType<typeof IRadioButtons> {
         return IRadioButtons(name, data).Form(this.formId) as any;
     }
 

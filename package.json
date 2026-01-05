@@ -7,10 +7,16 @@
         "predev": "npm run check",
         "dev": "node --import tsx examples/main.ts",
         "dev:watch": "node --import tsx --watch examples/main.ts",
-        "dev:bun": "bun examples/main.ts"
+        "dev:bun": "bun examples/main.ts",
+        "test": "node --import tsx --test examples/**/*.test.ts",
+        "test:file": "node --import tsx --test",
+        "test:dev": "node --import tsx",
+        "postinstall": "playwright install chromium || true"
     },
     "devDependencies": {
+        "@playwright/test": "^1.49.1",
         "@types/node": "^22.18.1",
+        "playwright": "^1.49.1",
         "typescript": "^5.9.2"
     },
     "dependencies": {
