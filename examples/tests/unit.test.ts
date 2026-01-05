@@ -14,7 +14,10 @@ describe('Example App - Unit Tests', function () {
     });
 
     after(function () {
-        // Cleanup if needed
+        // Cleanup the app to clear intervals
+        if (app) {
+            app.close();
+        }
     });
 
     describe('UI Builder', function () {

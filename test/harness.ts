@@ -1,8 +1,6 @@
 // E2E Test Framework - Test Lifecycle Management
 // Provides setup/teardown hooks for managing test server, browser, and state
 
-import { describe, before, after, beforeEach, afterEach } from 'node:test';
-import { Server } from 'node:http';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { createTestServer, TestServer } from './server.js';
 
@@ -44,10 +42,9 @@ export interface DevServerConfig extends TestFileConfig {
 let globalServer: TestServer | null = null;
 let globalBrowser: Browser | null = null;
 let globalContext: BrowserContext | null = null;
-let testFileIndex = 0;
 
 // Snapshot of initial seeded state for resetting between tests
-let initialStateSnapshot: Map<string, any> = new Map();
+let initialStateSnapshot: Map<string, unknown> = new Map();
 
 export function setupTestFile(config: TestFileConfig = {}): TestHooks {
     const port = config.port || 4100;
@@ -292,7 +289,7 @@ export async function startDevServer(config: DevServerConfig = {}): Promise<void
     });
 
     // Keep process alive
-    await new Promise(function () {}); // Never resolves
+    await new Promise(function () { }); // Never resolves
 }
 
 function logSeededItems(state: Map<string, any>): void {
@@ -318,8 +315,8 @@ function printDevServerBanner(config: DevServerConfig, port: number): void {
         ? typeof config.seed === 'function'
             ? 'custom seed function'
             : Array.isArray(config.seed)
-              ? config.seed.join(' + ')
-              : config.seed
+                ? config.seed.join(' + ')
+                : config.seed
         : 'none';
 
     console.log('');

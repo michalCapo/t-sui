@@ -1,32 +1,17 @@
 // Page Tests - Tests for individual pages in the example app
 // Tests basic rendering and interactions on each page
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { setupTest, TestContext, type ServerListenResult } from '../../test/app-harness.js';
-import { createExampleApp } from '../app.js';
+import { setupTest, TestContext } from '../../test/app-harness';
+import { createExampleApp } from '../app';
 
-// Create example app server
-async function startServer(port: number): Promise<ServerListenResult> {
+const test = setupTest(function (port: number) {
     const { app } = createExampleApp('en');
-    return await app.Listen(port);
-}
+    return app.Listen(port);
+});
 
-// Setup test hooks
-const test = setupTest(startServer);
-
-describe('Example App - Page Tests', function () {
-    let ctx: TestContext;
-
-    // Setup before all tests
-    before(async function () {
-        ctx = await test.beforeAll();
-    });
-
-    // Teardown after all tests
-    after(async function () {
-        await test.afterAll();
-    });
+test.it('Example App - Page Tests', function (ctx: TestContext) {
 
     describe('Showcase Page', function () {
         it('should load showcase page', async function () {

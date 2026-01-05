@@ -200,6 +200,9 @@ export class App {
     _sessionTTLms: number = 60000;
     _rateLimiter: RateLimiter = new RateLimiter(100, 60000); // 100 requests per minute
     _securityEnabled: boolean = true;
+    _server: Server | null = null;
+    _sessionSweepHandle: ReturnType<typeof setInterval> | null = null;
+    _rateLimiterIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
     // Security configuration methods
     configureRateLimit(maxRequests: number, windowMs: number): void {
@@ -352,12 +355,15 @@ export class App {
         );
 
         try {
-            const self = this;
-            setInterval(function () {
-                self._sweepSessions();
+            this._sessionSweepHandle = setInterval(() => {
+                this._sweepSessions();
             }, 30000);
+            // Unref the interval so it doesn't prevent process exit
+            if (this._sessionSweepHandle && typeof this._sessionSweepHandle.unref === 'function') {
+                this._sessionSweepHandle.unref();
+            }
         } catch {
-            /* noop */
+            this._sessionSweepHandle = null;
         }
     }
 
@@ -606,11 +612,15 @@ export class App {
         // const self = this;
 
         // Start periodic cleanup for rate limiter and sessions
-        if (this._securityEnabled) {
-            setInterval(() => {
+        if (this._securityEnabled && !this._rateLimiterIntervalHandle) {
+            this._rateLimiterIntervalHandle = setInterval(() => {
                 this._rateLimiter.cleanup();
                 this._cleanupExpiredSessions();
             }, 60000); // Cleanup every minute
+            // Unref the interval so it doesn't prevent process exit
+            if (this._rateLimiterIntervalHandle && typeof this._rateLimiterIntervalHandle.unref === 'function') {
+                this._rateLimiterIntervalHandle.unref();
+            }
         }
 
         if (IS_BUN) {
@@ -620,6 +630,9 @@ export class App {
     }
 
     private async _listenNode(port: number): Promise<ServerListenResult> {
+        if (this._server) {
+            throw new Error("Server already listening");
+        }
         const self = this;
 
         const server = http.createServer(async function (
@@ -776,12 +789,20 @@ export class App {
         const addr = server.address() as { port: number } | null;
         const actualPort = addr?.port ?? port;
         console.log("Listening on http://0.0.0.0:" + String(actualPort));
-        return { server, port: actualPort };
+        this._server = server;
+        return { server, port: actualPort, app: this } as ServerListenResult;
     }
+
+
+
 
     private _listenBun(port: number): Promise<ServerListenResult> {
         const self = this;
         const Bun = (globalThis as any).Bun;
+
+        if (this._server) {
+            throw new Error("Server already listening");
+        }
 
         const server = Bun.serve({
             port: port,
@@ -949,7 +970,41 @@ export class App {
         // Bun.serve returns the actual port used (useful when port is 0 for random assignment)
         const actualPort = server.port;
         console.log("Listening on http://0.0.0.0:" + String(actualPort));
-        return Promise.resolve({ server: server as unknown as Server, port: actualPort });
+        this._server = server as unknown as Server;
+        return Promise.resolve({ server: this._server, port: actualPort, app: this } as ServerListenResult);
+    }
+
+    close(): void {
+        if (this._sessionSweepHandle) {
+            clearInterval(this._sessionSweepHandle);
+            this._sessionSweepHandle = null;
+        }
+        if (this._rateLimiterIntervalHandle) {
+            clearInterval(this._rateLimiterIntervalHandle);
+            this._rateLimiterIntervalHandle = null;
+        }
+        this._sessions.clear();
+        try {
+            for (const client of this._wsClients) {
+                try {
+                    client.socket.close?.();
+                } catch { }
+            }
+        } catch { }
+        this._wsClients.clear();
+        if (this._server) {
+
+            const server = this._server;
+            this._server = null;
+            try {
+                if (typeof (server as any).closeAllConnections === "function") {
+                    (server as any).closeAllConnections();
+                }
+            } catch (_) { }
+            try {
+                server.close();
+            } catch (_) { }
+        }
     }
 }
 

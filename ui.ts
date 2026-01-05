@@ -367,6 +367,7 @@ const li = open("li");
 const label = open("label");
 const canvas = open("canvas");
 const button = open("button");
+const nav = open("nav");
 
 const img = closed("img");
 const input = closed("input");
@@ -466,7 +467,7 @@ function ThemeSwitcher(css = ""): string {
     const container = [
         '<button id="' +
         id +
-        '" type="button" class="' +
+        '" type="button" aria-label="Theme switcher" class="' +
         "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
         "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
         css +
@@ -610,7 +611,7 @@ function Button(...attrs: Attr[]) {
 }
 
 interface BaseAPI {
-    data?: Record<string, unknown>;
+    data?: object;
     rows: number;
     placeholder: string;
     css: string;
@@ -653,9 +654,9 @@ interface BaseAPI {
     Format: (fmt: string) => BaseAPI;
 }
 
-function createBase(name: string, data?: (Record<string, unknown>) | object, as: string = "text"): BaseAPI {
+function createBase(name: string, data?: object, as: string = "text"): BaseAPI {
     const api = {
-        data: data as Record<string, unknown> | undefined,
+        data: data as object | undefined,
         rows: 0,
         placeholder: "",
         css: "",
@@ -789,7 +790,7 @@ function createBase(name: string, data?: (Record<string, unknown>) | object, as:
     return api;
 }
 
-function IText(name: string, data?: Record<string, unknown>) {
+function IText(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "text");
 
@@ -834,7 +835,7 @@ function IText(name: string, data?: Record<string, unknown>) {
     return base;
 }
 
-function IPassword(name: string, data?: Record<string, unknown>) {
+function IPassword(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "password");
 
@@ -873,7 +874,7 @@ function IPassword(name: string, data?: Record<string, unknown>) {
     return base;
 }
 
-function IArea(name: string, data?: Record<string, unknown>) {
+function IArea(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "text");
 
@@ -918,7 +919,7 @@ function IArea(name: string, data?: Record<string, unknown>) {
     return base;
 }
 
-function INumber(name: string, data?: Record<string, unknown>) {
+function INumber(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "number");
     const local = {
@@ -1004,7 +1005,7 @@ function INumber(name: string, data?: Record<string, unknown>) {
     return base;
 }
 
-function IDate(name: string, data?: Record<string, unknown>) {
+function IDate(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "date");
     const local = {
@@ -1065,7 +1066,7 @@ function IDate(name: string, data?: Record<string, unknown>) {
     return base;
 }
 
-function ITime(name: string, data?: Record<string, unknown>) {
+function ITime(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "time");
     const local = {
@@ -1124,7 +1125,7 @@ function ITime(name: string, data?: Record<string, unknown>) {
     return base;
 }
 
-function IDateTime(name: string, data?: Record<string, unknown>) {
+function IDateTime(name: string, data?: object) {
     const target = Target();
     const base = createBase(name, data, "datetime-local");
     const local = {
@@ -1185,7 +1186,7 @@ function IDateTime(name: string, data?: Record<string, unknown>) {
 
 function ISelect<T = unknown>(name: string, data?: T) {
     const state = {
-        data: data as Record<string, unknown> | undefined,
+        data: data as object | undefined,
         name: name,
         css: "",
         cssLabel: "",
@@ -1316,7 +1317,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
 }
 
 // Checkbox
-function ICheckbox(name: string, data?: Record<string, unknown>) {
+function ICheckbox(name: string, data?: object) {
     const state = {
         data: data,
         name: name,
@@ -1381,7 +1382,7 @@ function ICheckbox(name: string, data?: Record<string, unknown>) {
     return api;
 }
 
-function IRadio(name: string, data?: Record<string, unknown>) {
+function IRadio(name: string, data?: object) {
     const state = {
         data: data,
         name: name,
@@ -1461,7 +1462,7 @@ function IRadio(name: string, data?: Record<string, unknown>) {
     return api;
 }
 
-function IRadioButtons(name: string, data?: Record<string, unknown>) {
+function IRadioButtons(name: string, data?: object) {
     const state = {
         target: Target(),
         data: data,
@@ -1840,31 +1841,31 @@ class Form {
         this.onSubmit = onSubmit;
     }
 
-    Text(name: string, data?: Record<string, unknown>): ReturnType<typeof IText> {
+    Text(name: string, data?: object): ReturnType<typeof IText> {
         return IText(name, data).Form(this.formId) as any;
     }
 
-    Password(name: string, data?: Record<string, unknown>): ReturnType<typeof IPassword> {
+    Password(name: string, data?: object): ReturnType<typeof IPassword> {
         return IPassword(name, data).Form(this.formId) as any;
     }
 
-    Area(name: string, data?: Record<string, unknown>): ReturnType<typeof IArea> {
+    Area(name: string, data?: object): ReturnType<typeof IArea> {
         return IArea(name, data).Form(this.formId) as any;
     }
 
-    Number(name: string, data?: Record<string, unknown>): ReturnType<typeof INumber> {
+    Number(name: string, data?: object): ReturnType<typeof INumber> {
         return INumber(name, data).Form(this.formId) as any;
     }
 
-    Date(name: string, data?: Record<string, unknown>): ReturnType<typeof IDate> {
+    Date(name: string, data?: object): ReturnType<typeof IDate> {
         return IDate(name, data).Form(this.formId) as any;
     }
 
-    Time(name: string, data?: Record<string, unknown>): ReturnType<typeof ITime> {
+    Time(name: string, data?: object): ReturnType<typeof ITime> {
         return ITime(name, data).Form(this.formId) as any;
     }
 
-    DateTime(name: string, data?: Record<string, unknown>): ReturnType<typeof IDateTime> {
+    DateTime(name: string, data?: object): ReturnType<typeof IDateTime> {
         return IDateTime(name, data).Form(this.formId) as any;
     }
 
@@ -1872,15 +1873,15 @@ class Form {
         return ISelect<T>(name, data).Form(this.formId) as any;
     }
 
-    Checkbox(name: string, data?: Record<string, unknown>): ReturnType<typeof ICheckbox> {
+    Checkbox(name: string, data?: object): ReturnType<typeof ICheckbox> {
         return ICheckbox(name, data).Form(this.formId) as any;
     }
 
-    Radio(name: string, data?: Record<string, unknown>): ReturnType<typeof IRadio> {
+    Radio(name: string, data?: object): ReturnType<typeof IRadio> {
         return IRadio(name, data).Form(this.formId) as any;
     }
 
-    RadioButtons(name: string, data?: Record<string, unknown>): ReturnType<typeof IRadioButtons> {
+    RadioButtons(name: string, data?: object): ReturnType<typeof IRadioButtons> {
         return IRadioButtons(name, data).Form(this.formId) as any;
     }
 
@@ -1943,6 +1944,7 @@ export default {
     img,
     input,
     label,
+    nav,
     space,
     Flex1,
     Icon,

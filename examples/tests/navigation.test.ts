@@ -3,8 +3,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { setupTest, TestContext } from '../../test/app-harness.js';
-import { createExampleApp } from '../app.js';
+import { setupTest, TestContext } from '../../test/app-harness';
+import { createExampleApp } from '../app';
 
 const test = setupTest(function (port: number) {
     const { app } = createExampleApp('en');
@@ -52,9 +52,6 @@ test.it('Example App - Navigation Tests', function (ctx: TestContext) {
 
         it('should highlight active navigation link', async function () {
             await ctx.page.goto(ctx.baseUrl + '/button');
-
-            console.log(await ctx.page.url());
-            console.log(await ctx.page.content());
 
             // Check if the active link has different styling
             const activeLink = ctx.page.locator('nav a.bg-blue-700, nav a[class*="bg-blue-700"]');
