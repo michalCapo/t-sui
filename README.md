@@ -10,32 +10,13 @@ See [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) for a comprehensive referen
 
 [t-sui](https://github.com/michalCapo/t-sui) includes **Claude Code skills** to help Claude (and other LLMs) understand the framework better. These skills provide comprehensive documentation that Claude can reference when answering questions or generating code.
 
-### Quick Install
-
-**Personal (recommended):** Available across all your projects
+### Install Skills
 
 ```bash
 mkdir -p ~/.claude/skills/t-sui && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SKILL.md -o ~/.claude/skills/t-sui/SKILL.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/CORE.md -o ~/.claude/skills/t-sui/CORE.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/COMPONENTS.md -o ~/.claude/skills/t-sui/COMPONENTS.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/DATA.md -o ~/.claude/skills/t-sui/DATA.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SERVER.md -o ~/.claude/skills/t-sui/SERVER.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/PATTERNS.md -o ~/.claude/skills/t-sui/PATTERNS.md
 ```
 
-**Project-local:** Shared with your team via git
-
-```bash
-mkdir -p .claude/skills/t-sui && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SKILL.md -o .claude/skills/t-sui/SKILL.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/CORE.md -o .claude/skills/t-sui/CORE.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/COMPONENTS.md -o .claude/skills/t-sui/COMPONENTS.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/DATA.md -o .claude/skills/t-sui/DATA.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SERVER.md -o .claude/skills/t-sui/SERVER.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/PATTERNS.md -o .claude/skills/t-sui/PATTERNS.md
-```
-
 Then restart Claude Code to load the skills.
-
-### What's Included
-
-| Skill | Description |
-|-------|-------------|
-| **SKILL.md** | Main entry point with quick start and navigation |
-| **CORE.md** | Architecture, Context API, Actions, Targets, WebSocket patches |
-| **COMPONENTS.md** | Buttons, inputs, forms, tables, and all HTML elements |
-| **DATA.md** | Data collation (TQuery), search, sort, filter, pagination |
-| **SERVER.md** | App initialization, routes, WebSocket, assets |
-| **PATTERNS.md** | Testing, validation, security, state management patterns |
 
 ## Features
 
