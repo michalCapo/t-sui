@@ -1,10 +1,55 @@
 // E2E Test Harness for Apps
 // Provides test setup, server management, and Playwright integration
-// Designed to be reusable by any app that needs E2E testing
+// Works with both Node.js and Bun runtimes
 
 import { chromium, type Page, type BrowserContext, type Browser } from '@playwright/test';
 import type { Server } from 'node:http';
-import { describe, before, after } from 'node:test';
+
+// Detect runtime
+const isBun = typeof (globalThis as any).Bun !== 'undefined';
+
+// Test module exports - initialized at runtime
+let testModule: any = null;
+
+// Initialize test module lazily
+function getTestModule() {
+    if (testModule !== null) {
+        return testModule;
+    }
+    
+    if (isBun) {
+        testModule = require('bun:test');
+    } else {
+        testModule = require('node:test');
+    }
+    
+    return testModule;
+}
+
+// Helper to safely get a property from the test module
+// Handles differences between Node and Bun test APIs
+function getTestFunction(name: string): any {
+    const mod = getTestModule();
+    if (!mod) return undefined;
+    
+    // Bun uses beforeAll/afterAll instead of before/after
+    if (isBun) {
+        if (name === 'before') return mod.beforeAll;
+        if (name === 'after') return mod.afterAll;
+    }
+    
+    return mod[name];
+}
+
+// Export test functions
+export const describe = getTestFunction('describe');
+export const it = getTestFunction('it');
+export const test = getTestFunction('test');
+export const before = getTestFunction('before');
+export const after = getTestFunction('after');
+export const beforeEach = getTestFunction('beforeEach');
+export const afterEach = getTestFunction('afterEach');
+export const mock = getTestFunction('mock');
 
 export interface TestContext {
     page: Page;
@@ -16,7 +61,7 @@ export interface TestContext {
 }
 
 export interface TestConfig {
-    port?: number;  // If undefined or 0, use random port
+    port?: number;
     headless?: boolean;
     seed?: (ctx: TestContext) => Promise<void>;
 }
@@ -54,7 +99,6 @@ async function initializeContext(
     const actualPort = listenResult.port;
     const app = listenResult.app;
 
-    // Launch browser
     const browser = await chromium.launch({
         headless: config.headless ?? true,
     });
@@ -71,7 +115,6 @@ async function initializeContext(
         app,
     };
 
-    // Seed initial data if seed function provided
     if (config.seed) {
         await config.seed(ctx);
     }
@@ -81,7 +124,6 @@ async function initializeContext(
 
 // Helper to cleanup test context
 async function cleanupContext(ctx: TestContext): Promise<void> {
-    // Close browser resources first (to stop any pending requests)
     try {
         if (ctx.page) {
             await ctx.page.close({ runBeforeUnload: false }).catch(() => { });
@@ -100,35 +142,29 @@ async function cleanupContext(ctx: TestContext): Promise<void> {
         }
     } catch (_) { }
 
-    // Close the app to stop intervals and WebSocket clients
     try {
         if (ctx.app && typeof ctx.app.close === 'function') {
             ctx.app.close();
         }
     } catch (_) { }
 
-    // Close server to stop accepting new connections
     try {
         if (ctx.server) {
-            // Force close all connections first
             if (typeof ctx.server.closeAllConnections === 'function') {
                 try {
                     ctx.server.closeAllConnections();
                 } catch (_) { }
             }
 
-            // Close server with callback to ensure it's done
             await new Promise<void>((resolve) => {
                 try {
                     ctx.server.close(() => resolve());
                 } catch (_) {
                     resolve();
                 }
-                // Force resolve after 500ms if close doesn't complete
                 setTimeout(resolve, 500);
             });
 
-            // Unref the server so it doesn't prevent process exit
             try {
                 if (typeof (ctx.server as any).unref === 'function') {
                     (ctx.server as any).unref();
@@ -152,6 +188,15 @@ function createLazyContext(): TestContext {
 
 // Create test runner with automatic lifecycle management
 export function setupTest(appServerFactory: AppServerFactory, config: TestConfig = {}): TestRunner {
+    const mod = getTestModule();
+    const describe = mod?.describe;
+    const before = getTestFunction('before');
+    const after = getTestFunction('after');
+
+    if (!describe || !before || !after) {
+        throw new Error('Test runner not available');
+    }
+
     return {
         // Define a test suite with automatic setup/teardown
         it(title: string, suiteFn: (ctx: TestContext) => void | Promise<void>): void {
@@ -167,8 +212,6 @@ export function setupTest(appServerFactory: AppServerFactory, config: TestConfig
                     }
                 });
 
-                // Execute the suite function with a lazy context proxy
-                // The proxy will resolve to the actual context when tests run
                 suiteFn(createLazyContext());
             });
         },
@@ -207,7 +250,6 @@ export async function runDevServer(
     console.log(`\nDev server running at http://localhost:${actualPort}`);
     console.log('Press Ctrl+C to stop\n');
 
-    // Keep process alive
     process.on('SIGINT', () => {
         server.close();
         process.exit(0);
