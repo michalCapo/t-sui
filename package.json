@@ -14,12 +14,12 @@
         "postinstall": "playwright install chromium || true"
     },
     "devDependencies": {
-        "@playwright/test": "^1.49.1",
-        "@types/node": "^22.18.1",
-        "playwright": "^1.49.1",
-        "typescript": "^5.9.2"
+        "@playwright/test": "^1.57.0",
+        "@types/node": "^22.19.3",
+        "playwright": "^1.57.0",
+        "typescript": "^5.9.3"
     },
     "dependencies": {
-        "tsx": "^4.20.5"
+        "tsx": "^4.21.0"
     }
 }
