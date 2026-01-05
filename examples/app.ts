@@ -51,9 +51,18 @@ const svg =
 function createLayout(app: App) {
     return function layout(title: string, body: (ctx: Context) => string): Callable {
         return function (ctx: Context): string {
-            const currentPath = (ctx.req && ctx.req.url ? String(ctx.req.url) : '/')
+            let currentPath = (ctx.req && ctx.req.url ? String(ctx.req.url) : '/')
                 .split('?')[0]
                 .toLowerCase();
+
+            // Handle full URLs (Bun) vs paths (Node.js)
+            if (currentPath.startsWith('http://') || currentPath.startsWith('https://')) {
+                try {
+                    currentPath = new URL(currentPath).pathname;
+                } catch {
+                    // If URL parsing fails, use as-is
+                }
+            }
             let links = '';
 
             for (let i = 0; i < routes.length; i++) {
