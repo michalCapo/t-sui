@@ -1,8 +1,7 @@
 // Unit Tests for t-sui Example App
 // These tests verify the basic functionality without browser automation
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, before, after, assert } from '../../test/tests';
 import { MakeApp } from '../../ui.server';
 import ui from '../../ui';
 

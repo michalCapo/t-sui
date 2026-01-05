@@ -799,6 +799,188 @@ ui.ThemeSwitcher("optional-extra-classes")
 
 ---
 
+## Accessibility (ARIA)
+
+t-sui includes comprehensive ARIA (Accessible Rich Internet Applications) support across all components, ensuring WCAG 2.1 Level AA compliance.
+
+### ARIA Attributes by Component
+
+#### Form Inputs (IText, IPassword, IArea, INumber, IDate, ITime, IDateTime)
+```typescript
+// All inputs automatically include:
+{
+  'aria-label': label,              // Links label to input
+  'aria-required': 'true/false',    // Indicates required state
+  'aria-disabled': 'true/false',    // Indicates disabled state
+  'aria-invalid': 'true/false',     // Indicates validation errors
+}
+```
+
+#### Specialized Inputs
+- **Number**: Adds `role="spinbutton"`, `aria-valuemin`, `aria-valuemax`, `aria-valuenow`
+- **Textarea**: Adds `aria-multiline="true"`, `aria-readonly`
+- **Select**: Adds `role="listbox"`, options have `role="option"`, `aria-selected`
+- **Checkbox**: Adds `role="checkbox"`, `aria-checked`
+- **Radio**: Adds `role="radio"`, `aria-checked`
+- **RadioButtons**: Adds `role="radiogroup"` to container, `role="radio"` to items
+
+#### Button Component
+```typescript
+ui.Button()
+    .Disabled(true)
+    .Render("Submit")
+
+// Generates:
+// <button aria-disabled="true" aria-label="Submit" ...>
+```
+
+#### Form Component
+```typescript
+const f = new ui.Form(ctx.Submit(Save).Replace(target));
+f.Render()
+
+// Generates:
+// <form role="form" aria-label="Form <id>" ...>
+```
+
+#### SimpleTable
+```typescript
+ui.SimpleTable(2, "w-full")
+    .Field("Name")
+    .Field("Action")
+    .Render()
+
+// Generates:
+// <table role="table" aria-label="Data table" 
+//         aria-rowcount="1" aria-colcount="2">
+//   <tr role="row">
+//     <td role="cell">Name</td>
+//     <td role="cell">Action</td>
+//   </tr>
+// </table>
+```
+
+#### Captcha Component
+```typescript
+ui.Captcha(onValidated)
+    .Count(6)
+    .Render(ctx)
+
+// Generates:
+// <div role="application" aria-label="CAPTCHA puzzle...">
+//   <div role="group" aria-label="Target sequence">...</div>
+//   <div role="list" aria-live="polite" aria-atomic="true" 
+//        aria-dropeffect="move">...</div>
+// </div>
+```
+
+### Accessibility Features
+
+1. **Screen Reader Support**
+   - All form inputs are properly labeled
+   - Required fields are announced
+   - Validation errors are communicated
+   - Disabled states are clear
+
+2. **Keyboard Navigation**
+   - All interactive elements are keyboard accessible
+   - Div-based buttons include `tabindex="0"`
+   - Logical tab order
+
+3. **Semantic HTML**
+   - Proper ARIA roles on all components
+   - Live regions for dynamic updates
+   - Drag-drop capability announced
+
+### Example: Accessible Form
+
+```typescript
+function ContactForm(ctx: Context): string {
+    const target = ui.Target();
+    const data = { Name: "", Email: "" };
+
+    function save(ctx: Context): string {
+        ctx.Body(data);
+        if (!data.Name) {
+            ctx.Error("Name is required");
+            return render(ctx, data);
+        }
+        ctx.Success("Saved!");
+        return render(ctx, data);
+    }
+    save.url = "/save";
+
+    function render(ctx: Context, form: typeof data): string {
+        return ui.form("space-y-4", target, ctx.Submit(save).Replace(target))(
+            ui.IText("Name", form)
+                .Required()
+                .Error(!form.Name)  // Triggers aria-invalid="true"
+                .Render("Your Name"),
+            
+            ui.IText("Email", form)
+                .Required()
+                .Render("Email Address"),
+            
+            ui.Button()
+                .Submit()
+                .Color(ui.Blue)
+                .Render("Save")
+        );
+    }
+
+    return render(ctx, data);
+}
+```
+
+### Testing Accessibility
+
+1. **Screen Readers**: Test with NVDA, JAWS, VoiceOver, TalkBack
+2. **Keyboard**: Verify all elements are keyboard accessible
+3. **ARIA Validation**: Use axe-core or WAVE tools
+4. **WCAG Compliance**: Check Level AA requirements
+
+### ARIA Interface
+
+The `Attr` interface includes all ARIA attributes:
+
+```typescript
+interface Attr {
+    // ... standard attributes
+    
+    // ARIA attributes
+    'aria-label'?: string;
+    'aria-required'?: string;
+    'aria-disabled'?: string;
+    'aria-readonly'?: string;
+    'aria-invalid'?: string;
+    'aria-describedby'?: string;
+    'aria-checked'?: string;
+    'aria-selected'?: string;
+    'aria-valuemin'?: string;
+    'aria-valuemax'?: string;
+    'aria-valuenow'?: string;
+    'aria-live'?: string;
+    'aria-atomic'?: string;
+    'aria-relevant'?: string;
+    'aria-grabbed'?: string;
+    'aria-dropeffect'?: string;
+    'aria-multiline'?: string;
+    'aria-hidden'?: string;
+    role?: string;
+    tabindex?: string;
+}
+```
+
+### Documentation
+
+For detailed information, see:
+- `README.md` - Feature overview
+- `ACCESSIBILITY.md` - Complete accessibility guide
+- `ARIA_CHANGES.md` - Implementation details
+- `ARIA_IMPLEMENTATION_SUMMARY.md` - Quick reference
+
+---
+
 ## Best Practices
 
 1. **Always use `ui.Target()` for dynamic content** - Each target gets a unique ID for WebSocket updates.

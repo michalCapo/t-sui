@@ -1,89 +1,19 @@
+"use strict";
 //Typescript server-side UI library (components + related utilities)
-
-import crypto from "node:crypto";
-
-export type Swap = "inline" | "outline" | "none" | "append" | "prepend";
-
-export interface Attr {
-    onclick?: string;
-    onchange?: string;
-    onsubmit?: string;
-    step?: string;
-    id?: string;
-    href?: string;
-    title?: string;
-    alt?: string;
-
-    type?: string;
-    class?: string;
-    style?: string;
-    name?: string;
-    value?: string;
-    checked?: string;
-    for?: string;
-    src?: string;
-    selected?: string;
-    pattern?: string;
-    placeholder?: string;
-    autocomplete?: string;
-    max?: string;
-    min?: string;
-    target?: string;
-    rows?: number;
-    cols?: number;
-    width?: number;
-    height?: number;
-    disabled?: boolean;
-    required?: boolean;
-    readonly?: boolean;
-    form?: string;
-    
-    // ARIA attributes
-    'aria-label'?: string;
-    'aria-required'?: string;
-    'aria-disabled'?: string;
-    'aria-readonly'?: string;
-    'aria-invalid'?: string;
-    'aria-describedby'?: string;
-    'aria-checked'?: string;
-    'aria-selected'?: string;
-    'aria-valuemin'?: string;
-    'aria-valuemax'?: string;
-    'aria-valuenow'?: string;
-    'aria-live'?: string;
-    'aria-atomic'?: string;
-    'aria-relevant'?: string;
-    'aria-grabbed'?: string;
-    'aria-dropeffect'?: string;
-    'aria-multiline'?: string;
-    'aria-hidden'?: string;
-    role?: string;
-    tabindex?: string;
-}
-
-export interface AOption {
-    id: string;
-    value: string;
-}
-
-export interface Target {
-    id: string;
-    Skeleton: (type?: Skeleton) => string;
-    Replace: { id: string; swap: Swap };
-    Append: { id: string; swap: Swap };
-    Prepend: { id: string; swap: Swap };
-    Render: { id: string; swap: Swap };
-}
-
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Skeleton = void 0;
+const node_crypto_1 = __importDefault(require("node:crypto"));
 const re = /\s{4,}/g;
 const re2 = /[\t\n]+/g;
 const re3 = /"/g;
 const reCommentHtml = /<!--[\s\S]*?-->/g;
 const reCommentBlock = /\/\*[\s\S]*?\*\//g;
 const reCommentLine = /^[\t ]*\/\/.*$/gm;
-
 // Remove inline comments before normalizing whitespace in multi-line strings
-function Trim(s: string): string {
+function Trim(s) {
     return s
         .replace(reCommentHtml, " ")
         .replace(reCommentBlock, " ")
@@ -91,10 +21,8 @@ function Trim(s: string): string {
         .replace(re2, " ")
         .replace(re, " ")
         .trim();
-
 }
-
-function Normalize(s: string): string {
+function Normalize(s) {
     return s
         .replace(reCommentHtml, " ")
         .replace(reCommentBlock, " ")
@@ -104,19 +32,17 @@ function Normalize(s: string): string {
         .replace(re, " ")
         .trim();
 }
-
-function Classes(...values: Array<string | undefined | false>): string {
+function Classes(...values) {
     return Trim(values.filter(Boolean).join(" "));
 }
-
 // Resolve nested values from an object using dot-separated paths like
 // "Filter.0.Bool". Supports numeric indices for arrays.
-function getPath(data: unknown, path: string): unknown {
+function getPath(data, path) {
     if (data == null) {
         return undefined;
     }
     const p = String(path || "").split(".");
-    let cur: unknown = data as unknown;
+    let cur = data;
     for (let i = 0; i < p.length; i++) {
         if (cur == null) {
             return undefined;
@@ -131,116 +57,89 @@ function getPath(data: unknown, path: string): unknown {
             if (Number.isNaN(idx)) {
                 return undefined;
             }
-            cur = (cur as unknown[])[idx];
+            cur = cur[idx];
             continue;
         }
         try {
-            cur = (cur as Record<string, unknown>)[key];
-        } catch (_) {
+            cur = cur[key];
+        }
+        catch (_) {
             return undefined;
         }
     }
     return cur;
 }
-
-function If(cond: boolean, value: () => string): string {
+function If(cond, value) {
     if (cond) {
         return value();
     }
     return "";
 }
-
-function Iff(cond: boolean) {
-    return function (...value: string[]) {
+function Iff(cond) {
+    return function (...value) {
         if (cond) {
             return value.join(" ");
         }
         return "";
     };
 }
-
-function Map<T>(values: T[], iter: (value: T, i: number, first: boolean, last: boolean) => string): string {
-    const out: string[] = [];
+function Map(values, iter) {
+    const out = [];
     for (let i = 0; i < values.length; i++) {
         out.push(iter(values[i], i, i === 0, i === values.length - 1));
     }
     return out.join(" ");
 }
-
-
-function Map2<T>(items: T[], fn: (item: T, index: number, first: boolean, last: boolean) => string[]): string {
-    const out: string[] = [];
+function Map2(items, fn) {
+    const out = [];
     for (let i = 0; i < items.length; i++) {
         const part = fn(items[i], i, i === 0, i === items.length - 1);
         out.push(part.join(" "));
     }
     return out.join(" ");
 }
-
-function For(from: number, to: number, iter: (i: number, first: boolean, last: boolean) => string): string {
-    const out: string[] = [];
+function For(from, to, iter) {
+    const out = [];
     for (let i = from; i < to; i++) {
         out.push(iter(i, i === from, i === to - 1));
     }
     return out.join(" ");
 }
-
-function RandomString(n = 20): string {
+function RandomString(n = 20) {
     // Use cryptographically secure random bytes for better security
-    const bytes = crypto.randomBytes(Math.ceil(n * 3 / 4));
+    const bytes = node_crypto_1.default.randomBytes(Math.ceil(n * 3 / 4));
     return bytes.toString('base64')
-        .replace(/[+/=]/g, '')  // Remove special chars that aren't safe for IDs
+        .replace(/[+/=]/g, '') // Remove special chars that aren't safe for IDs
         .slice(0, n);
 }
-
 const XS = " p-1";
 const SM = " p-2";
 const MD = " p-3";
 const ST = " p-4";
 const LG = " p-5";
 const XL = " p-6";
-
-const AREA =
-    " cursor-pointer bg-white border border-gray-300 hover:border-blue-500 rounded-lg block w-full";
-const INPUT =
-    " cursor-pointer bg-white border border-gray-300 hover:border-blue-500 rounded-lg block w-full h-12";
-const VALUE =
-    " bg-white border border-gray-300 hover:border-blue-500 rounded-lg block h-12";
+const AREA = " cursor-pointer bg-white border border-gray-300 hover:border-blue-500 rounded-lg block w-full";
+const INPUT = " cursor-pointer bg-white border border-gray-300 hover:border-blue-500 rounded-lg block w-full h-12";
+const VALUE = " bg-white border border-gray-300 hover:border-blue-500 rounded-lg block h-12";
 const BTN = " cursor-pointer font-bold text-center select-none";
 const DISABLED = " cursor-text pointer-events-none bg-gray-50";
-const Yellow =
-    " bg-yellow-400 text-gray-800 hover:text-gray-200 hover:bg-yellow-600 font-bold border-gray-300 flex items-center justify-center";
-const YellowOutline =
-    " border border-yellow-500 text-yellow-600 hover:text-gray-700 hover:bg-yellow-500 flex items-center justify-center";
-const Green =
-    " bg-green-600 text-white hover:bg-green-700 checked:bg-green-600 border-gray-300 flex items-center justify-center";
-const GreenOutline =
-    " border border-green-500 text-green-500 hover:text-white hover:bg-green-600 flex items-center justify-center";
-const Purple =
-    " bg-purple-500 text-white hover:bg-purple-700 border-purple-500 flex items-center justify-center";
-const PurpleOutline =
-    " border border-purple-500 text-purple-500 hover:text-white hover:bg-purple-600 flex items-center justify-center";
-const Blue =
-    " bg-blue-800 text-white hover:bg-blue-700 border-gray-300 flex items-center justify-center";
-const BlueOutline =
-    " border border-blue-500 text-blue-600 hover:text-white hover:bg-blue-700 checked:bg-blue-700 flex items-center justify-center";
-const Red =
-    " bg-red-600 text-white hover:bg-red-800 border-gray-300 flex items-center justify-center";
-const RedOutline =
-    " border border-red-500 text-red-600 hover:text-white hover:bg-red-700 flex items-center justify-center";
-const Gray =
-    " bg-gray-600 text-white hover:bg-gray-800 focus:bg-gray-800 border-gray-300 flex items-center justify-center";
-const GrayOutline =
-    " border border-gray-300 text-black hover:text-white hover:bg-gray-700 flex items-center justify-center";
-const White =
-    " bg-white text-black hover:bg-gray-200 border-gray-200 flex items-center justify-center";
-const WhiteOutline =
-    " border border-white text-black hover:text-black hover:bg-white flex items-center justify-center";
-
+const Yellow = " bg-yellow-400 text-gray-800 hover:text-gray-200 hover:bg-yellow-600 font-bold border-gray-300 flex items-center justify-center";
+const YellowOutline = " border border-yellow-500 text-yellow-600 hover:text-gray-700 hover:bg-yellow-500 flex items-center justify-center";
+const Green = " bg-green-600 text-white hover:bg-green-700 checked:bg-green-600 border-gray-300 flex items-center justify-center";
+const GreenOutline = " border border-green-500 text-green-500 hover:text-white hover:bg-green-600 flex items-center justify-center";
+const Purple = " bg-purple-500 text-white hover:bg-purple-700 border-purple-500 flex items-center justify-center";
+const PurpleOutline = " border border-purple-500 text-purple-500 hover:text-white hover:bg-purple-600 flex items-center justify-center";
+const Blue = " bg-blue-800 text-white hover:bg-blue-700 border-gray-300 flex items-center justify-center";
+const BlueOutline = " border border-blue-500 text-blue-600 hover:text-white hover:bg-blue-700 checked:bg-blue-700 flex items-center justify-center";
+const Red = " bg-red-600 text-white hover:bg-red-800 border-gray-300 flex items-center justify-center";
+const RedOutline = " border border-red-500 text-red-600 hover:text-white hover:bg-red-700 flex items-center justify-center";
+const Gray = " bg-gray-600 text-white hover:bg-gray-800 focus:bg-gray-800 border-gray-300 flex items-center justify-center";
+const GrayOutline = " border border-gray-300 text-black hover:text-white hover:bg-gray-700 flex items-center justify-center";
+const White = " bg-white text-black hover:bg-gray-200 border-gray-200 flex items-center justify-center";
+const WhiteOutline = " border border-white text-black hover:text-black hover:bg-white flex items-center justify-center";
 const space = "&nbsp;";
-
-function attributes(...attrs: Attr[]): string {
-    const result: string[] = [];
+function attributes(...attrs) {
+    const result = [];
     for (let i = 0; i < attrs.length; i++) {
         const a = attrs[i];
         if (!a) {
@@ -403,26 +302,22 @@ function attributes(...attrs: Attr[]): string {
     }
     return result.join(" ");
 }
-
-function open(tag: string) {
-    return function (css: string, ...attr: Attr[]) {
-        return function (...elements: (string | undefined | null | boolean)[]) {
+function open(tag) {
+    return function (css, ...attr) {
+        return function (...elements) {
             // const final: Attr[] = [];
             // for (let i = 0; i < attr.length; i++) {
             //     final.push(attr[i]);
             // }
             // final.push({ class: Classes(css) });
             // const attrsStr = renderAttrs(final);
-
             const attrs = attributes(...attr, { class: Classes(css) });
-
             return ("<" + tag + " " + attrs + ">" + elements.filter(Boolean).join(" ") + "</" + tag + ">");
         };
     };
 }
-
-function closed(tag: string) {
-    return function (css: string, ...attr: Attr[]) {
+function closed(tag) {
+    return function (css, ...attr) {
         // const final: Attr[] = [];
         // for (let i = 0; i < attr.length; i++) {
         //     final.push(attr[i]);
@@ -430,12 +325,10 @@ function closed(tag: string) {
         // final.push({ class: Classes(css) });
         // const attrsStr = renderAttrs(final);
         // return "<" + tag + " " + attrsStr + "/>";
-
         const attrs = attributes(...attr, { class: Classes(css) });
         return "<" + tag + " " + attrs + "/>";
     };
 }
-
 const i = open("i");
 const a = open("a");
 const p = open("p");
@@ -451,82 +344,51 @@ const label = open("label");
 const canvas = open("canvas");
 const button = open("button");
 const nav = open("nav");
-
 const img = closed("img");
 const input = closed("input");
-
 // Spacers and simple icon helpers
 const Flex1 = div("flex-1")();
-
-function Icon(css: string, ...attr: Attr[]): string {
+function Icon(css, ...attr) {
     return div(css, ...attr)();
 }
-
-function IconStart(css: string, text: string): string {
-    return div("flex-1 flex items-center gap-2")(
-        Icon(css),
-        Flex1,
-        div("text-center")(text),
-        Flex1,
-    );
+function IconStart(css, text) {
+    return div("flex-1 flex items-center gap-2")(Icon(css), Flex1, div("text-center")(text), Flex1);
 }
-
-function IconLeft(css: string, text: string): string {
-    return div("flex-1 flex items-center gap-2")(
-        Flex1,
-        Icon(css),
-        div("text-center")(text),
-        Flex1,
-    );
+function IconLeft(css, text) {
+    return div("flex-1 flex items-center gap-2")(Flex1, Icon(css), div("text-center")(text), Flex1);
 }
-
-function IconRight(css: string, text: string): string {
-    return div("flex-1 flex items-center gap-2")(
-        Flex1,
-        div("text-center")(text),
-        Icon(css),
-        Flex1,
-    );
+function IconRight(css, text) {
+    return div("flex-1 flex items-center gap-2")(Flex1, div("text-center")(text), Icon(css), Flex1);
 }
-
-function IconEnd(css: string, text: string): string {
-    return div("flex-1 flex items-center gap-2")(
-        Flex1,
-        div("text-center")(text),
-        Flex1,
-        Icon(css),
-    );
+function IconEnd(css, text) {
+    return div("flex-1 flex items-center gap-2")(Flex1, div("text-center")(text), Flex1, Icon(css));
 }
-
-function Label(css: string, ...attr: Attr[]) {
-    return function (text: string) {
+function Label(css, ...attr) {
+    return function (text) {
         return label(css, ...attr)(text);
     };
 }
-
-function makeId(): string {
+function makeId() {
     return "i" + RandomString(15);
 }
-function Target(): Target {
+function Target() {
     const id = makeId();
-
     return {
         id,
-        Skeleton(type?: Skeleton) {
+        Skeleton(type) {
             if (type === "list") {
-                return Skeleton.List(this, 5);
+                return exports.Skeleton.List(this, 5);
             }
             if (type === "component") {
-                return Skeleton.Component(this);
+                return exports.Skeleton.Component(this);
             }
             if (type === "page") {
-                return Skeleton.Page(this);
+                return exports.Skeleton.Page(this);
             }
             if (type === "form") {
-                return Skeleton.Form(this);
+                return exports.Skeleton.Form(this);
             }
-
-            return Skeleton.Default(this);
+            return exports.Skeleton.Default(this);
         },
         Replace: { id, swap: "outline" },
         Append: { id, swap: "append" },
@@ -534,32 +396,26 @@ function Target(): Target {
         Render: { id, swap: "inline" },
     };
 }
-
 // Theme switcher: single button that cycles Auto → Light → Dark
 // Uses global setTheme() and shows only the current state
-function ThemeSwitcher(css = ""): string {
+function ThemeSwitcher(css = "") {
     const id = "tsui_theme_" + RandomString(8);
     // inline SVG icons
-    const sun =
-        '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.8 1.42-1.42zm10.48 14.32l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM12 4V1h-0 0 0 0v3zm0 19v-3h0 0 0 0v3zM4 12H1v0 0 0 0h3zm19 0h-3v0 0 0 0h3zM6.76 19.16l-1.79 1.8 1.41 1.41 1.8-1.79-1.42-1.42zM19.16 6.76l1.8-1.79-1.41-1.41-1.8 1.79 1.41 1.41zM12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>';
-    const moon =
-        '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
-    const desktop =
-        '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 4h18v12H3z"/><path d="M8 20h8v-2H8z"/></svg>';
-
+    const sun = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.8 1.42-1.42zm10.48 14.32l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM12 4V1h-0 0 0 0v3zm0 19v-3h0 0 0 0v3zM4 12H1v0 0 0 0h3zm19 0h-3v0 0 0 0h3zM6.76 19.16l-1.79 1.8 1.41 1.41 1.8-1.79-1.42-1.42zM19.16 6.76l1.8-1.79-1.41-1.41-1.8 1.79 1.41 1.41zM12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>';
+    const moon = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
+    const desktop = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 4h18v12H3z"/><path d="M8 20h8v-2H8z"/></svg>';
     const container = [
         '<button id="' +
-        id +
-        '" type="button" aria-label="Theme switcher" class="' +
-        "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
-        "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
-        css +
-        '">',
+            id +
+            '" type="button" aria-label="Theme switcher" class="' +
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
+            "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
+            css +
+            '">',
         '  <span class="icon">' + desktop + "</span>",
         '  <span class="label">Auto</span>',
         "</button>",
     ].join("");
-
     const script = [
         "<script>(function(){",
         'var btn=document.getElementById("' + id + '"); if(!btn) return;',
@@ -568,43 +424,40 @@ function ThemeSwitcher(css = ""): string {
         'function setMode(mode){ try { if (typeof setTheme === "function") setTheme(mode); } catch(_){} }',
         'function labelFor(mode){ return mode==="system"?"Auto":(mode.charAt(0).toUpperCase()+mode.slice(1)); }',
         'function iconFor(effective){ if(effective==="dark"){ return ' +
-        JSON.stringify(moon) +
-        '; } if(effective==="light"){ return ' +
-        JSON.stringify(sun) +
-        "; } return " +
-        JSON.stringify(desktop) +
-        "; }",
+            JSON.stringify(moon) +
+            '; } if(effective==="light"){ return ' +
+            JSON.stringify(sun) +
+            "; } return " +
+            JSON.stringify(desktop) +
+            "; }",
         'function render(){ var pref=getPref(); var eff=resolve(pref); var icon=iconFor(eff); var i=btn.querySelector(".icon"); if(i){ i.innerHTML=icon; } var l=btn.querySelector(".label"); if(l){ l.textContent=labelFor(pref); } }',
         "render();",
         'btn.addEventListener("click", function(){ var pref=getPref(); var idx=modes.indexOf(pref); var next=modes[(idx+1)%modes.length]; setMode(next); render(); });',
         'try { if (window.matchMedia){ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(){ if(getPref()==="system"){ render(); } }); } } catch(_){ }',
         "})();</script>",
     ].join("");
-
     return container + script;
 }
-
 // Button
-function Button(...attrs: Attr[]) {
+function Button(...attrs) {
     const state = {
         size: MD,
         color: "",
         onclick: "",
         css: "",
-        as: "div" as "div" | "button" | "a",
-        target: {} as Attr,
+        as: "div",
+        target: {},
         visible: true,
         disabled: false,
         formId: "",
         extra: (function () {
-            const out: Attr[] = [];
+            const out = [];
             for (let i = 0; i < attrs.length; i++) {
                 out.push(attrs[i]);
             }
             return out;
         })(),
     };
-
     const api = {
         Submit() {
             state.as = "button";
@@ -616,57 +469,51 @@ function Button(...attrs: Attr[]) {
             state.extra.push({ type: "reset" });
             return api;
         },
-        If(v: boolean) {
+        If(v) {
             state.visible = v;
             return api;
         },
-        Disabled(v: boolean) {
+        Disabled(v) {
             state.disabled = v;
             return api;
         },
-        Class(...v: string[]) {
+        Class(...v) {
             state.css = v.join(" ");
             return api;
         },
-        Color(v: string) {
+        Color(v) {
             state.color = v;
             return api;
         },
-        Size(v: string) {
+        Size(v) {
             state.size = v;
             return api;
         },
-        Click(code: string) {
+        Click(code) {
             state.onclick = code;
             return api;
         },
-        Href(v: string) {
+        Href(v) {
             state.as = "a";
             state.extra.push({ href: v });
             return api;
         },
-        Form(formId: string) {
+        Form(formId) {
             state.formId = formId;
             return api;
         },
-        Render(text: string): string {
+        Render(text) {
             if (!state.visible) {
                 return "";
             }
-            const cls = Classes(
-                BTN,
-                state.size,
-                state.color,
-                state.css,
-                state.disabled && DISABLED + " opacity-25",
-            );
-            const merged: Attr[] = [];
+            const cls = Classes(BTN, state.size, state.color, state.css, state.disabled && DISABLED + " opacity-25");
+            const merged = [];
             for (let i = 0; i < state.extra.length; i++) {
                 merged.push(state.extra[i]);
             }
             if (state.as === "a") {
-                merged.push({ 
-                    id: state.target.id, 
+                merged.push({
+                    id: state.target.id,
                     class: cls,
                     'aria-label': text,
                     'aria-disabled': state.disabled ? 'true' : 'false',
@@ -697,60 +544,11 @@ function Button(...attrs: Attr[]) {
             return button(cls, ...merged)(text);
         },
     };
-
     return api;
 }
-
-interface BaseAPI {
-    data?: object;
-    rows: number;
-    placeholder: string;
-    css: string;
-    cssLabel: string;
-    cssInput: string;
-    autocomplete: string;
-    size: string;
-    onclick: string;
-    onchange: string;
-    as: string;
-    name: string;
-    pattern: string;
-    value: string;
-    visible: boolean;
-    required: boolean;
-    disabled: boolean;
-    readonly: boolean;
-    formId: string;
-    error: boolean;
-    errorMessage: string;
-    Class: (...v: string[]) => BaseAPI;
-    ClassLabel: (...v: string[]) => BaseAPI;
-    ClassInput: (...v: string[]) => BaseAPI;
-    Size: (v: string) => BaseAPI;
-    Placeholder: (v: string) => BaseAPI;
-    Pattern: (v: string) => BaseAPI;
-    Autocomplete: (v: string) => BaseAPI;
-    Required: (v?: boolean) => BaseAPI;
-    Readonly: (v?: boolean) => BaseAPI;
-    Disabled: (v?: boolean) => BaseAPI;
-    Error: (v?: boolean) => BaseAPI;
-    Type: (v: string) => BaseAPI;
-    Rows: (v: number) => BaseAPI;
-    Value: (v: string) => BaseAPI;
-    Change: (code: string) => BaseAPI;
-    Click: (code: string) => BaseAPI;
-    Form: (formId: string) => BaseAPI;
-    If: (v: boolean) => BaseAPI;
-    resolveValue: () => string;
-    Render: (label: string) => string;
-    Numbers: (min?: number, max?: number, step?: number) => BaseAPI;
-    Dates: (min?: Date, max?: Date) => BaseAPI;
-    Format: (fmt: string) => BaseAPI;
-}
-
-function createBase(name: string, data?: object, as: string = "text"): BaseAPI {
+function createBase(name, data, as = "text") {
     const api = {
-        data: data as object | undefined,
+        data: data,
         rows: 0,
         placeholder: "",
         css: "",
@@ -771,32 +569,31 @@ function createBase(name: string, data?: object, as: string = "text"): BaseAPI {
         formId: "",
         error: false,
         errorMessage: "",
-
-        Class: function (...v: string[]) {
+        Class: function (...v) {
             api.css = v.join(" ");
             return api;
         },
-        ClassLabel: function (...v: string[]) {
+        ClassLabel: function (...v) {
             api.cssLabel = v.join(" ");
             return api;
         },
-        ClassInput: function (...v: string[]) {
+        ClassInput: function (...v) {
             api.cssInput = v.join(" ");
             return api;
         },
-        Size: function (v: string) {
+        Size: function (v) {
             api.size = v;
             return api;
         },
-        Placeholder: function (v: string) {
+        Placeholder: function (v) {
             api.placeholder = v;
             return api;
         },
-        Pattern: function (v: string) {
+        Pattern: function (v) {
             api.pattern = v;
             return api;
         },
-        Autocomplete: function (v: string) {
+        Autocomplete: function (v) {
             api.autocomplete = v;
             return api;
         },
@@ -816,39 +613,39 @@ function createBase(name: string, data?: object, as: string = "text"): BaseAPI {
             api.error = v;
             return api;
         },
-        Type: function (v: string) {
+        Type: function (v) {
             api.as = v;
             return api;
         },
-        Rows: function (v: number) {
+        Rows: function (v) {
             api.rows = v;
             return api;
         },
-        Value: function (v: string) {
+        Value: function (v) {
             api.value = v;
             return api;
         },
-        Change: function (code: string) {
+        Change: function (code) {
             api.onchange = code;
             return api;
         },
-        Click: function (code: string) {
+        Click: function (code) {
             api.onclick = code;
             return api;
         },
-        Form: function (formId: string) {
+        Form: function (formId) {
             api.formId = formId;
             return api;
         },
-        If: function (v: boolean) {
+        If: function (v) {
             api.visible = v;
             return api;
         },
-        resolveValue: function (): string {
+        resolveValue: function () {
             if (!api.data) {
                 return api.value;
             }
-            let val: unknown = getPath(api.data, api.name);
+            let val = getPath(api.data, api.name);
             if (val == null) {
                 return api.value;
             }
@@ -869,124 +666,86 @@ function createBase(name: string, data?: object, as: string = "text"): BaseAPI {
             }
             return String(val);
         },
-
-        Render: function (label: string): string {
+        Render: function (label) {
             throw new Error("Render not implemented");
         },
-
-        Numbers: function (min?: number, max?: number, step?: number) {
+        Numbers: function (min, max, step) {
             throw new Error("Numbers not implemented");
         },
-
-        Dates: function (min?: Date, max?: Date) {
+        Dates: function (min, max) {
             throw new Error("Dates not implemented");
         },
-
-        Format: function (fmt: string) {
+        Format: function (fmt) {
             throw new Error("Format not implemented");
         },
     };
-
     return api;
 }
-
-function IText(name: string, data?: object) {
+function IText(name, data) {
     const target = Target();
     const base = createBase(name, data, "text");
-
-    base.Render = function (label: string): string {
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
-
         const value = base.resolveValue();
-
-        return div(base.css)(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-
-            input(
-                Classes(
-                    INPUT,
-                    base.size,
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onchange: base.onchange,
-                    onclick: base.onclick,
-                    required: base.required,
-                    disabled: base.disabled,
-                    value: value,
-                    pattern: base.pattern,
-                    placeholder: base.placeholder,
-                    autocomplete: base.autocomplete,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                },
-            ),
-        );
-    }
-
+        return div(base.css)(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), input(Classes(INPUT, base.size, base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onchange: base.onchange,
+            onclick: base.onclick,
+            required: base.required,
+            disabled: base.disabled,
+            value: value,
+            pattern: base.pattern,
+            placeholder: base.placeholder,
+            autocomplete: base.autocomplete,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+        }));
+    };
     return base;
 }
-
-function IPassword(name: string, data?: object) {
+function IPassword(name, data) {
     const target = Target();
     const base = createBase(name, data, "password");
-
-    base.Render = function (label: string): string {
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
         const value = base.resolveValue();
-        return div(base.css)(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-            input(
-                Classes(
-                    INPUT,
-                    base.size,
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onclick: base.onclick,
-                    required: base.required,
-                    disabled: base.disabled,
-                    value: value,
-                    placeholder: base.placeholder,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                },
-            ),
-        );
-    }
-
+        return div(base.css)(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), input(Classes(INPUT, base.size, base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onclick: base.onclick,
+            required: base.required,
+            disabled: base.disabled,
+            value: value,
+            placeholder: base.placeholder,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+        }));
+    };
     return base;
 }
-
-function IArea(name: string, data?: object) {
+function IArea(name, data) {
     const target = Target();
     const base = createBase(name, data, "text");
-
-    base.Render = function (label: string): string {
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
@@ -996,72 +755,54 @@ function IArea(name: string, data?: object) {
         if (typeof maybeRows === "number" && maybeRows > 0) {
             rows = maybeRows;
         }
-        return div(base.css)(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-            textarea(
-                Classes(
-                    AREA,
-                    base.size,
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onclick: base.onclick,
-                    required: base.required,
-                    disabled: base.disabled,
-                    readonly: base.readonly,
-                    placeholder: base.placeholder,
-                    rows: rows,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-readonly': base.readonly ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                    'aria-multiline': 'true',
-                },
-            )(value),
-        );
-    }
-
+        return div(base.css)(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), textarea(Classes(AREA, base.size, base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onclick: base.onclick,
+            required: base.required,
+            disabled: base.disabled,
+            readonly: base.readonly,
+            placeholder: base.placeholder,
+            rows: rows,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-readonly': base.readonly ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+            'aria-multiline': 'true',
+        })(value));
+    };
     return base;
 }
-
-function INumber(name: string, data?: object) {
+function INumber(name, data) {
     const target = Target();
     const base = createBase(name, data, "number");
     const local = {
-        min: undefined as number | undefined,
-        max: undefined as number | undefined,
-        step: undefined as number | undefined,
+        min: undefined,
+        max: undefined,
+        step: undefined,
         valueFormat: "%v",
     };
-
-    base.Numbers = function (min?: number, max?: number, step?: number) {
+    base.Numbers = function (min, max, step) {
         local.min = min;
         local.max = max;
         local.step = step;
         return this;
-    }
-
-    base.Format = function (fmt: string) {
+    };
+    base.Format = function (fmt) {
         local.valueFormat = fmt;
         return this;
-    }
-
-    base.Render = function (label: string): string {
+    };
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
-
-        let value: unknown = base.resolveValue();
-
+        let value = base.resolveValue();
         if (local.valueFormat && value) {
             if (local.valueFormat.includes("%.2f")) {
                 const n = Number(value);
@@ -1070,78 +811,59 @@ function INumber(name: string, data?: object) {
                 }
             }
         }
-
-        let minStr: string | undefined = undefined;
+        let minStr = undefined;
         if (local.min !== undefined) {
             minStr = String(local.min);
         }
-
-        let maxStr: string | undefined = undefined;
+        let maxStr = undefined;
         if (local.max !== undefined) {
             maxStr = String(local.max);
         }
-
-        let stepStr: string | undefined = undefined;
+        let stepStr = undefined;
         if (local.step !== undefined) {
             stepStr = String(local.step);
         }
-
-        return div(base.css)(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-            input(
-                Classes(
-                    INPUT,
-                    base.size,
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onclick: base.onclick,
-                    required: base.required,
-                    disabled: base.disabled,
-                    value: String(value ?? ''),
-                    min: minStr,
-                    max: maxStr,
-                    step: stepStr,
-                    placeholder: base.placeholder,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                    'aria-valuemin': minStr,
-                    'aria-valuemax': maxStr,
-                    'aria-valuenow': String(value ?? ''),
-                    role: 'spinbutton',
-                },
-            ),
-        );
-    }
-
+        return div(base.css)(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), input(Classes(INPUT, base.size, base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onclick: base.onclick,
+            required: base.required,
+            disabled: base.disabled,
+            value: String(value ?? ''),
+            min: minStr,
+            max: maxStr,
+            step: stepStr,
+            placeholder: base.placeholder,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+            'aria-valuemin': minStr,
+            'aria-valuemax': maxStr,
+            'aria-valuenow': String(value ?? ''),
+            role: 'spinbutton',
+        }));
+    };
     return base;
 }
-
-function IDate(name: string, data?: object) {
+function IDate(name, data) {
     const target = Target();
     const base = createBase(name, data, "date");
     const local = {
-        min: undefined as Date | undefined,
-        max: undefined as Date | undefined,
+        min: undefined,
+        max: undefined,
     };
-
-    base.Dates = function (min?: Date, max?: Date) {
+    base.Dates = function (min, max) {
         local.min = min;
         local.max = max;
         return this;
-    }
-
-    base.Render = function (label: string): string {
+    };
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
@@ -1154,61 +876,45 @@ function IDate(name: string, data?: object) {
         if (local.max) {
             max = local.max.toISOString().slice(0, 10);
         }
-        return div(base.css + " min-w-0")(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-            input(
-                Classes(
-                    INPUT,
-                    base.size,
-                    "min-w-0 max-w-full",
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onclick: base.onclick,
-                    onchange: base.onchange,
-                    required: base.required,
-                    disabled: base.disabled,
-                    value: value,
-                    min: min,
-                    max: max,
-                    placeholder: base.placeholder,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                    'aria-valuemin': min,
-                    'aria-valuemax': max,
-                },
-            ),
-        );
-    }
-
+        return div(base.css + " min-w-0")(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), input(Classes(INPUT, base.size, "min-w-0 max-w-full", base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onclick: base.onclick,
+            onchange: base.onchange,
+            required: base.required,
+            disabled: base.disabled,
+            value: value,
+            min: min,
+            max: max,
+            placeholder: base.placeholder,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+            'aria-valuemin': min,
+            'aria-valuemax': max,
+        }));
+    };
     return base;
 }
-
-function ITime(name: string, data?: object) {
+function ITime(name, data) {
     const target = Target();
     const base = createBase(name, data, "time");
     const local = {
-        min: undefined as Date | undefined,
-        max: undefined as Date | undefined,
+        min: undefined,
+        max: undefined,
     };
-
-    base.Dates = function (min?: Date, max?: Date) {
+    base.Dates = function (min, max) {
         local.min = min;
         local.max = max;
         return this;
-    }
-
-    base.Render = function (label: string): string {
+    };
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
@@ -1221,59 +927,44 @@ function ITime(name: string, data?: object) {
         if (local.max) {
             max = local.max.toISOString().slice(11, 16);
         }
-        return div(base.css)(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-            input(
-                Classes(
-                    INPUT,
-                    base.size,
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onclick: base.onclick,
-                    required: base.required,
-                    disabled: base.disabled,
-                    value: value,
-                    min: min,
-                    max: max,
-                    placeholder: base.placeholder,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                    'aria-valuemin': min,
-                    'aria-valuemax': max,
-                },
-            ),
-        );
-    }
-
+        return div(base.css)(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), input(Classes(INPUT, base.size, base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onclick: base.onclick,
+            required: base.required,
+            disabled: base.disabled,
+            value: value,
+            min: min,
+            max: max,
+            placeholder: base.placeholder,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+            'aria-valuemin': min,
+            'aria-valuemax': max,
+        }));
+    };
     return base;
 }
-
-function IDateTime(name: string, data?: object) {
+function IDateTime(name, data) {
     const target = Target();
     const base = createBase(name, data, "datetime-local");
     const local = {
-        min: undefined as Date | undefined,
-        max: undefined as Date | undefined,
+        min: undefined,
+        max: undefined,
     };
-
-    base.Dates = function (min?: Date, max?: Date) {
+    base.Dates = function (min, max) {
         local.min = min;
         local.max = max;
         return this;
-    }
-
-    base.Render = function (label: string): string {
+    };
+    base.Render = function (label) {
         if (!base.visible) {
             return "";
         }
@@ -1286,47 +977,34 @@ function IDateTime(name: string, data?: object) {
         if (local.max) {
             max = local.max.toISOString().slice(0, 16);
         }
-        return div(base.css)(
-            Label(base.cssLabel, {
-                for: target.id,
-                required: base.required,
-            })(label),
-            input(
-                Classes(
-                    INPUT,
-                    base.size,
-                    base.cssInput,
-                    base.disabled && DISABLED,
-                ),
-                {
-                    id: target.id,
-                    name: base.name,
-                    type: base.as,
-                    onclick: base.onclick,
-                    required: base.required,
-                    disabled: base.disabled,
-                    value: value,
-                    min: min,
-                    max: max,
-                    placeholder: base.placeholder,
-                    form: base.formId || undefined,
-                    'aria-label': label,
-                    'aria-required': base.required ? 'true' : 'false',
-                    'aria-disabled': base.disabled ? 'true' : 'false',
-                    'aria-invalid': base.error ? 'true' : 'false',
-                    'aria-valuemin': min,
-                    'aria-valuemax': max,
-                },
-            ),
-        );
-    }
-
+        return div(base.css)(Label(base.cssLabel, {
+            for: target.id,
+            required: base.required,
+        })(label), input(Classes(INPUT, base.size, base.cssInput, base.disabled && DISABLED), {
+            id: target.id,
+            name: base.name,
+            type: base.as,
+            onclick: base.onclick,
+            required: base.required,
+            disabled: base.disabled,
+            value: value,
+            min: min,
+            max: max,
+            placeholder: base.placeholder,
+            form: base.formId || undefined,
+            'aria-label': label,
+            'aria-required': base.required ? 'true' : 'false',
+            'aria-disabled': base.disabled ? 'true' : 'false',
+            'aria-invalid': base.error ? 'true' : 'false',
+            'aria-valuemin': min,
+            'aria-valuemax': max,
+        }));
+    };
     return base;
 }
-
-function ISelect<T = unknown>(name: string, data?: T) {
+function ISelect(name, data) {
     const state = {
-        data: data as object | undefined,
+        data: data,
         name: name,
         css: "",
         cssLabel: "",
@@ -1335,9 +1013,9 @@ function ISelect<T = unknown>(name: string, data?: T) {
         required: false,
         disabled: false,
         placeholder: "",
-        options: [] as AOption[],
+        options: [],
         formId: "",
-        target: {} as Attr,
+        target: {},
         onchange: "",
         empty: false,
         emptyText: "",
@@ -1345,19 +1023,19 @@ function ISelect<T = unknown>(name: string, data?: T) {
         error: false,
     };
     const api = {
-        Class: function (...v: string[]) {
+        Class: function (...v) {
             state.css = v.join(" ");
             return api;
         },
-        ClassLabel: function (...v: string[]) {
+        ClassLabel: function (...v) {
             state.cssLabel = v.join(" ");
             return api;
         },
-        ClassInput: function (...v: string[]) {
+        ClassInput: function (...v) {
             state.cssInput = v.join(" ");
             return api;
         },
-        Size: function (v: string) {
+        Size: function (v) {
             state.size = v;
             return api;
         },
@@ -1369,15 +1047,15 @@ function ISelect<T = unknown>(name: string, data?: T) {
             state.disabled = v;
             return api;
         },
-        Options: function (values: AOption[]) {
+        Options: function (values) {
             state.options = values;
             return api;
         },
-        Placeholder: function (v: string) {
+        Placeholder: function (v) {
             state.placeholder = v;
             return api;
         },
-        Change: function (code: string) {
+        Change: function (code) {
             state.onchange = code;
             return api;
         },
@@ -1385,12 +1063,12 @@ function ISelect<T = unknown>(name: string, data?: T) {
             state.empty = true;
             return api;
         },
-        EmptyText: function (v: string) {
+        EmptyText: function (v) {
             state.emptyText = v;
             state.empty = true;
             return api;
         },
-        If: function (v: boolean) {
+        If: function (v) {
             state.visible = v;
             return api;
         },
@@ -1398,26 +1076,26 @@ function ISelect<T = unknown>(name: string, data?: T) {
             state.error = v;
             return api;
         },
-        Form: function (formId: string) {
+        Form: function (formId) {
             state.formId = formId;
             return api;
         },
-        Render: function (label: string): string {
+        Render: function (label) {
             if (!state.visible) {
                 return "";
             }
             const current = state.data ? getPath(state.data, state.name) : "";
             const selected = String(current || "");
-            const opts: string[] = [];
+            const opts = [];
             if (state.placeholder) {
-                opts.push(option("", { 
+                opts.push(option("", {
                     value: "",
                     role: 'option',
                     'aria-selected': 'false'
                 })(state.placeholder));
             }
             if (state.empty) {
-                opts.push(option("", { 
+                opts.push(option("", {
                     value: "",
                     role: 'option',
                     'aria-selected': 'false'
@@ -1425,7 +1103,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
             }
             for (let i = 0; i < state.options.length; i++) {
                 const o = state.options[i];
-                const at: Attr = { 
+                const at = {
                     value: o.id,
                     role: 'option',
                     'aria-selected': selected === o.id ? 'true' : 'false'
@@ -1435,13 +1113,8 @@ function ISelect<T = unknown>(name: string, data?: T) {
                 }
                 opts.push(option("", at)(o.value));
             }
-            const css = Classes(
-                INPUT,
-                state.size,
-                state.cssInput,
-                state.disabled && DISABLED,
-            );
-            const selectAttrs: Attr = {
+            const css = Classes(INPUT, state.size, state.cssInput, state.disabled && DISABLED);
+            const selectAttrs = {
                 id: state.target.id,
                 name: state.name,
                 required: state.required,
@@ -1455,26 +1128,16 @@ function ISelect<T = unknown>(name: string, data?: T) {
                 'aria-invalid': state.error ? 'true' : 'false',
                 role: 'listbox',
             };
-            return div(
-                Classes(
-                    state.css,
-                    state.required && "invalid-if",
-                    state.error && "invalid",
-                ),
-            )(
-                Label(state.cssLabel, {
-                    for: state.target.id,
-                    required: state.required,
-                })(label),
-                select(css, selectAttrs)(opts.join(" ")),
-            );
+            return div(Classes(state.css, state.required && "invalid-if", state.error && "invalid"))(Label(state.cssLabel, {
+                for: state.target.id,
+                required: state.required,
+            })(label), select(css, selectAttrs)(opts.join(" ")));
         },
     };
     return api;
 }
-
 // Checkbox
-function ICheckbox(name: string, data?: object) {
+function ICheckbox(name, data) {
     const state = {
         data: data,
         name: name,
@@ -1486,11 +1149,11 @@ function ICheckbox(name: string, data?: object) {
         error: false,
     };
     const api = {
-        Class: function (...v: string[]) {
+        Class: function (...v) {
             state.css = v.join(" ");
             return api;
         },
-        Size: function (v: string) {
+        Size: function (v) {
             state.size = v;
             return api;
         },
@@ -1506,11 +1169,11 @@ function ICheckbox(name: string, data?: object) {
             state.error = v;
             return api;
         },
-        Form: function (formId: string) {
+        Form: function (formId) {
             state.formId = formId;
             return api;
         },
-        Render: function (text: string): string {
+        Render: function (text) {
             let isChecked = false;
             if (state.data) {
                 const v = getPath(state.data, state.name);
@@ -1530,22 +1193,13 @@ function ICheckbox(name: string, data?: object) {
                 'aria-checked': isChecked ? 'true' : 'false',
                 role: 'checkbox',
             });
-            const wrapperClass = Classes(
-                state.css,
-                state.size,
-                state.disabled && "opacity-50 pointer-events-none",
-                state.required && "invalid-if",
-                state.error && "invalid",
-            );
-            return div(wrapperClass)(
-                label("flex items-center gap-2 cursor-pointer select-none")(inputEl + " " + text),
-            );
+            const wrapperClass = Classes(state.css, state.size, state.disabled && "opacity-50 pointer-events-none", state.required && "invalid-if", state.error && "invalid");
+            return div(wrapperClass)(label("flex items-center gap-2 cursor-pointer select-none")(inputEl + " " + text));
         },
     };
     return api;
 }
-
-function IRadio(name: string, data?: object) {
+function IRadio(name, data) {
     const state = {
         data: data,
         name: name,
@@ -1553,26 +1207,26 @@ function IRadio(name: string, data?: object) {
         cssLabel: "",
         size: MD,
         valueSet: "",
-        target: {} as Attr,
+        target: {},
         disabled: false,
         required: false,
         formId: "",
         error: false,
     };
     const api = {
-        Class: function (...v: string[]) {
+        Class: function (...v) {
             state.css = v.join(" ");
             return api;
         },
-        ClassLabel: function (...v: string[]) {
+        ClassLabel: function (...v) {
             state.cssLabel = v.join(" ");
             return api;
         },
-        Size: function (v: string) {
+        Size: function (v) {
             state.size = v;
             return api;
         },
-        Value: function (v: string) {
+        Value: function (v) {
             state.valueSet = v;
             return api;
         },
@@ -1588,16 +1242,14 @@ function IRadio(name: string, data?: object) {
             state.error = v;
             return api;
         },
-        Form: function (formId: string) {
+        Form: function (formId) {
             state.formId = formId;
             return api;
         },
-        Render: function (text: string): string {
+        Render: function (text) {
             const selected = state.data
-                ? String(
-                    (state.data as Record<string, unknown>)[state.name] ||
-                    "",
-                )
+                ? String(state.data[state.name] ||
+                    "")
                 : "";
             const isSelected = selected === state.valueSet;
             const inputEl = input(Classes("hover:cursor-pointer"), {
@@ -1615,41 +1267,30 @@ function IRadio(name: string, data?: object) {
                 'aria-checked': isSelected ? 'true' : 'false',
                 role: 'radio',
             });
-            const wrapperCls = Classes(
-                state.css,
-                state.size,
-                state.disabled && "opacity-50 pointer-events-none",
-                state.required && "invalid-if",
-                state.error && "invalid",
-            );
-            return div(wrapperCls)(
-                label(Classes("flex items-center gap-2 cursor-pointer select-none", state.cssLabel))(
-                    inputEl + " " + text,
-                ),
-            );
+            const wrapperCls = Classes(state.css, state.size, state.disabled && "opacity-50 pointer-events-none", state.required && "invalid-if", state.error && "invalid");
+            return div(wrapperCls)(label(Classes("flex items-center gap-2 cursor-pointer select-none", state.cssLabel))(inputEl + " " + text));
         },
     };
     return api;
 }
-
-function IRadioButtons(name: string, data?: object) {
+function IRadioButtons(name, data) {
     const state = {
         target: Target(),
         data: data,
         name: name,
         css: "",
-        options: [] as AOption[],
+        options: [],
         required: false,
         disabled: false,
         formId: "",
         error: false,
     };
     const api = {
-        Options: function (v: AOption[]) {
+        Options: function (v) {
             state.options = v;
             return api;
         },
-        Class: function (...v: string[]) {
+        Class: function (...v) {
             state.css = v.join(" ");
             return api;
         },
@@ -1665,25 +1306,20 @@ function IRadioButtons(name: string, data?: object) {
             state.error = v;
             return api;
         },
-        Form: function (formId: string) {
+        Form: function (formId) {
             state.formId = formId;
             return api;
         },
-        Render: function (text: string): string {
+        Render: function (text) {
             const selected = state.data
-                ? String(
-                    (state.data as Record<string, unknown>)[state.name] ||
-                    "",
-                )
+                ? String(state.data[state.name] ||
+                    "")
                 : "";
             let items = "";
             for (let i = 0; i < state.options.length; i++) {
                 const o = state.options[i];
                 const active = selected === o.id;
-                const cls = Classes(
-                    "px-3 py-2 border rounded cursor-pointer select-none",
-                    active && "bg-blue-700 text-white",
-                );
+                const cls = Classes("px-3 py-2 border rounded cursor-pointer select-none", active && "bg-blue-700 text-white");
                 const inputEl = input("", {
                     type: "radio",
                     name: state.name,
@@ -1698,43 +1334,32 @@ function IRadioButtons(name: string, data?: object) {
                 });
                 items += label(cls)(inputEl + " " + o.value);
             }
-            return div(
-                Classes(
-                    state.css,
-                    state.required && "invalid-if",
-                    state.error && "invalid",
-                ),
-            )(
-                Label("font-bold", { for: state.target.id, required: state.required })("" + text),
-                div("flex gap-2 flex-wrap", {
-                    role: 'radiogroup',
-                    'aria-label': text,
-                    'aria-required': state.required ? 'true' : 'false',
-                    'aria-disabled': state.disabled ? 'true' : 'false',
-                    'aria-invalid': state.error ? 'true' : 'false',
-                })(items),
-            );
+            return div(Classes(state.css, state.required && "invalid-if", state.error && "invalid"))(Label("font-bold", { for: state.target.id, required: state.required })("" + text), div("flex gap-2 flex-wrap", {
+                role: 'radiogroup',
+                'aria-label': text,
+                'aria-required': state.required ? 'true' : 'false',
+                'aria-disabled': state.disabled ? 'true' : 'false',
+                'aria-invalid': state.error ? 'true' : 'false',
+            })(items));
         },
     };
     return api;
 }
-
-function SimpleTable(cols: number, css = "") {
+function SimpleTable(cols, css = "") {
     const state = {
         cols: cols,
         css: css,
-        rows: [] as string[][],
-        colClasses: [] as string[],
-        cellAttrs: [] as string[][],
-        sealedRows: [] as boolean[],
+        rows: [],
+        colClasses: [],
+        cellAttrs: [],
+        sealedRows: [],
     };
     // initialize column classes length
     for (let i = 0; i < cols; i++) {
         state.colClasses.push("");
     }
-
     const api = {
-        Class: function (col: number, ...classes: string[]) {
+        Class: function (col, ...classes) {
             if (col >= 0 && col < state.cols) {
                 state.colClasses[col] = Classes(...classes);
             }
@@ -1743,12 +1368,10 @@ function SimpleTable(cols: number, css = "") {
         Empty: function () {
             return api.Field("");
         },
-        Field: function (value: string, ...cls: string[]) {
-            if (
-                state.rows.length === 0 ||
+        Field: function (value, ...cls) {
+            if (state.rows.length === 0 ||
                 state.rows[state.rows.length - 1].length === state.cols ||
-                state.sealedRows[state.sealedRows.length - 1] === true
-            ) {
+                state.sealedRows[state.sealedRows.length - 1] === true) {
                 state.rows.push([]);
                 state.cellAttrs.push([]);
                 state.sealedRows.push(false);
@@ -1761,19 +1384,17 @@ function SimpleTable(cols: number, css = "") {
             state.cellAttrs[state.cellAttrs.length - 1].push("");
             return api;
         },
-        Attr: function (attrs: string) {
-            if (
-                state.cellAttrs.length > 0 &&
-                state.cellAttrs[state.cellAttrs.length - 1].length > 0
-            ) {
+        Attr: function (attrs) {
+            if (state.cellAttrs.length > 0 &&
+                state.cellAttrs[state.cellAttrs.length - 1].length > 0) {
                 const lastRowIndex = state.cellAttrs.length - 1;
                 const lastCellIndex = state.cellAttrs[lastRowIndex].length - 1;
                 if (state.cellAttrs[lastRowIndex][lastCellIndex] === "") {
                     state.cellAttrs[lastRowIndex][lastCellIndex] = attrs;
-                } else {
+                }
+                else {
                     state.cellAttrs[lastRowIndex][lastCellIndex] += " " + attrs;
                 }
-
                 // If current row is filled by colspan, seal it to force next Field to start new row
                 let used = 0;
                 for (let m = 0; m < state.cellAttrs[lastRowIndex].length; m++) {
@@ -1784,18 +1405,14 @@ function SimpleTable(cols: number, css = "") {
                         const idx = a.indexOf(key);
                         if (idx >= 0) {
                             let k2 = idx + key.length;
-                            if (
-                                k2 < a.length &&
-                                (a[k2] === '"' || a[k2] === "'")
-                            ) {
+                            if (k2 < a.length &&
+                                (a[k2] === '"' || a[k2] === "'")) {
                                 k2++;
                             }
                             let num = "";
-                            while (
-                                k2 < a.length &&
+                            while (k2 < a.length &&
                                 a[k2] >= "0" &&
-                                a[k2] <= "9"
-                            ) {
+                                a[k2] <= "9") {
                                 num += a[k2];
                                 k2++;
                             }
@@ -1813,7 +1430,7 @@ function SimpleTable(cols: number, css = "") {
             }
             return api;
         },
-        Render: function (): string {
+        Render: function () {
             let rowsHtml = "";
             // const colspanRe = /colspan=['"]?(\d+)['"]?/;
             for (let rowIndex = 0; rowIndex < state.rows.length; rowIndex++) {
@@ -1823,40 +1440,31 @@ function SimpleTable(cols: number, css = "") {
                 for (let j = 0; j < row.length; j++) {
                     const cell = row[j];
                     let cls = "";
-                    if (
-                        j < state.colClasses.length &&
-                        state.colClasses[j] !== ""
-                    ) {
+                    if (j < state.colClasses.length &&
+                        state.colClasses[j] !== "") {
                         cls = ' class="' + state.colClasses[j] + '"';
                     }
                     let attrs = "";
-                    if (
-                        rowIndex < state.cellAttrs.length &&
+                    if (rowIndex < state.cellAttrs.length &&
                         j < state.cellAttrs[rowIndex].length &&
-                        state.cellAttrs[rowIndex][j] !== ""
-                    ) {
+                        state.cellAttrs[rowIndex][j] !== "") {
                         attrs = " " + state.cellAttrs[rowIndex][j];
                     }
                     cells += '<td' + cls + attrs + ' role="cell">' + cell + "</td>";
-
                     let colspan = 1;
                     if (attrs !== "") {
                         const key = "colspan=";
                         const idx = attrs.indexOf(key);
                         if (idx >= 0) {
                             let k2 = idx + key.length;
-                            if (
-                                k2 < attrs.length &&
-                                (attrs[k2] === '"' || attrs[k2] === "'")
-                            ) {
+                            if (k2 < attrs.length &&
+                                (attrs[k2] === '"' || attrs[k2] === "'")) {
                                 k2++;
                             }
                             let num = "";
-                            while (
-                                k2 < attrs.length &&
+                            while (k2 < attrs.length &&
                                 attrs[k2] >= "0" &&
-                                attrs[k2] <= "9"
-                            ) {
+                                attrs[k2] <= "9") {
                                 num += attrs[k2];
                                 k2++;
                             }
@@ -1870,18 +1478,15 @@ function SimpleTable(cols: number, css = "") {
                 }
                 for (let k = usedCols; k < state.cols; k++) {
                     let cls = "";
-                    if (
-                        k < state.colClasses.length &&
-                        state.colClasses[k] !== ""
-                    ) {
+                    if (k < state.colClasses.length &&
+                        state.colClasses[k] !== "") {
                         cls = ' class="' + state.colClasses[k] + '"';
                     }
                     cells += '<td' + cls + ' role="cell"></td>';
                 }
                 rowsHtml += '<tr role="row">' + cells + "</tr>";
             }
-            return (
-                '<table class="table-auto ' +
+            return ('<table class="table-auto ' +
                 state.css +
                 '" role="table" aria-label="Data table" aria-rowcount="' +
                 state.rows.length +
@@ -1889,116 +1494,57 @@ function SimpleTable(cols: number, css = "") {
                 state.cols +
                 '"><tbody>' +
                 rowsHtml +
-                "</tbody></table>"
-            );
+                "</tbody></table>");
         },
     };
     return api;
 }
-
-export type Skeleton = "list" | "component" | "page" | "form" | undefined;
-
-export const Skeleton = {
-    Default(target: Target): string {
-        return div("animate-pulse", { id: target.id })(
-            div("bg-gray-200 h-5 rounded w-5/6 mb-2")(),
-            div("bg-gray-200 h-5 rounded w-2/3 mb-2")(),
-            div("bg-gray-200 h-5 rounded w-4/6")(),
-        );
+exports.Skeleton = {
+    Default(target) {
+        return div("animate-pulse", { id: target.id })(div("bg-gray-200 h-5 rounded w-5/6 mb-2")(), div("bg-gray-200 h-5 rounded w-2/3 mb-2")(), div("bg-gray-200 h-5 rounded w-4/6")());
     },
-
-    List(target: Target, count = 5): string {
+    List(target, count = 5) {
         let items = "";
         const n = typeof count === "number" && count > 0 ? count : 5;
-
         for (let i = 0; i < n; i++) {
-            const row = div("flex items-center gap-3 mb-3")(
-                div("bg-gray-200 rounded-full h-10 w-10")(),
-                div("flex-1")(
-                    div("bg-gray-200 h-4 rounded w-5/6 mb-2")(),
-                    div("bg-gray-200 h-4 rounded w-3/6")(),
-                ),
-            );
+            const row = div("flex items-center gap-3 mb-3")(div("bg-gray-200 rounded-full h-10 w-10")(), div("flex-1")(div("bg-gray-200 h-4 rounded w-5/6 mb-2")(), div("bg-gray-200 h-4 rounded w-3/6")()));
             items += row;
         }
-
         return div("animate-pulse", { id: target.id })(items);
     },
-
-    Component(target: Target): string {
-        return div("animate-pulse", { id: target.id })(
-            div("bg-gray-200 h-6 rounded w-2/5 mb-4")(),
-            div("bg-gray-200 h-4 rounded w-full mb-2")(),
-            div("bg-gray-200 h-4 rounded w-5/6 mb-2")(),
-            div("bg-gray-200 h-4 rounded w-4/6")(),
-        );
+    Component(target) {
+        return div("animate-pulse", { id: target.id })(div("bg-gray-200 h-6 rounded w-2/5 mb-4")(), div("bg-gray-200 h-4 rounded w-full mb-2")(), div("bg-gray-200 h-4 rounded w-5/6 mb-2")(), div("bg-gray-200 h-4 rounded w-4/6")());
     },
-
-    Page(target: Target): string {
-        const card = function (): string {
-            return div("bg-white rounded-lg p-4 shadow mb-4")(
-                div("bg-gray-200 h-5 rounded w-2/5 mb-3")(),
-                div("bg-gray-200 h-4 rounded w-full mb-2")(),
-                div("bg-gray-200 h-4 rounded w-5/6 mb-2")(),
-                div("bg-gray-200 h-4 rounded w-4/6")(),
-            );
+    Page(target) {
+        const card = function () {
+            return div("bg-white rounded-lg p-4 shadow mb-4")(div("bg-gray-200 h-5 rounded w-2/5 mb-3")(), div("bg-gray-200 h-4 rounded w-full mb-2")(), div("bg-gray-200 h-4 rounded w-5/6 mb-2")(), div("bg-gray-200 h-4 rounded w-4/6")());
         };
-        return div("animate-pulse", { id: target.id })(
-            div("bg-gray-200 h-8 rounded w-1/3 mb-6")(),
-            card(),
-            card(),
-        );
+        return div("animate-pulse", { id: target.id })(div("bg-gray-200 h-8 rounded w-1/3 mb-6")(), card(), card());
     },
-
-    Form(target: Target): string {
-        const fieldShort = function (): string {
-            return div("")(
-                div("bg-gray-200 h-4 rounded w-3/6 mb-2")(),
-                div("bg-gray-200 h-10 rounded w-full")(),
-            );
+    Form(target) {
+        const fieldShort = function () {
+            return div("")(div("bg-gray-200 h-4 rounded w-3/6 mb-2")(), div("bg-gray-200 h-10 rounded w-full")());
         };
-        const fieldArea = function (): string {
-            return div("")(
-                div("bg-gray-200 h-4 rounded w-2/6 mb-2")(),
-                div("bg-gray-200 h-24 rounded w-full")(),
-            );
+        const fieldArea = function () {
+            return div("")(div("bg-gray-200 h-4 rounded w-2/6 mb-2")(), div("bg-gray-200 h-24 rounded w-full")());
         };
-        const actions = function (): string {
-            return div("flex justify-end gap-3 mt-6")(
-                div("bg-gray-200 h-10 rounded w-24")(),
-                div("bg-gray-200 h-10 rounded w-32")(),
-            );
+        const actions = function () {
+            return div("flex justify-end gap-3 mt-6")(div("bg-gray-200 h-10 rounded w-24")(), div("bg-gray-200 h-10 rounded w-32")());
         };
-        return div("animate-pulse", { id: target.id })(
-            div("bg-white rounded-lg p-4 shadow")(
-                div("bg-gray-200 h-6 rounded w-2/5 mb-5")(),
-                div("grid grid-cols-1 md:grid-cols-2 gap-4")(
-                    div("")(fieldShort()),
-                    div("")(fieldShort()),
-                    div("")(fieldArea()),
-                    div("")(fieldShort()),
-                ),
-                actions(),
-            ),
-        );
+        return div("animate-pulse", { id: target.id })(div("bg-white rounded-lg p-4 shadow")(div("bg-gray-200 h-6 rounded w-2/5 mb-5")(), div("grid grid-cols-1 md:grid-cols-2 gap-4")(div("")(fieldShort()), div("")(fieldShort()), div("")(fieldArea()), div("")(fieldShort())), actions()));
     },
 };
-
-function Interval(timeout: number, callback: () => void) {
+function Interval(timeout, callback) {
     const fn = setInterval(callback, timeout);
     const stop = () => clearInterval(fn);
-
     return stop;
 }
-
-function Timeout(timeout: number, callback: () => void) {
+function Timeout(timeout, callback) {
     const fn = setTimeout(callback, timeout);
     const stop = () => clearTimeout(fn);
-
     return stop;
 }
-
-function Hidden(name: string, type: string, value: unknown): string {
+function Hidden(name, type, value) {
     // Use provided type for server-side coercion while visually hiding the input.
     // Browsers treat unknown types as text; apply inline style to ensure it's hidden.
     return input("", {
@@ -2009,80 +1555,61 @@ function Hidden(name: string, type: string, value: unknown): string {
         // Keep an id off this element to avoid collisions with visible controls.
     });
 }
-
-function Script(body: string): string {
+function Script(body) {
     const safeBody = String(body || "");
     return "<script>" + safeBody + "</script>";
 }
-
 class Form {
-    formId: string;
-    onSubmit: Attr;
-
-    constructor(onSubmit: Attr) {
+    constructor(onSubmit) {
         this.formId = "i" + RandomString(15);
         this.onSubmit = onSubmit;
     }
-
-    Text(name: string, data?: object): ReturnType<typeof IText> {
-        return IText(name, data).Form(this.formId) as any;
+    Text(name, data) {
+        return IText(name, data).Form(this.formId);
     }
-
-    Password(name: string, data?: object): ReturnType<typeof IPassword> {
-        return IPassword(name, data).Form(this.formId) as any;
+    Password(name, data) {
+        return IPassword(name, data).Form(this.formId);
     }
-
-    Area(name: string, data?: object): ReturnType<typeof IArea> {
-        return IArea(name, data).Form(this.formId) as any;
+    Area(name, data) {
+        return IArea(name, data).Form(this.formId);
     }
-
-    Number(name: string, data?: object): ReturnType<typeof INumber> {
-        return INumber(name, data).Form(this.formId) as any;
+    Number(name, data) {
+        return INumber(name, data).Form(this.formId);
     }
-
-    Date(name: string, data?: object): ReturnType<typeof IDate> {
-        return IDate(name, data).Form(this.formId) as any;
+    Date(name, data) {
+        return IDate(name, data).Form(this.formId);
     }
-
-    Time(name: string, data?: object): ReturnType<typeof ITime> {
-        return ITime(name, data).Form(this.formId) as any;
+    Time(name, data) {
+        return ITime(name, data).Form(this.formId);
     }
-
-    DateTime(name: string, data?: object): ReturnType<typeof IDateTime> {
-        return IDateTime(name, data).Form(this.formId) as any;
+    DateTime(name, data) {
+        return IDateTime(name, data).Form(this.formId);
     }
-
-    Select<T = unknown>(name: string, data?: T): ReturnType<typeof ISelect<T>> {
-        return ISelect<T>(name, data).Form(this.formId) as any;
+    Select(name, data) {
+        return ISelect(name, data).Form(this.formId);
     }
-
-    Checkbox(name: string, data?: object): ReturnType<typeof ICheckbox> {
-        return ICheckbox(name, data).Form(this.formId) as any;
+    Checkbox(name, data) {
+        return ICheckbox(name, data).Form(this.formId);
     }
-
-    Radio(name: string, data?: object): ReturnType<typeof IRadio> {
-        return IRadio(name, data).Form(this.formId) as any;
+    Radio(name, data) {
+        return IRadio(name, data).Form(this.formId);
     }
-
-    RadioButtons(name: string, data?: object): ReturnType<typeof IRadioButtons> {
-        return IRadioButtons(name, data).Form(this.formId) as any;
+    RadioButtons(name, data) {
+        return IRadioButtons(name, data).Form(this.formId);
     }
-
-    Button(): ReturnType<typeof Button> {
-        return Button().Form(this.formId) as any;
+    Button() {
+        return Button().Form(this.formId);
     }
-
-    Render(): string {
-        return form("hidden", { 
-            id: this.formId, 
+    Render() {
+        return form("hidden", {
+            id: this.formId,
             ...this.onSubmit,
             role: 'form',
             'aria-label': `Form ${this.formId}`,
         })();
     }
 }
-
-export default {
+exports.default = {
     Trim,
     Normalize,
     Classes,

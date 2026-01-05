@@ -402,9 +402,13 @@ export function Captcha(onValidated: Callable): Captcha {
 						var item = document.createElement('div');
 						item.className = 'inline-flex items-center justify-center px-3 py-2 rounded border text-sm font-semibold tracking-wide uppercase';
 						item.textContent = char;
+						item.setAttribute('role', 'listitem');
+						item.setAttribute('aria-label', 'Target character ' + char);
 						targetContainer.appendChild(item);
 					});
 					targetContainer.setAttribute('aria-hidden', 'false');
+					targetContainer.setAttribute('role', 'list');
+					targetContainer.setAttribute('aria-label', 'Target sequence');
 				}
 
 				function syncHidden() {
@@ -436,11 +440,15 @@ export function Captcha(onValidated: Callable): Captcha {
 						tile.setAttribute('data-index', String(i));
 						tile.setAttribute('draggable', solved ? 'false' : 'true');
 						tile.setAttribute('aria-grabbed', 'false');
+						tile.setAttribute('role', 'listitem');
+						tile.setAttribute('aria-label', 'Character ' + tiles[i]);
 						tilesContainer.appendChild(tile);
 					}
 					tilesContainer.setAttribute('tabindex', '0');
 					tilesContainer.setAttribute('aria-live', 'polite');
-					tilesContainer.setAttribute('aria-label', 'Captcha character tiles');
+					tilesContainer.setAttribute('aria-atomic', 'true');
+					tilesContainer.setAttribute('aria-relevant', 'additions removals');
+					tilesContainer.setAttribute('aria-label', 'Captcha character tiles - drag to reorder');
 					syncHidden();
 				}
 
@@ -565,17 +573,36 @@ export function Captcha(onValidated: Callable): Captcha {
 			}, 250);
 		`;
 
-        return ui.div("flex flex-col items-start gap-3 w-full", { id: rootID })(
-            ui.div("")(
+        return ui.div("flex flex-col items-start gap-3 w-full", { 
+            id: rootID,
+            role: 'application',
+            'aria-label': 'CAPTCHA puzzle - drag and drop characters to solve',
+            'aria-describedby': `${rootID}-instructions`
+        })(
+            ui.div("", { id: `${rootID}-instructions` })(
                 ui.span("text-sm text-gray-600 mb-2")(
                     "Drag and drop the characters on the canvas until they match the sequence below.",
                 ),
             ),
             ui.div("flex flex-col w-full border border-gray-300 rounded-lg")(
-                ui.div("flex flex-wrap gap-2 justify-center items-center m-4", { id: targetID })(),
+                ui.div("flex flex-wrap gap-2 justify-center items-center m-4", { 
+                    id: targetID,
+                    'aria-hidden': 'false',
+                    role: 'group',
+                    'aria-label': 'Target sequence'
+                })(),
                 ui.div(
                     "flex flex-wrap gap-3 justify-center items-center rounded-b-lg border bg-gray-200 shadow-sm p-4 min-h-[7.5rem] transition-colors duration-300",
-                    { id: tilesID },
+                    { 
+                        id: tilesID,
+                        role: 'list',
+                        'aria-live': 'polite',
+                        'aria-atomic': 'true',
+                        'aria-relevant': 'additions removals',
+                        'aria-label': 'Captcha character tiles - drag to reorder',
+                        'aria-dropeffect': 'move',
+                        tabindex: '0',
+                    },
                 )(),
             ),
             ui.Hidden(sessionFieldName(), "string", sessionID),

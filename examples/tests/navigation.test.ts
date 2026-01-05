@@ -1,9 +1,7 @@
 // Navigation Flow Tests - Tests for multi-page user flows
 // Tests navigation between pages and interaction flows
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
-import { setupTest, TestContext } from '../../test/app-harness';
+import { describe, it, assert, setupTest, TestContext } from '../../test/tests';
 import { createExampleApp } from '../app';
 
 const test = setupTest(function (port: number) {
