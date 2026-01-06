@@ -4,6 +4,11 @@ import crypto from "node:crypto";
 
 export type Swap = "inline" | "outline" | "none" | "append" | "prepend";
 
+// Strip HTML tags from text for use in ARIA labels
+function stripHTML(html: string): string {
+    return html.replace(/<[^>]*>/g, '').trim();
+}
+
 export interface Attr {
     onclick?: string;
     onchange?: string;
@@ -382,12 +387,6 @@ function attributes(...attrs: Attr[]): string {
         if (a['aria-relevant']) {
             result.push('aria-relevant="' + a['aria-relevant'] + '"');
         }
-        if (a['aria-grabbed']) {
-            result.push('aria-grabbed="' + a['aria-grabbed'] + '"');
-        }
-        if (a['aria-dropeffect']) {
-            result.push('aria-dropeffect="' + a['aria-dropeffect'] + '"');
-        }
         if (a['aria-multiline']) {
             result.push('aria-multiline="' + a['aria-multiline'] + '"');
         }
@@ -666,9 +665,8 @@ function Button(...attrs: Attr[]) {
             }
             if (state.as === "a") {
                 merged.push({ 
-                    id: state.target.id, 
-                    class: cls,
-                    'aria-label': text,
+                    id: state.target.id,
+                    'aria-label': stripHTML(text),
                     'aria-disabled': state.disabled ? 'true' : 'false',
                 });
                 return a(cls, ...merged)(text);
@@ -677,10 +675,9 @@ function Button(...attrs: Attr[]) {
                 merged.push({
                     id: state.target.id,
                     onclick: state.onclick,
-                    class: cls,
                     form: state.formId || undefined,
                     role: 'button',
-                    'aria-label': text,
+                    'aria-label': stripHTML(text),
                     'aria-disabled': state.disabled ? 'true' : 'false',
                     tabindex: '0',
                 });
@@ -689,9 +686,8 @@ function Button(...attrs: Attr[]) {
             merged.push({
                 id: state.target.id,
                 onclick: state.onclick,
-                class: cls,
                 form: state.formId || undefined,
-                'aria-label': text,
+                'aria-label': stripHTML(text),
                 'aria-disabled': state.disabled ? 'true' : 'false',
             });
             return button(cls, ...merged)(text);
@@ -2081,6 +2077,87 @@ class Form {
         })();
     }
 }
+
+export {
+    Trim,
+    Normalize,
+    Classes,
+    If,
+    Iff,
+    Map,
+    Map2,
+    For,
+    RandomString,
+    makeId,
+    XS,
+    SM,
+    MD,
+    ST,
+    LG,
+    XL,
+    AREA,
+    INPUT,
+    VALUE,
+    BTN,
+    DISABLED,
+    Yellow,
+    YellowOutline,
+    Green,
+    GreenOutline,
+    Purple,
+    PurpleOutline,
+    Blue,
+    BlueOutline,
+    Red,
+    RedOutline,
+    Gray,
+    GrayOutline,
+    White,
+    WhiteOutline,
+    a,
+    i,
+    p,
+    div,
+    span,
+    form,
+    select,
+    option,
+    ul,
+    li,
+    canvas,
+    img,
+    input,
+    label,
+    nav,
+    space,
+    Flex1,
+    Icon,
+    IconStart,
+    IconLeft,
+    IconRight,
+    IconEnd,
+    Target,
+    Button,
+    Label,
+    IText,
+    IPassword,
+    IArea,
+    INumber,
+    IDate,
+    ITime,
+    IDateTime,
+    ISelect,
+    ICheckbox,
+    IRadio,
+    IRadioButtons,
+    SimpleTable,
+    ThemeSwitcher,
+    Interval,
+    Timeout,
+    Hidden,
+    Script,
+    Form,
+};
 
 export default {
     Trim,
