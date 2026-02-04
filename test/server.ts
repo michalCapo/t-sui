@@ -86,7 +86,7 @@ export function registerTestPages(app: App, state: Map<string, unknown>): void {
     testApp = app;
 
     // Home page
-    app.Page('/', function (ctx: Context): string {
+    app.Page('/', 'E2E Test Home', function (ctx: Context): string {
         return app.HTML(
             'E2E Test Home',
             'bg-gray-100',
@@ -130,7 +130,7 @@ export function registerTestPages(app: App, state: Map<string, unknown>): void {
 function registerCounterPage(app: App, state: Map<string, unknown>): void {
     type Counter = { id: string; name: string; value: number };
 
-    app.Page('/counter', function (ctx: Context): string {
+    app.Page('/counter', 'Counter', function (ctx: Context): string {
         const counters = (state.get('counters') as Counter[]) || [
             { id: 'counter1', name: 'Main Counter', value: 0 },
             { id: 'counter2', name: 'Secondary Counter', value: 10 },
@@ -228,7 +228,7 @@ function registerFormPage(app: App, state: Map<string, unknown>): void {
     type FormData = { name: string; email: string; message: string };
     type FormSubmission = FormData & { submittedAt: string };
 
-    app.Page('/form', function (ctx: Context): string {
+    app.Page('/form', 'Form Test', function (ctx: Context): string {
         const formData = (state.get('formData') as FormData) || { name: '', email: '', message: '' };
         const submissions = (state.get('formSubmissions') as FormSubmission[]) || [];
         const resultsTarget = ui.Target();
@@ -346,7 +346,7 @@ function renderSubmissions(target: { id: string }, submissions: Array<{ name?: s
 function registerItemsPage(app: App, state: Map<string, unknown>): void {
     type Item = { name?: string; description?: string; price?: number; quantity?: number; id?: string; createdAt?: string };
 
-    app.Page('/items', function (ctx: Context): string {
+    app.Page('/items', 'Items', function (ctx: Context): string {
         const items = (state.get('items') as Item[]) || [];
 
         return app.HTML(
@@ -373,7 +373,7 @@ function registerItemsPage(app: App, state: Map<string, unknown>): void {
     });
 
     // New item page
-    app.Page('/items/new', function (ctx: Context): string {
+    app.Page('/items/new', 'New Item', function (ctx: Context): string {
         return app.HTML(
             'New Item',
             'bg-gray-100',

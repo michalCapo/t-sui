@@ -31,35 +31,35 @@ async function LazyMoreData(ctx: Context, target: Target) {
             .Button()
             .Color(ui.Blue)
             .Class("rounded text-sm")
-            .Click(ctx.Call(Deffered).Replace(target))
+            .Click(ctx.Click(Deffered).Replace(target))
             .Render("Default skeleton"),
 
         ui
             .Button()
             .Color(ui.Blue)
             .Class("rounded text-sm")
-            .Click(ctx.Call(Deffered, { as: "component" }).Replace(target))
+            .Click(ctx.Click(Deffered, { as: "component" }).Replace(target))
             .Render("Component skeleton"),
 
         ui
             .Button()
             .Color(ui.Blue)
             .Class("rounded text-sm")
-            .Click(ctx.Call(Deffered, { as: "list" }).Replace(target))
+            .Click(ctx.Click(Deffered, { as: "list" }).Replace(target))
             .Render("List skeleton"),
 
         ui
             .Button()
             .Color(ui.Blue)
             .Class("rounded text-sm")
-            .Click(ctx.Call(Deffered, { as: "page" }).Replace(target))
+            .Click(ctx.Click(Deffered, { as: "page" }).Replace(target))
             .Render("Page skeleton"),
 
         ui
             .Button()
             .Color(ui.Blue)
             .Class("rounded text-sm")
-            .Click(ctx.Call(Deffered, { as: "form" }).Replace(target))
+            .Click(ctx.Click(Deffered, { as: "form" }).Replace(target))
             .Render("Form skeleton"),
     );
 }

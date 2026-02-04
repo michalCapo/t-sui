@@ -4,6 +4,7 @@ import http, { IncomingMessage, Server, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import type { Socket } from "node:net";
 import ui, { Attr, Target, Swap } from "./ui";
+import { htmlToJSElement, JSElement, JSPatchOp, JSHTTPResponse, JSResponseMessage, JSCallMessage } from "./ui.protocol";
 
 // Runtime detection
 const IS_BUN = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
@@ -182,12 +183,86 @@ export interface BodyItem {
 export type Callable = ((ctx: Context) => string | Promise<string>) & { url?: string }
 export type Deferred = (ctx: Context) => Promise<string>;
 
+export interface Route {
+    path: string;
+    uuid: string;
+    title: string;
+    handler: Callable;
+    pattern: string;      // original pattern like "/users/{id}"
+    segments: string[];   // split segments for matching
+    paramNames: string[]; // names of parameters in order
+    hasParams: boolean;   // whether this route has path parameters
+}
+
+function generateUUID(): string {
+    return crypto.randomBytes(16).toString('hex');
+}
+
+// parseRoutePattern parses a route path pattern and extracts segment information.
+// Returns segments, parameter names, and whether the route has parameters.
+// Example: "/users/{id}/posts/{postId}" => segments: ["users", "{id}", "posts", "{postId}"], paramNames: ["id", "postId"], hasParams: true
+function parseRoutePattern(pattern: string): { segments: string[]; paramNames: string[]; hasParams: boolean } {
+    const normalized = pattern.replace(/^\/+|\/+$/g, '');
+    const segments = normalized ? normalized.split('/') : [];
+    const paramNames: string[] = [];
+    let hasParams = false;
+
+    for (const seg of segments) {
+        if (seg.startsWith('{') && seg.endsWith('}')) {
+            const paramName = seg.slice(1, -1);
+            paramNames.push(paramName);
+            hasParams = true;
+        }
+    }
+
+    return { segments, paramNames, hasParams };
+}
+
+// matchRoutePattern matches an actual path against a route pattern and extracts parameters.
+// Returns the extracted parameters map if match succeeds, null otherwise.
+function matchRoutePattern(actualPath: string, route: Route): Record<string, string> | null {
+    if (!route.hasParams) {
+        // Exact match only - no params to extract
+        return null;
+    }
+
+    const normalized = actualPath.replace(/^\/+|\/+$/g, '').toLowerCase();
+    const actualSegments = normalized ? normalized.split('/') : [];
+
+    if (actualSegments.length !== route.segments.length) {
+        return null;
+    }
+
+    const params: Record<string, string> = {};
+    let paramIndex = 0;
+    
+    for (let i = 0; i < route.segments.length; i++) {
+        const patternSeg = route.segments[i];
+        const actualSeg = actualSegments[i];
+
+        if (patternSeg.startsWith('{') && patternSeg.endsWith('}')) {
+            // This is a parameter segment - use the original param name from route.paramNames
+            const paramName = route.paramNames[paramIndex++];
+            // Get the actual value from the original path (before lowercasing) for proper casing
+            const originalNormalized = actualPath.replace(/^\/+|\/+$/g, '');
+            const originalSegments = originalNormalized ? originalNormalized.split('/') : [];
+            params[paramName] = decodeURIComponent(originalSegments[i] || actualSeg);
+        } else if (patternSeg !== actualSeg) {
+            // Literal segment doesn't match (case-insensitive since both are normalized)
+            return null;
+        }
+    }
+
+    return params;
+}
+
 export class App {
     contentId: Target;
     Language: string;
     HTMLHead: string[];
     _wsClients: Set<WebSocketClient> = new Set();
     _debugEnabled: boolean = false;
+    routes: Map<string, Route> = new Map();
     _sessions: Map<
         string,
         {
@@ -203,6 +278,8 @@ export class App {
     _server: Server | null = null;
     _sessionSweepHandle: ReturnType<typeof setInterval> | null = null;
     _rateLimiterIntervalHandle: ReturnType<typeof setInterval> | null = null;
+    layout: Callable | null = null;
+    _smoothNav: boolean = false;
 
     // Security configuration methods
     configureRateLimit(maxRequests: number, windowMs: number): void {
@@ -325,6 +402,8 @@ export class App {
             '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>',
             script([
                 __stringify,
+                __jselement,
+                __buildElement,
                 __loader,
                 __offline,
                 __error,
@@ -410,14 +489,10 @@ export class App {
         } catch (_) { }
     }
 
-    // Internal: broadcast a patch message to all WS clients
-    _sendPatch(payload: { id: string; swap: Swap; html: string }): void {
-        const msg = {
-            type: "patch",
-            id: String(payload.id || ""),
-            swap: String(payload.swap || "outline"),
-            html: ui.Trim(String(payload.html || "")),
-        } as { type: string; id: string; swap: string; html: string };
+    // Internal: send JSON DOM protocol operations to all WS clients
+    _sendOps(ops: JSPatchOp[]): void {
+        if (ops.length === 0) return;
+        const msg: { type: "patch"; ops: JSPatchOp[] } = { type: "patch", ops: ops };
         const data = JSON.stringify(msg);
         const it = this._wsClients.values();
         while (true) {
@@ -461,10 +536,23 @@ export class App {
     }
 
     HTML(title: string, bodyClass: string, body: string): string {
-        const head = "<title>" + title + "</title>" + this.HTMLHead.join("");
+        // Build route manifest with pattern info for parameterized routes
+        const routesObj: Record<string, string | { path: string; pattern: boolean }> = {};
+        for (const [path, route] of this.routes.entries()) {
+            if (route.hasParams) {
+                // Parameterized route: include pattern info for client-side matching
+                routesObj[path] = { path: path, pattern: true };
+            } else {
+                // Exact match route: map path to itself (matching g-sui behavior)
+                routesObj[path] = path;
+            }
+        }
+        const routesScript = `<script>window.__routes = ${JSON.stringify(routesObj)};</script>`;
+        const head = "<title>" + title + "</title>" + routesScript + this.HTMLHead.join("");
+        // Use function replacement to avoid $ being interpreted as special replacement pattern
         const html = this.HTMLBody(ui.Classes(bodyClass))
-            .replace("__head__", head)
-            .replace("__body__", body);
+            .replace("__head__", () => head)
+            .replace("__body__", () => body);
         return ui.Trim(html);
     }
 
@@ -496,9 +584,85 @@ export class App {
         callable.url = key;
     }
 
-    Page(path: string, component: Callable): Callable {
-        this.register(GET, path, component);
-        return component;
+    // matchRoute finds a route that matches the given path, trying exact match first, then pattern matching.
+    // Returns the matched route and extracted parameters.
+    matchRoute(path: string): { route: Route | null; params: Record<string, string> | null } {
+        const p = normalizePath(path);
+
+        // First try exact match
+        const exactRoute = this.routes.get(p);
+        if (exactRoute) {
+            return { route: exactRoute, params: null };
+        }
+
+        // Then try pattern matching for parameterized routes
+        for (const [, route] of this.routes) {
+            if (route.hasParams) {
+                const params = matchRoutePattern(p, route);
+                if (params) {
+                    return { route, params };
+                }
+            }
+        }
+
+        return { route: null, params: null };
+    }
+
+    // Page registers a route with a title and handler.
+    // Usage: Page("/", "Page Title", handler)
+    // Supports path parameters: Page("/users/{id}", "User Profile", handler)
+    Page(path: string, title: string, handler: Callable): Callable {
+        const p = normalizePath(path);
+
+        if (this.routes.has(p)) {
+            throw new Error("Path already registered: " + p);
+        }
+
+        // Parse original path to preserve parameter name casing (e.g., postId not postid)
+        // Use normalized path for segments to ensure case-insensitive URL matching
+        const originalParsed = parseRoutePattern(path);
+        const normalizedParsed = parseRoutePattern(p);
+        
+        // Use normalized segments for matching, but original param names for extraction
+        const { segments, hasParams } = normalizedParsed;
+        const { paramNames } = originalParsed;
+
+        const uuid = generateUUID();
+        const route: Route = {
+            path: p,
+            uuid,
+            title,
+            handler,
+            pattern: p,
+            segments,
+            paramNames,
+            hasParams,
+        };
+
+        this.routes.set(p, route);
+
+        // Only register exact path for non-parameterized routes
+        // Parameterized routes are matched dynamically via matchRoute()
+        if (!hasParams) {
+            this.register(GET, path, handler);
+        }
+
+        return handler;
+    }
+
+    Layout(handler: Callable): void {
+        this.layout = handler;
+    }
+
+    SmoothNav(enable: boolean): void {
+        this._smoothNav = !!enable;
+        if (enable) {
+            this.HTMLHead.push("<script>" + __router + "</script>");
+        }
+    }
+
+    SmoothNavigation(enable: boolean): void {
+        this.SmoothNav(enable);
     }
 
     Action(uid: string, action: Callable): Callable {
@@ -539,36 +703,88 @@ export class App {
         return undefined;
     }
 
-    // Route dispatch used by server integration
-    async _dispatch(path: string, req: IncomingMessage, res: ServerResponse,): Promise<string> {
-        const p = normalizePath(path);
-        const callable = this.stored.get(p)?.callable;
-        if (!callable) {
+    getCallable(path: string): Callable | undefined {
+        const stored = this.stored.get(path);
+        return stored?.callable;
+    }
+
+    // Handle SPA page navigation via POST (matching g-sui behavior)
+    // Client POSTs to route pattern path with {path: "/actual/path?query=value"} in body
+    private async _handlePagePost(patternPath: string, actualPath: string, req: IncomingMessage, res: ServerResponse): Promise<JSHTTPResponse | null> {
+        const route = this.routes.get(patternPath);
+        if (!route) {
             res.statusCode = 404;
-            return "Not found";
+            return null;
         }
 
-        // Apply security headers if enabled
-        if (this._securityEnabled) {
-            setSecurityHeaders(res, isSecure(req));
+        // Parse actual path to extract path params and query params
+        let pathname = actualPath;
+        let queryParams: URLSearchParams | null = null;
+
+        const queryIndex = actualPath.indexOf('?');
+        if (queryIndex >= 0) {
+            pathname = actualPath.substring(0, queryIndex);
+            try {
+                queryParams = new URLSearchParams(actualPath.substring(queryIndex + 1));
+            } catch { /* ignore parse errors */ }
         }
 
-        // Rate limiting check if enabled
-        if (this._securityEnabled) {
-            const clientIp = getClientIP(req);
-            if (!this._rateLimiter.isAllowed(clientIp)) {
-                res.statusCode = 429;
-                res.setHeader('Retry-After', '60');
-                return "Too Many Requests";
+        // Extract path parameters if this is a parameterized route
+        let pathParams: Record<string, string> | null = null;
+        if (route.hasParams) {
+            pathParams = matchRoutePattern(pathname, route);
+            if (!pathParams) {
+                res.statusCode = 404;
+                return null;
             }
         }
 
-        // Resolve session id from cookie `tsui__sid`; create if missing and set cookie
+        const sid = this._getOrCreateSessionId(req, res);
+        const ctx = new Context(this, req, res, sid, pathParams, queryParams);
+
+        let html = await route.handler(ctx);
+        if (ctx.append.length) html += ctx.append.join("");
+
+        if (this.layout) {
+            ctx._pageContent = html;
+            html = await this.layout(ctx);
+            var contentHtml = ctx._pageContent || '';
+            if (this._smoothNav) {
+                contentHtml = '<div id="__content__">' + contentHtml + '</div>';
+            }
+            html = html.replace('__CONTENT__', contentHtml);
+        }
+
+        // Extract body content if handler returned full HTML document
+        let contentToParse = html;
+        if (!this.layout && html.includes('<body')) {
+            const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+            if (bodyMatch) {
+                contentToParse = bodyMatch[1];
+            }
+        }
+
+        const jsElement = htmlToJSElement(this.layout ? ctx._pageContent || html : contentToParse);
+        if (!jsElement) {
+            return null;
+        }
+
+        const ops: JSPatchOp[] = [];
+        if (route.title) {
+            ops.push({ op: "title", title: route.title });
+        }
+
+        return {
+            el: jsElement,
+            ops: ops.length > 0 ? ops : undefined,
+            title: route.title
+        };
+    }
+
+    private _getOrCreateSessionId(req: IncomingMessage, res: ServerResponse): string {
         let sid = "";
         try {
-            const cookieHeader = String(
-                (req.headers && (req.headers["cookie"] as string)) || "",
-            );
+            const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
             const cookies = parseCookies(cookieHeader);
             sid = String(cookies["tsui__sid"] || "");
         } catch (_) { }
@@ -599,11 +815,119 @@ export class App {
                 }
             } catch (_) { }
         }
-        const ctx = new Context(this, req, res, sid);
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+        return sid;
+    }
+
+    // Route dispatch used by server integration
+    // body parameter is the pre-read request body (since HTTP handler already consumed the stream)
+    async _dispatch(path: string, req: IncomingMessage, res: ServerResponse, body?: string): Promise<string> {
+        const p = normalizePath(path);
+        const method = req.method || "GET";
+
+        // Parse query parameters from URL
+        let queryParams: URLSearchParams | null = null;
+        try {
+            const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+            queryParams = url.searchParams;
+        } catch { /* ignore parse errors */ }
+
+        // Handle SPA navigation via POST (matching g-sui behavior)
+        // Client POSTs to route path with {path: "/actual/path?query=value"} in body
+        if (method === "POST") {
+            // Check if this is a registered page route
+            const route = this.routes.get(p);
+            if (route) {
+                // Parse path from body if present
+                let actualPath = p;
+                if (body) {
+                    try {
+                        const parsed = JSON.parse(body) as { path?: string };
+                        if (parsed.path) {
+                            actualPath = parsed.path;
+                        }
+                    } catch { /* ignore parse errors */ }
+                }
+
+                const jsonResponse = await this._handlePagePost(p, actualPath, req, res);
+                if (jsonResponse) {
+                    res.setHeader("Content-Type", "application/json; charset=utf-8");
+                    res.write(JSON.stringify(jsonResponse));
+                    res.end();
+                } else {
+                    res.statusCode = 404;
+                    res.write(JSON.stringify({ error: "Not found" }));
+                    res.end();
+                }
+                return "";
+            }
+        }
+
+        // Try exact match first via stored paths
+        let callable = this.stored.get(p)?.callable;
+        let pathParams: Record<string, string> | null = null;
+
+        // If not found, try route pattern matching for parameterized routes
+        if (!callable) {
+            const { route, params } = this.matchRoute(p);
+            if (route) {
+                callable = route.handler;
+                pathParams = params;
+            }
+        }
+
+        if (!callable) {
+            res.statusCode = 404;
+            return "Not found";
+        }
+
+        // Apply security headers if enabled
+        if (this._securityEnabled) {
+            setSecurityHeaders(res, isSecure(req));
+        }
+
+        // Rate limiting check if enabled
+        if (this._securityEnabled) {
+            const clientIp = getClientIP(req);
+            if (!this._rateLimiter.isAllowed(clientIp)) {
+                res.statusCode = 429;
+                res.setHeader('Retry-After', '60');
+                return "Too Many Requests";
+            }
+        }
+
+        const sid = this._getOrCreateSessionId(req, res);
+        const ctx = new Context(this, req, res, sid, pathParams, queryParams);
 
         let html = await callable(ctx);
         if (ctx.append.length) html += ctx.append.join("");
+
+        // Only GET requests are handled via HTTP; actions use WebSocket
+        if (method === "POST") {
+            // POST to action paths no longer supported - actions must use WebSocket
+            res.statusCode = 405;
+            res.setHeader("Allow", "GET");
+            return "Method Not Allowed: Actions must use WebSocket";
+        }
+
+        // For GET requests, return HTML as before
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+        if (this.layout) {
+            ctx._pageContent = html;
+            html = await this.layout(ctx);
+            var contentHtml = ctx._pageContent || '';
+            if (this._smoothNav) {
+                contentHtml = '<div id="__content__">' + contentHtml + '</div>';
+            }
+            html = html.replace('__CONTENT__', contentHtml);
+        }
+
+        // Send any pending operations via WebSocket
+        if (ctx.ops.length > 0) {
+            this._sendOps(ctx.ops);
+            ctx.ops = [];
+        }
 
         return html;
     }
@@ -702,9 +1026,11 @@ export class App {
                     setRequestBody(sid, undefined);
                 }
 
-                const html = await self._dispatch(path, req, res);
-                res.write(html);
-                res.end();
+                const html = await self._dispatch(path, req, res, body);
+                if (html !== "") {
+                    res.write(html);
+                    res.end();
+                }
             } catch (err) {
                 console.error("Request handler error:", err);
                 res.statusCode = 500;
@@ -1025,17 +1351,93 @@ export class Context {
     res: ServerResponse;
     sessionID: string;
     append: string[] = [];
+    _pageContent: string = "";
+    ops: JSPatchOp[] = [];
+
+    // Path parameters extracted from route pattern (e.g., /users/{id} => { id: "123" })
+    private _pathParams: Record<string, string> | null = null;
+    // Query parameters from URL (e.g., ?page=1&sort=name => URLSearchParams)
+    private _queryParams: URLSearchParams | null = null;
 
     constructor(
         app: App,
         req: IncomingMessage,
         res: ServerResponse,
         sessionID: string,
+        pathParams?: Record<string, string> | null,
+        queryParams?: URLSearchParams | null,
     ) {
         this.app = app;
         this.req = req;
         this.res = res;
         this.sessionID = sessionID;
+        this._pathParams = pathParams || null;
+        this._queryParams = queryParams || null;
+    }
+
+    // PathParam returns the value of a path parameter extracted from the route pattern.
+    // For example, if the route is "/users/{id}" and the URL is "/users/123", PathParam("id") returns "123".
+    // Returns empty string if the parameter doesn't exist.
+    PathParam(name: string): string {
+        if (!this._pathParams) return "";
+        return this._pathParams[name] || "";
+    }
+
+    // QueryParam returns the first value of a query parameter from the URL.
+    // For SPA navigation, this returns params from the navigated URL.
+    // For direct requests, this uses the request URL query string.
+    // Returns empty string if the parameter doesn't exist.
+    QueryParam(name: string): string {
+        if (this._queryParams) {
+            return this._queryParams.get(name) || "";
+        }
+        // Fallback to request URL query for non-SPA requests
+        try {
+            const url = new URL(this.req.url || "", `http://${this.req.headers.host || "localhost"}`);
+            return url.searchParams.get(name) || "";
+        } catch {
+            return "";
+        }
+    }
+
+    // QueryParams returns all values for a query parameter (for multi-value params).
+    // For example, ?color=red&color=blue => QueryParams("color") returns ["red", "blue"].
+    // Returns empty array if the parameter doesn't exist.
+    QueryParams(name: string): string[] {
+        if (this._queryParams) {
+            return this._queryParams.getAll(name);
+        }
+        // Fallback to request URL query for non-SPA requests
+        try {
+            const url = new URL(this.req.url || "", `http://${this.req.headers.host || "localhost"}`);
+            return url.searchParams.getAll(name);
+        } catch {
+            return [];
+        }
+    }
+
+    // AllQueryParams returns all query parameters as a map of name to values array.
+    AllQueryParams(): Record<string, string[]> {
+        const result: Record<string, string[]> = {};
+        let params: URLSearchParams;
+
+        if (this._queryParams) {
+            params = this._queryParams;
+        } else {
+            try {
+                const url = new URL(this.req.url || "", `http://${this.req.headers.host || "localhost"}`);
+                params = url.searchParams;
+            } catch {
+                return result;
+            }
+        }
+
+        for (const key of params.keys()) {
+            if (!result[key]) {
+                result[key] = params.getAll(key);
+            }
+        }
+        return result;
     }
 
     Body<T extends object>(output: T): void {
@@ -1184,45 +1586,62 @@ export class Context {
         };
     }
 
-    Call<T extends object>(method: Callable, ...values: T[]) {
+    Click<T extends object>(method: Callable, ...values: T[]) {
         const callable = this.Callable(method);
         const self = this;
         return {
-            Render: function (target: Attr) {
-                return self.Post("POST", "inline", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
+            Render: function (target: Attr): Attr {
+                return {
+                    onclick: self.Post("POST", "inline", {
+                        method: callable,
+                        target: target,
+                        values: values as unknown as ActionValue[],
+                    }),
+                };
             },
-            Replace: function (target: Attr) {
-                return self.Post("POST", "outline", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
+            Replace: function (target: Attr): Attr {
+                return {
+                    onclick: self.Post("POST", "outline", {
+                        method: callable,
+                        target: target,
+                        values: values as unknown as ActionValue[],
+                    }),
+                };
             },
-            Append: function (target: Attr) {
-                return self.Post("POST", "append", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
+            Append: function (target: Attr): Attr {
+                return {
+                    onclick: self.Post("POST", "append", {
+                        method: callable,
+                        target: target,
+                        values: values as unknown as ActionValue[],
+                    }),
+                };
             },
-            Prepend: function (target: Attr) {
-                return self.Post("POST", "prepend", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
+            Prepend: function (target: Attr): Attr {
+                return {
+                    onclick: self.Post("POST", "prepend", {
+                        method: callable,
+                        target: target,
+                        values: values as unknown as ActionValue[],
+                    }),
+                };
             },
-            None: function () {
-                return self.Post("POST", "none", {
-                    method: callable,
-                    values: values as unknown as ActionValue[],
-                });
+            None: function (): Attr {
+                return {
+                    onclick: self.Post("POST", "none", {
+                        method: callable,
+                        values: values as unknown as ActionValue[],
+                    }),
+                };
             },
         };
+    }
+
+    /**
+     * @deprecated Use ctx.Click() instead. This method will be removed in a future release.
+     */
+    Call<T extends object>(method: Callable, ...values: T[]) {
+        return this.Click(method, ...values);
     }
 
     Submit<T extends object>(method: Callable, ...values: T[]) {
@@ -1277,58 +1696,81 @@ export class Context {
     }
 
     Load(href: string): Attr {
-        return { onclick: ui.Normalize('__load(\"' + href + '\")') };
+        return { 
+            onclick: ui.Normalize('if (window.__router) { window.__router.navigate(\"' + href + '\"); } else { __load(\"' + href + '\"); }') 
+        };
     }
-    Reload(): string {
-        return ui.Normalize("<script>window.location.reload();</script>");
+    Reload(): void {
+        this.ops.push({ op: "reload" });
+        this.app._sendOps(this.ops);
+        this.ops = [];
     }
-    Redirect(href: string): string {
-        return ui.Normalize(
-            "<script>window.location.href = '" + href + "';</script>",
-        );
+    Redirect(href: string): void {
+        this.ops.push({ op: "redirect", href });
+        this.app._sendOps(this.ops);
+        this.ops = [];
+    }
+    Title(title: string): void {
+        this.ops.push({ op: "title", title });
     }
 
     Success(message: string) {
-        displayMessage(this, message, "bg-green-700 text-white");
+        this.ops.push({ op: "notify", msg: message, variant: "success" });
     }
     Error(message: string) {
-        displayMessage(this, message, "bg-red-700 text-white");
+        this.ops.push({ op: "notify", msg: message, variant: "error" });
     }
     Info(message: string) {
-        displayMessage(this, message, "bg-blue-700 text-white");
+        this.ops.push({ op: "notify", msg: message, variant: "info" });
+    }
+    ErrorReload(message: string) {
+        this.ops.push({ op: "notify", msg: message, variant: "error-reload" });
     }
 
     Patch(target: { id: string; swap: Swap }, html: string | Promise<string>, clear?: () => void): void {
-        // Track the target id for this session so the server can react to client-reported invalid targets.
-        try {
-            const sid = this.sessionID;
-            if (sid) {
-                this.app._touchSession(sid);
-                const rec = this.app._sessions.get(sid);
-                if (rec) {
-                    if (!rec.targets) {
-                        rec.targets = new Map();
-                    }
-                    rec.targets.set(String(target.id || ""), clear);
-                }
-            }
-        } catch (_) { }
-
         var self = this;
         Promise.resolve(html)
             .then(function (resolved: string) {
-                return resolved;
-            })
-            .then(function (resolved: string) {
-                try {
-                    self.app._sendPatch({
-                        id: target.id,
-                        swap: target.swap,
-                        html: resolved,
-                    });
-                } catch (err) {
-                    console.error("Patch send error:", err);
+                const jsElement = htmlToJSElement(resolved);
+                if (!jsElement) {
+                    throw new Error("Failed to parse HTML to JSElement");
                 }
+
+                let opType: "outline" | "inline" | "append" | "prepend";
+                switch (target.swap) {
+                    case "inline":
+                        opType = "inline";
+                        break;
+                    case "append":
+                        opType = "append";
+                        break;
+                    case "prepend":
+                        opType = "prepend";
+                        break;
+                    case "outline":
+                    default:
+                        opType = "outline";
+                        break;
+                }
+
+                self.ops.push({ op: opType, tgt: target.id, el: jsElement });
+
+                try {
+                    const sid = self.sessionID;
+                    if (sid) {
+                        self.app._touchSession(sid);
+                        const rec = self.app._sessions.get(sid);
+                        if (rec) {
+                            if (!rec.targets) {
+                                rec.targets = new Map();
+                            }
+                            rec.targets.set(String(target.id || ""), clear);
+                        }
+                    }
+                } catch (_) { }
+
+                self.app._sendOps(self.ops);
+                self.ops = [];
             })
             .catch(function (err: unknown) {
                 console.error("Patch error:", err);
@@ -1447,56 +1889,107 @@ export const __post = ui.Trim(`
         var L = __loader.start();
 
         try { body = body ? body.slice() : []; } catch(_) {}
-        var url = path;
+        var rid = generateRequestId();
         
-        fetch(url, { method: 'POST', body: JSON.stringify(body)})
-            .then(function (resp) { if (!resp.ok) { throw new Error('HTTP ' + resp.status); } return resp.text(); })
-            .then(function (html) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
-                // Process scripts first for security
-                for (let i = 0; i < scripts.length; i++) {
-                    const newScript = document.createElement('script');
-                    newScript.textContent = scripts[i].textContent;
-                    document.body.appendChild(newScript);
+        // Setup response handler
+        var ws = (window).__tsuiWS;
+        var timeout = setTimeout(function() {
+            try { __error('Request timeout ...'); } catch(__){}
+            L.stop();
+        }, 30000);
+        
+        function handleResponse(msg) {
+            if (msg.type === 'response' && msg.rid === rid) {
+                clearTimeout(timeout);
+                
+                // Handle element from response
+                if (msg.el) {
+                    const html = jsElementToHTML(msg.el);
+
+                    // Extract and execute scripts
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
+                    // Process scripts first for security
+                    for (var i = 0; i < scripts.length; i++) {
+                        const newScript = document.createElement('script');
+                        newScript.textContent = scripts[i].textContent;
+                        document.body.appendChild(newScript);
+                    }
+
+                    const el = document.getElementById(target_id);
+                    if (el != null) {
+                        // Use safer DOM manipulation where possible
+                        if (swap === 'inline') {
+                            // Use DOMParser for safer HTML parsing if available
+                            try {
+                                if (typeof DOMParser !== 'undefined') {
+                                    const parser = new DOMParser();
+                                    const doc = parser.parseFromString(html, 'text/html');
+                                    // Clear element safely
+                                    while (el.firstChild) {
+                                        el.removeChild(el.firstChild);
+                                    }
+                                    // Append parsed nodes
+                                    while (doc.body.firstChild) {
+                                        el.appendChild(doc.body.firstChild);
+                                    }
+                                } else {
+                                    // Fallback to innerHTML with warning logged
+                                    console.warn('DOMParser not available, using innerHTML');
+                                    el.innerHTML = html;
+                                }
+                            } catch (e) {
+                                // Fallback to text content if parsing fails
+                                console.error('HTML parsing failed, using text content:', e);
+                                el.textContent = html;
+                            }
+                        }
+                        else if (swap === 'outline') { el.outerHTML = html; }
+                        else if (swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
+                        else if (swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
+                    }
                 }
 
-                const el = document.getElementById(target_id);
-                if (el != null) {
-                    // Use safer DOM manipulation where possible
-                    if (swap === 'inline') { 
-                        // Use DOMParser for safer HTML parsing if available
-                        try {
-                            if (typeof DOMParser !== 'undefined') {
-                                const parser = new DOMParser();
-                                const doc = parser.parseFromString(html, 'text/html');
-                                // Clear element safely
-                                while (el.firstChild) {
-                                    el.removeChild(el.firstChild);
-                                }
-                                // Append parsed nodes
-                                while (doc.body.firstChild) {
-                                    el.appendChild(doc.body.firstChild);
-                                }
-                            } else {
-                                // Fallback to innerHTML with warning logged
-                                console.warn('DOMParser not available, using innerHTML');
-                                el.innerHTML = html;
-                            }
-                        } catch (e) {
-                            // Fallback to text content if parsing fails
-                            console.error('HTML parsing failed, using text content:', e);
-                            el.textContent = html;
-                        }
+                // Handle operations from response
+                if (msg.ops && Array.isArray(msg.ops)) {
+                    for (var i = 0; i < msg.ops.length; i++) {
+                        applyPatchOp(msg.ops[i]);
                     }
-                    else if (swap === 'outline') { el.outerHTML = html; }
-                    else if (swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
-                    else if (swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
                 }
-            })
-            .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
-            .finally(function () { L.stop(); });
+                
+                L.stop();
+            }
+        }
+        
+        // Add one-time listener for this response
+        ws.addEventListener('message', function onMessage(ev) {
+            try {
+                var msg = JSON.parse(String(ev.data || '{}'));
+                // Only handle and remove listener if this is our response
+                if (msg.type === 'response' && msg.rid === rid) {
+                    handleResponse(msg);
+                    ws.removeEventListener('message', onMessage);
+                }
+            } catch(_) {}
+        });
+        
+        // Send call message via WebSocket
+        try {
+            ws.send(JSON.stringify({
+                type: 'call',
+                rid: rid,
+                act: 'post',
+                path: path,
+                swap: swap,
+                tgt: target_id,
+                vals: body
+            }));
+        } catch(e) {
+            try { __error('Failed to send action ...'); } catch(__){}
+            clearTimeout(timeout);
+            L.stop();
+        }
     }
 `);
 
@@ -1512,55 +2005,15 @@ export const __ws = ui.Trim(`
             function hideOffline(){ try { __offline.hide(); } catch(_){ } }
             function handlePatch(msg){
                 try {
-                    var html = String(msg.html || '');
-                    try {
-                        var tpl = document.createElement('template');
-                        tpl.innerHTML = html;
-                        var scripts = Array.prototype.slice.call(tpl.content.querySelectorAll('script'));
-                        for (var i = 0; i < scripts.length; i++) {
-                            var newScript = document.createElement('script');
-                            newScript.textContent = scripts[i].textContent;
-                            document.body.appendChild(newScript);
+                    // JSON DOM protocol format only
+                    if (msg.ops && Array.isArray(msg.ops)) {
+                        // Handle each operation
+                        for (var i = 0; i < msg.ops.length; i++) {
+                            var op = msg.ops[i];
+                            applyPatchOp(op);
                         }
-                    } catch(_){ }
-                    var el = document.getElementById(String(msg.id || ''));
-                    if (!el) {
-                        try {
-                            var ws2 = (window).__tsuiWS;
-                            if (ws2 && ws2.readyState === 1) {
-                                ws2.send(JSON.stringify({ type: 'invalid', id: String(msg.id || '') }));
-                            }
-                        } catch(_){ }
                         return;
                     }
-                    // Use safer DOM manipulation where possible
-                    if (msg.swap === 'inline') {
-                        try {
-                            if (typeof DOMParser !== 'undefined') {
-                                var parser = new DOMParser();
-                                var doc = parser.parseFromString(html, 'text/html');
-                                // Clear element safely
-                                while (el.firstChild) {
-                                    el.removeChild(el.firstChild);
-                                }
-                                // Append parsed nodes
-                                while (doc.body.firstChild) {
-                                    el.appendChild(doc.body.firstChild);
-                                }
-                            } else {
-                                // Fallback with warning
-                                console.warn('DOMParser not available, using innerHTML');
-                                el.innerHTML = html;
-                            }
-                        } catch (e) {
-                            // Fallback to text content if parsing fails
-                            console.error('HTML parsing failed, using text content:', e);
-                            el.textContent = html;
-                        }
-                    }
-                    else if (msg.swap === 'outline') { el.outerHTML = html; }
-                    else if (msg.swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
-                    else if (msg.swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
                 } catch(_){ }
             }
             function connect(){
@@ -1601,6 +2054,7 @@ export const __ws = ui.Trim(`
                         if (t === 'patch') { handlePatch(msg); }
                         else if (t === 'reload') { try { location.reload(); } catch(_){ } }
                         else if (t === 'pong') { /* ignore */ }
+                        else if (t === 'response') { /* handled by individual action handlers */ }
                     } catch(_){ }
                 };
                 ws.onerror = function(){ try{ ws.close(); } catch(_){ } };
@@ -1618,6 +2072,10 @@ export const __ws = ui.Trim(`
 `);
 
 export const __stringify = ui.Trim(`
+    function generateRequestId() {
+        return 'rid-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
+    }
+
     function __stringify(values) {
             const result = {};
             for (var i = 0; i < values.length; i++) {
@@ -1642,6 +2100,295 @@ export const __stringify = ui.Trim(`
             }
             return JSON.stringify(result);
         }
+`);
+
+export const __jselement = ui.Trim(`
+    function jsElementToHTML(el) {
+        if (!el) return '';
+        var tag = el.t;
+        if (!tag) return '';
+
+        var attrs = '';
+        var events = '';
+
+        if (el.a) {
+            for (var key in el.a) {
+                if (el.a.hasOwnProperty(key)) {
+                    var value = el.a[key];
+                    if (typeof value === 'string') {
+                        attrs += ' ' + key + '="' + value.replace(/"/g, '&quot;') + '"';
+                    } else {
+                        attrs += ' ' + key;
+                    }
+                }
+            }
+        }
+
+        if (el.e) {
+            for (var key in el.e) {
+                if (el.e.hasOwnProperty(key)) {
+                    var ev = el.e[key];
+                    if (ev.act === 'post') {
+                        var vals = ev.vals ? JSON.stringify(ev.vals).replace(/"/g, '&quot;') : '[]';
+                        events += ' ' + key + '="__post(event, &quot;' + (ev.swap || 'none') + '&quot;, &quot;' + (ev.tgt || '') + '&quot;, &quot;' + (ev.path || '') + '&quot;, ' + vals + ')"';
+                    } else if (ev.act === 'form') {
+                        var vals = ev.vals ? JSON.stringify(ev.vals).replace(/"/g, '&quot;') : '[]';
+                        events += ' ' + key + '="__submit(event, &quot;' + (ev.swap || 'none') + '&quot;, &quot;' + (ev.tgt || '') + '&quot;, &quot;' + (ev.path || '') + '&quot;, ' + vals + ')"';
+                    } else if (ev.act === 'raw' && ev.js) {
+                        events += ' ' + key + '="' + ev.js.replace(/"/g, '&quot;') + '"';
+                    }
+                }
+            }
+        }
+
+        var children = '';
+        if (el.c && Array.isArray(el.c)) {
+            for (var i = 0; i < el.c.length; i++) {
+                var child = el.c[i];
+                if (typeof child === 'string') {
+                    children += child;
+                } else {
+                    children += jsElementToHTML(child);
+                }
+            }
+        }
+
+        // Self-closing tags
+        var selfClosing = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|script)$/i;
+        if (selfClosing.test(tag)) {
+            return '<' + tag + attrs + events + (children ? '>' + children + '</' + tag + '>' : ' />');
+        }
+
+        return '<' + tag + attrs + events + '>' + children + '</' + tag + '>';
+    }
+
+    function applyPatchOp(op) {
+        if (!op || !op.op) return;
+        switch (op.op) {
+            case 'inline':
+                if (op.tgt && op.el) {
+                    var el = document.getElementById(op.tgt);
+                    if (el) {
+                        var html = jsElementToHTML(op.el);
+                        try {
+                            if (typeof DOMParser !== 'undefined') {
+                                var parser = new DOMParser();
+                                var doc = parser.parseFromString(html, 'text/html');
+                                while (el.firstChild) {
+                                    el.removeChild(el.firstChild);
+                                }
+                                while (doc.body.firstChild) {
+                                    el.appendChild(doc.body.firstChild);
+                                }
+                            } else {
+                                el.innerHTML = html;
+                            }
+                        } catch (e) {
+                            console.error('Failed to apply inline patch:', e);
+                        }
+                    }
+                }
+                break;
+            case 'outline':
+                if (op.tgt && op.el) {
+                    var el = document.getElementById(op.tgt);
+                    if (el) {
+                        var html = jsElementToHTML(op.el);
+                        try {
+                            el.outerHTML = html;
+                        } catch (e) {
+                            console.error('Failed to apply outline patch:', e);
+                        }
+                    }
+                }
+                break;
+            case 'append':
+                if (op.tgt && op.el) {
+                    var el = document.getElementById(op.tgt);
+                    if (el) {
+                        var html = jsElementToHTML(op.el);
+                        try {
+                            el.insertAdjacentHTML('beforeend', html);
+                        } catch (e) {
+                            console.error('Failed to apply append patch:', e);
+                        }
+                    }
+                }
+                break;
+            case 'prepend':
+                if (op.tgt && op.el) {
+                    var el = document.getElementById(op.tgt);
+                    if (el) {
+                        var html = jsElementToHTML(op.el);
+                        try {
+                            el.insertAdjacentHTML('afterbegin', html);
+                        } catch (e) {
+                            console.error('Failed to apply prepend patch:', e);
+                        }
+                    }
+                }
+                break;
+            case 'notify':
+                if (op.msg) {
+                    var variant = op.variant || 'info';
+                    var colorClass = '';
+                    if (variant === 'success') colorClass = 'bg-green-700 text-white';
+                    else if (variant === 'error') colorClass = 'bg-red-700 text-white';
+                    else if (variant === 'info') colorClass = 'bg-blue-700 text-white';
+                    else colorClass = 'bg-blue-700 text-white';
+
+                    displayMessage(op.msg, colorClass);
+                }
+                break;
+            case 'title':
+                if (op.title) {
+                    document.title = op.title;
+                }
+                break;
+            case 'redirect':
+                if (op.href) {
+                    window.location.href = op.href;
+                }
+                break;
+            case 'reload':
+                window.location.reload();
+                break;
+        }
+    }
+
+    function displayMessage(message, color) {
+        var box = document.getElementById('__messages__');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = '__messages__';
+            box.style.position = 'fixed';
+            box.style.top = '0';
+            box.style.right = '0';
+            box.style.padding = '8px';
+            box.style.zIndex = '9999';
+            box.style.pointerEvents = 'none';
+            document.body.appendChild(box);
+        }
+        var n = document.createElement('div');
+        n.style.display = 'flex';
+        n.style.alignItems = 'center';
+        n.style.gap = '10px';
+        n.style.padding = '12px 16px';
+        n.style.margin = '8px';
+        n.style.borderRadius = '12px';
+        n.style.minHeight = '44px';
+        n.style.minWidth = '340px';
+        n.style.maxWidth = '340px';
+        n.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
+        n.style.border = '1px solid';
+
+        var isGreen = color.indexOf('green') >= 0;
+        var isRed = color.indexOf('red') >= 0;
+        var accent = isGreen ? '#16a34a' : (isRed ? '#dc2626' : '#4f46e5');
+
+        if (isGreen) {
+            n.style.background = '#dcfce7';
+            n.style.color = '#166534';
+            n.style.borderColor = '#bbf7d0';
+        } else if (isRed) {
+            n.style.background = '#fee2e2';
+            n.style.color = '#991b1b';
+            n.style.borderColor = '#fecaca';
+        } else {
+            n.style.background = '#eef2ff';
+            n.style.color = '#3730a3';
+            n.style.borderColor = '#e0e7ff';
+        }
+        n.style.borderLeft = '4px solid ' + accent;
+
+        var dot = document.createElement('span');
+        dot.style.width = '10px';
+        dot.style.height = '10px';
+        dot.style.borderRadius = '9999px';
+        dot.style.background = accent;
+
+        var t = document.createElement('span');
+        t.textContent = message;
+
+        n.appendChild(dot);
+        n.appendChild(t);
+        box.appendChild(n);
+
+        setTimeout(function() {
+            try { box.removeChild(n); } catch (_) {}
+        }, 5000);
+    }
+`);
+
+export const __buildElement = ui.Trim(`
+    function buildElement(jsEl) {
+        if (!jsEl || !jsEl.t) return null;
+
+        var tag = jsEl.t;
+        var el = document.createElement(tag);
+
+        if (jsEl.a) {
+            for (var key in jsEl.a) {
+                if (jsEl.a.hasOwnProperty(key)) {
+                    var value = jsEl.a[key];
+
+                    if (key === 'value' && (tag === 'textarea')) {
+                        el.value = value;
+                    } else if (typeof value === 'boolean' || value === '') {
+                        el.setAttribute(key, '');
+                    } else {
+                        el.setAttribute(key, value);
+                    }
+                }
+            }
+        }
+
+        if (jsEl.e) {
+            for (var eventType in jsEl.e) {
+                if (jsEl.e.hasOwnProperty(eventType)) {
+                    var ev = jsEl.e[eventType];
+
+                    (function(evt) {
+                        el.addEventListener(eventType, function(event) {
+                            if (evt.act === 'post') {
+                                var vals = evt.vals ? JSON.stringify(evt.vals) : '[]';
+                                __post(event, evt.swap || 'none', evt.tgt || '', evt.path || '', JSON.parse(vals));
+                            } else if (evt.act === 'form') {
+                                var vals = evt.vals ? JSON.stringify(evt.vals) : '[]';
+                                __submit(event, evt.swap || 'none', evt.tgt || '', evt.path || '', JSON.parse(vals));
+                            } else if (evt.act === 'raw' && evt.js) {
+                                try {
+                                    var fn = new Function(evt.js);
+                                    fn.call(el, event);
+                                } catch(e) {
+                                    console.error('Failed to execute raw event handler:', e);
+                                }
+                            }
+                        });
+                    })(ev);
+                }
+            }
+        }
+
+        if (jsEl.c && Array.isArray(jsEl.c)) {
+            for (var i = 0; i < jsEl.c.length; i++) {
+                var child = jsEl.c[i];
+
+                if (typeof child === 'string') {
+                    if (tag !== 'textarea') {
+                        el.appendChild(document.createTextNode(child));
+                    }
+                } else if (child && typeof child === 'object' && child.t) {
+                    var childEl = buildElement(child);
+                    if (childEl) {
+                        el.appendChild(childEl);
+                    }
+                }
+            }
+        }
+
+        return el;
+    }
 `);
 
 export const __loader = ui.Trim(`
@@ -1855,52 +2602,105 @@ export const __submit = ui.Trim(`
                 }
                 var L = __loader.start();
                 try { body = body ? body.slice() : []; } catch(_){}
-                var url = path;
-                fetch(url, { method: 'POST', body: JSON.stringify(body)})
-                    .then(function (resp) { if (!resp.ok) { throw new Error('HTTP ' + resp.status); } return resp.text(); })
-                    .then(function (html) {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
-                        for (let i = 0; i < scripts.length; i++) {
-                            const newScript = document.createElement('script');
-                            newScript.textContent = scripts[i].textContent;
-                            document.body.appendChild(newScript);
-                        }
-                        const el2 = document.getElementById(target_id);
-                        if (el2 != null) {
-                            // Use safer DOM manipulation where possible
-                            if (swap === 'inline') {
-                                try {
-                                    if (typeof DOMParser !== 'undefined') {
-                                        const parser = new DOMParser();
-                                        const doc = parser.parseFromString(html, 'text/html');
-                                        // Clear element safely
-                                        while (el2.firstChild) {
-                                            el2.removeChild(el2.firstChild);
-                                        }
-                                        // Append parsed nodes
-                                        while (doc.body.firstChild) {
-                                            el2.appendChild(doc.body.firstChild);
-                                        }
-                                    } else {
-                                        // Fallback with warning
-                                        console.warn('DOMParser not available, using innerHTML');
-                                        el2.innerHTML = html;
-                                    }
-                                } catch (e) {
-                                    // Fallback to text content if parsing fails
-                                    console.error('HTML parsing failed, using text content:', e);
-                                    el2.textContent = html;
-                                }
+                var rid = generateRequestId();
+                
+                // Setup response handler
+                var ws = (window).__tsuiWS;
+                var timeout = setTimeout(function() {
+                    try { __error('Request timeout ...'); } catch(__){}
+                    L.stop();
+                }, 30000);
+                
+                function handleResponse(msg) {
+                    if (msg.type === 'response' && msg.rid === rid) {
+                        clearTimeout(timeout);
+                        
+                        // Handle element from response
+                        if (msg.el) {
+                            var html = jsElementToHTML(msg.el);
+
+                            // Extract and execute scripts
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
+                            for (var i = 0; i < scripts.length; i++) {
+                                const newScript = document.createElement('script');
+                                newScript.textContent = scripts[i].textContent;
+                                document.body.appendChild(newScript);
                             }
-                            else if (swap === 'outline') { el2.outerHTML = html; }
-                            else if (swap === 'append') { el2.insertAdjacentHTML('beforeend', html); }
-                            else if (swap === 'prepend') { el2.insertAdjacentHTML('afterbegin', html); }
+
+                            const el2 = document.getElementById(target_id);
+                            if (el2 != null) {
+                                // Use safer DOM manipulation where possible
+                                if (swap === 'inline') {
+                                    try {
+                                        if (typeof DOMParser !== 'undefined') {
+                                            const parser = new DOMParser();
+                                            const doc = parser.parseFromString(html, 'text/html');
+                                            // Clear element safely
+                                            while (el2.firstChild) {
+                                                el2.removeChild(el2.firstChild);
+                                            }
+                                            // Append parsed nodes
+                                            while (doc.body.firstChild) {
+                                                el2.appendChild(doc.body.firstChild);
+                                            }
+                                        } else {
+                                            // Fallback with warning
+                                            console.warn('DOMParser not available, using innerHTML');
+                                            el2.innerHTML = html;
+                                        }
+                                    } catch (e) {
+                                        // Fallback to text content if parsing fails
+                                        console.error('HTML parsing failed, using text content:', e);
+                                        el2.textContent = html;
+                                    }
+                                }
+                                else if (swap === 'outline') { el2.outerHTML = html; }
+                                else if (swap === 'append') { el2.insertAdjacentHTML('beforeend', html); }
+                                else if (swap === 'prepend') { el2.insertAdjacentHTML('afterbegin', html); }
+                            }
                         }
-                    })
-                    .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
-                    .finally(function () { L.stop(); });
+
+                        // Handle operations from response
+                        if (msg.ops && Array.isArray(msg.ops)) {
+                            for (var i = 0; i < msg.ops.length; i++) {
+                                applyPatchOp(msg.ops[i]);
+                            }
+                        }
+                        
+                        L.stop();
+                    }
+                }
+                
+                // Add one-time listener for this response
+                ws.addEventListener('message', function onMessage(ev) {
+                    try {
+                        var msg = JSON.parse(String(ev.data || '{}'));
+                        // Only handle and remove listener if this is our response
+                        if (msg.type === 'response' && msg.rid === rid) {
+                            handleResponse(msg);
+                            ws.removeEventListener('message', onMessage);
+                        }
+                    } catch(_) {}
+                });
+                
+                // Send call message via WebSocket
+                try {
+                    ws.send(JSON.stringify({
+                        type: 'call',
+                        rid: rid,
+                        act: 'form',
+                        path: path,
+                        swap: swap,
+                        tgt: target_id,
+                        vals: body
+                    }));
+                } catch(e) {
+                    try { __error('Failed to send action ...'); } catch(__){}
+                    clearTimeout(timeout);
+                    L.stop();
+                }
     }
 `);
 
@@ -1987,6 +2787,208 @@ export const __load = ui.Trim(`
             .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
             .finally(function () { L.stop(); });
     }
+`);
+
+export const __router = ui.Trim(`
+    (function(){
+        try {
+            if ((window).__tsuiRouterInit) { return; }
+            (window).__tsuiRouterInit = true;
+
+            var __router = {
+                isLoading: false,
+                currentPath: window.location.pathname + window.location.search
+            };
+
+            var CONTENT_ID = '__content__';
+
+            // Match a pathname against pattern routes
+            // Converts pattern /users/{id} to regex /users/([^/]+) and tests against pathname
+            function matchPattern(pathname, routeMap) {
+                for (var pattern in routeMap) {
+                    var routeInfo = routeMap[pattern];
+                    if (typeof routeInfo === 'object' && routeInfo.pattern) {
+                        // Convert pattern to regex: /users/{id} -> ^/users/([^/]+)$
+                        var regexStr = pattern.replace(/\\{[^}]+\\}/g, '([^/]+)');
+                        var regex = new RegExp('^' + regexStr + '$');
+                        if (regex.test(pathname)) {
+                            return routeInfo;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // Update nav link active states based on current path
+            function updateNavActiveState(currentPath) {
+                var navLinks = document.querySelectorAll('nav a[href]');
+                var pathOnly = currentPath.split('?')[0].toLowerCase();
+                
+                // Class definitions matching app.ts layout
+                var baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap transition-colors';
+                var activeCls = baseCls + ' bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500';
+                var inactiveCls = baseCls + ' text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700';
+                
+                for (var i = 0; i < navLinks.length; i++) {
+                    var link = navLinks[i];
+                    var href = (link.getAttribute('href') || '').toLowerCase();
+                    var isActive = href === pathOnly;
+                    link.className = isActive ? activeCls : inactiveCls;
+                }
+            }
+
+            function navigate(path, skipPushState) {
+                if (__router.isLoading) { return; }
+                __router.isLoading = true;
+
+                // Preserve query string
+                var queryIndex = path.indexOf('?');
+                var pathname = queryIndex >= 0 ? path.substring(0, queryIndex) : path;
+                var query = queryIndex >= 0 ? path.substring(queryIndex) : '';
+
+                // Normalize pathname
+                if (!pathname) pathname = '/';
+                if (!pathname.startsWith('/')) pathname = '/' + pathname;
+
+                var routes = (window).__routes || {};
+                
+                // Try exact match first
+                var routeInfo = routes[pathname];
+                var isPatternRoute = false;
+                var patternPath = pathname;
+
+                // If not found, try pattern matching
+                if (!routeInfo) {
+                    routeInfo = matchPattern(pathname, routes);
+                    if (routeInfo && typeof routeInfo === 'object') {
+                        isPatternRoute = true;
+                        patternPath = routeInfo.path;
+                    }
+                }
+
+                if (!routeInfo) {
+                    console.error('No route found for path:', pathname);
+                    __router.isLoading = false;
+                    window.location.href = path;
+                    return;
+                }
+
+                var L = __loader.start();
+
+                // POST to route path with actual path in body (matching g-sui behavior)
+                var routePath = typeof routeInfo === 'string' ? routeInfo : routeInfo.path;
+                var fetchBody = JSON.stringify({ path: pathname + query });
+
+                fetch(routePath, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: fetchBody
+                })
+                    .then(function(resp) {
+                        if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
+                        return resp.json();
+                    })
+                    .then(function(data) {
+                        if (data.title) {
+                            document.title = data.title;
+                        }
+                        if (data.ops) {
+                            for (var i = 0; i < data.ops.length; i++) {
+                                applyPatchOp(data.ops[i]);
+                            }
+                        }
+                        if (data.el) {
+                            var html = jsElementToHTML(data.el);
+                            var contentEl = document.getElementById(CONTENT_ID);
+                            if (contentEl) {
+                                try {
+                                    if (typeof DOMParser !== 'undefined') {
+                                        var parser = new DOMParser();
+                                        var doc = parser.parseFromString(html, 'text/html');
+                                        
+                                        // Extract scripts before clearing content
+                                        var scripts = [];
+                                        var scriptNodes = doc.querySelectorAll('script');
+                                        for (var i = 0; i < scriptNodes.length; i++) {
+                                            scripts.push(scriptNodes[i].textContent);
+                                        }
+                                        
+                                        // Clear and update content
+                                        while (contentEl.firstChild) {
+                                            contentEl.removeChild(contentEl.firstChild);
+                                        }
+                                        while (doc.body.firstChild) {
+                                            contentEl.appendChild(doc.body.firstChild);
+                                        }
+                                        
+                                        // Execute scripts after content is in DOM
+                                        for (var i = 0; i < scripts.length; i++) {
+                                            var newScript = document.createElement('script');
+                                            newScript.textContent = scripts[i];
+                                            document.body.appendChild(newScript);
+                                        }
+                                    } else {
+                                        contentEl.innerHTML = html;
+                                    }
+                                } catch (e) {
+                                    console.error('Failed to patch content:', e);
+                                    contentEl.innerHTML = html;
+                                }
+                            } else {
+                                console.warn('Content element not found:', CONTENT_ID);
+                            }
+                        }
+                        if (!skipPushState) {
+                            window.history.pushState({}, data.title || '', path);
+                        }
+                        __router.currentPath = path;
+                        
+                        // Update nav active states after successful navigation
+                        updateNavActiveState(pathname);
+                    })
+                    .catch(function(err) {
+                        console.error('Navigation error:', err);
+                        try { __error('Failed to load page ...'); } catch(__){}
+                        window.location.href = path;
+                    })
+                    .finally(function() {
+                        __router.isLoading = false;
+                        L.stop();
+                    });
+            }
+
+            function interceptLinkClick(event) {
+                var link = event.target.closest('a');
+                if (!link) { return; }
+
+                var href = link.getAttribute('href');
+                if (!href) { return; }
+
+                if (href.startsWith('#')) { return; }
+                if (href.startsWith('http://') || href.startsWith('https://')) {
+                    if (new URL(href).origin !== window.location.origin) { return; }
+                }
+                if (link.getAttribute('target')) { return; }
+                if (link.getAttribute('download')) { return; }
+
+                event.preventDefault();
+                navigate(href);
+            }
+
+            function handlePopState(event) {
+                var path = window.location.pathname + window.location.search;
+                if (path !== __router.currentPath) {
+                    navigate(path, true);
+                }
+            }
+
+            document.addEventListener('click', interceptLinkClick, true);
+            window.addEventListener('popstate', handlePopState);
+
+            __router.navigate = navigate;
+            try { (window).__router = __router; } catch(_){}
+        } catch(_){ }
+    })();
 `);
 
 export function MakeApp(defaultLanguage: string) {
@@ -2095,6 +3097,10 @@ function normalizeMethod(method: string): "GET" | "POST" {
 
 function normalizePath(p: string): string {
     let path = (p || "").toString().trim();
+    // URL-decode the path to handle encoded characters like %7B for {
+    try {
+        path = decodeURIComponent(path);
+    } catch { /* ignore decode errors */ }
     if (path.length === 0) path = "/";
     if (!path.startsWith("/")) path = "/" + path;
     return path.toLowerCase();
@@ -2387,7 +3393,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
             } catch (_) { }
             return;
         }
-        // Text frames: support app-level ping/pong and invalid-target notices
+        // Text frames: support app-level ping/pong, call messages, and invalid-target notices
         if (opcode === 0x1) {
             try {
                 const text = payload.toString("utf8");
@@ -2406,6 +3412,98 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                             JSON.stringify({ type: "pong", t: Date.now() }),
                         );
                     } catch (_) { }
+                } else if (t === "call") {
+                    // Handle action call via WebSocket
+                    try {
+                        const callMsg = msg as unknown as JSCallMessage;
+                        const rid = String(callMsg.rid || "");
+                        const path = String(callMsg.path || "");
+                        const sid = String(record.sid || "");
+                        
+                        // Look up handler by path from stored callables
+                        const callable = app.getCallable(path);
+                        if (!callable) {
+                            wsSend(socket, JSON.stringify({
+                                type: "response",
+                                rid: rid,
+                                ops: [{ op: "notify", msg: "Action not found", variant: "error" }]
+                            }));
+                            return;
+                        }
+                        
+                        // Create Context from WebSocket data
+                        const mockHeaders: Record<string, string> = {};
+                        const mockReq = {
+                            url: path,
+                            method: "POST",
+                            headers: mockHeaders,
+                        } as unknown as IncomingMessage;
+                        
+                        const mockResHeaders: Record<string, string | string[]> = {};
+                        const mockRes = {
+                            statusCode: 200,
+                            headers: mockResHeaders,
+                            setHeader: function(name: string, value: string | string[]) { mockResHeaders[name] = value; },
+                            getHeaders: function() { return mockResHeaders; },
+                            write: function() {},
+                            end: function() {},
+                        } as unknown as ServerResponse;
+                        
+                        // Transform BodyItem[] from protocol format to server format
+                        const serverBody: BodyItem[] = (callMsg.vals || []).map(v => ({
+                            name: v.name,
+                            type: typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string',
+                            value: String(v.value ?? "")
+                        }));
+                        
+                        // Store request body values for Context.Body()
+                        setRequestBody(sid, serverBody);
+                        
+                        // Create context and execute handler
+                        const ctx = new Context(app, mockReq, mockRes, sid);
+                        
+                        // Execute handler (may be async)
+                        Promise.resolve(callable(ctx))
+                            .then(function(html: string) {
+                                let resultHtml = html;
+                                if (ctx.append.length) resultHtml += ctx.append.join("");
+                                
+                                // Convert HTML response to JSElement
+                                let jsElement: JSElement | undefined;
+                                if (resultHtml) {
+                                    const parsed = htmlToJSElement(resultHtml);
+                                    if (parsed !== null) {
+                                        jsElement = parsed;
+                                    }
+                                }
+                                
+                                // Send JSResponseMessage back
+                                const response: JSResponseMessage = {
+                                    type: "response",
+                                    rid: rid,
+                                };
+                                
+                                if (jsElement) {
+                                    response.el = jsElement;
+                                }
+                                
+                                if (ctx.ops.length > 0) {
+                                    response.ops = ctx.ops;
+                                }
+                                
+                                wsSend(socket, JSON.stringify(response));
+                            })
+                            .catch(function(err: unknown) {
+                                console.error("Error executing action handler:", err);
+                                wsSend(socket, JSON.stringify({
+                                    type: "response",
+                                    rid: rid,
+                                    ops: [{ op: "notify", msg: "Action execution failed", variant: "error" }]
+                                }));
+                            });
+                    } catch (err) {
+                        console.error("Error handling call message:", err);
+                    }
                 } else if (t === "invalid") {
                     try {
                         const id = String(msg.id || "");
@@ -2514,6 +3612,98 @@ function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): vo
                     JSON.stringify({ type: "pong", t: Date.now() }),
                 );
             } catch (_) { }
+        } else if (msgType === "call") {
+            // Handle action call via WebSocket
+            try {
+                const callMsg = parsedMsg as unknown as JSCallMessage;
+                const rid = String(callMsg.rid || "");
+                const path = String(callMsg.path || "");
+                const sid = String(record.sid || "");
+                
+                // Look up handler by path from stored callables
+                const callable = app.getCallable(path);
+                if (!callable) {
+                    wsSend(ws, JSON.stringify({
+                        type: "response",
+                        rid: rid,
+                        ops: [{ op: "notify", msg: "Action not found", variant: "error" }]
+                    }));
+                    return;
+                }
+                
+                // Create Context from WebSocket data
+                const mockHeaders: Record<string, string> = {};
+                const mockReq = {
+                    url: path,
+                    method: "POST",
+                    headers: mockHeaders,
+                } as unknown as IncomingMessage;
+                
+                const mockResHeaders: Record<string, string | string[]> = {};
+                const mockRes = {
+                    statusCode: 200,
+                    headers: mockResHeaders,
+                    setHeader: function(name: string, value: string | string[]) { mockResHeaders[name] = value; },
+                    getHeaders: function() { return mockResHeaders; },
+                    write: function() {},
+                    end: function() {},
+                } as unknown as ServerResponse;
+                
+                // Transform BodyItem[] from protocol format to server format
+                const serverBody: BodyItem[] = (callMsg.vals || []).map(v => ({
+                    name: v.name,
+                    type: typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string',
+                    value: String(v.value ?? "")
+                }));
+                
+                // Store request body values for Context.Body()
+                setRequestBody(sid, serverBody);
+                
+                // Create context and execute handler
+                const ctx = new Context(app, mockReq, mockRes, sid);
+                
+                // Execute handler (may be async)
+                Promise.resolve(callable(ctx))
+                    .then(function(html: string) {
+                        let resultHtml = html;
+                        if (ctx.append.length) resultHtml += ctx.append.join("");
+                        
+                        // Convert HTML response to JSElement
+                        let jsElement: JSElement | undefined;
+                        if (resultHtml) {
+                            const parsed = htmlToJSElement(resultHtml);
+                            if (parsed !== null) {
+                                jsElement = parsed;
+                            }
+                        }
+                        
+                        // Send JSResponseMessage back
+                        const response: JSResponseMessage = {
+                            type: "response",
+                            rid: rid,
+                        };
+                        
+                        if (jsElement) {
+                            response.el = jsElement;
+                        }
+                        
+                        if (ctx.ops.length > 0) {
+                            response.ops = ctx.ops;
+                        }
+                        
+                        wsSend(ws, JSON.stringify(response));
+                    })
+                    .catch(function(err: unknown) {
+                        console.error("Error executing action handler:", err);
+                        wsSend(ws, JSON.stringify({
+                            type: "response",
+                            rid: rid,
+                            ops: [{ op: "notify", msg: "Action execution failed", variant: "error" }]
+                        }));
+                    });
+            } catch (err) {
+                console.error("Error handling call message:", err);
+            }
         } else if (msgType === "invalid") {
             try {
                 const id = String(parsedMsg.id || "");

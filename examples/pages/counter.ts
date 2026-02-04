@@ -35,7 +35,7 @@ function render(ctx: Context, counter: Model): string {
     return ui.div("flex gap-2 items-center bg-purple-500 rounded text-white p-px", target)(
         ui
             .Button()
-            .Click(ctx.Call(decrement, counter).Replace(target))
+            .Click(ctx.Click(decrement, counter).Replace(target))
             .Class("rounded-l px-5")
             .Render("-"),
 
@@ -43,7 +43,7 @@ function render(ctx: Context, counter: Model): string {
 
         ui
             .Button()
-            .Click(ctx.Call(increment, counter).Replace(target))
+            .Click(ctx.Click(increment, counter).Replace(target))
             .Class("rounded-r px-5")
             .Render("+"),
     );

@@ -20,6 +20,11 @@ import { OthersContent } from './pages/others';
 import { CollateContent } from './pages/collate';
 import { CaptchaContent } from './pages/captcha';
 import { FormAssocContent } from './pages/form-assoc';
+import { IconsContent } from './pages/icons';
+import { SpaContent } from './pages/spa';
+import { ReloadRedirectContent } from './pages/reload-redirect';
+import { SharedContent } from './pages/shared';
+import { RoutesContent, SearchContent, UserDetailContent, UserPostDetailContent, CategoryProductDetailContent } from './pages/routes';
 
 export type Route = { Path: string; Title: string };
 
@@ -40,6 +45,11 @@ export const routes: Route[] = [
     { Path: '/collate', Title: 'Collate' },
     { Path: '/captcha', Title: 'Captcha' },
     { Path: '/form-assoc', Title: 'Form Association' },
+    { Path: '/icons', Title: 'Icons' },
+    { Path: '/spa', Title: 'SPA' },
+    { Path: '/reload-redirect', Title: 'Reload & Redirect' },
+    { Path: '/shared', Title: 'Shared' },
+    { Path: '/routes', Title: 'Route Params' },
 ];
 
 const svg =
@@ -49,53 +59,52 @@ const svg =
     '</svg>';
 
 function createLayout(app: App) {
-    return function layout(title: string, body: (ctx: Context) => string): Callable {
-        return function (ctx: Context): string {
-            let currentPath = (ctx.req && ctx.req.url ? String(ctx.req.url) : '/')
-                .split('?')[0]
-                .toLowerCase();
+    return function layout(ctx: Context): string {
+        let currentPath = (ctx.req && ctx.req.url ? String(ctx.req.url) : '/')
+            .split('?')[0]
+            .toLowerCase();
 
-            // Handle full URLs (Bun) vs paths (Node.js)
-            if (currentPath.startsWith('http://') || currentPath.startsWith('https://')) {
-                try {
-                    currentPath = new URL(currentPath).pathname;
-                } catch {
-                    // If URL parsing fails, use as-is
-                }
+        // Handle full URLs (Bun) vs paths (Node.js)
+        if (currentPath.startsWith('http://') || currentPath.startsWith('https://')) {
+            try {
+                currentPath = new URL(currentPath).pathname;
+            } catch {
+                // If URL parsing fails, use as-is
             }
-            let links = '';
+        }
+        let links = '';
 
-            for (let i = 0; i < routes.length; i++) {
-                const route = routes[i];
-                const baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap transition-colors';
-                const isActive = (route.Path || '').toLowerCase() === currentPath;
-                const cls = isActive
-                    ? baseCls +
-                    ' bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500'
-                    : baseCls +
-                    ' text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700';
-                const a = ui.a(cls, { href: route.Path }, ctx.Load(route.Path));
+        for (let i = 0; i < routes.length; i++) {
+            const route = routes[i];
+            const baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap transition-colors';
+            const isActive = (route.Path || '').toLowerCase() === currentPath;
+            const cls = isActive
+                ? baseCls +
+                ' bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500'
+                : baseCls +
+                ' text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700';
+            const a = ui.a(cls, { href: route.Path }, ctx.Load(route.Path));
 
-                if (links.length > 0) links += ' ';
+            if (links.length > 0) links += ' ';
 
-                links += a(route.Title);
-            }
+            links += a(route.Title);
+        }
 
-            const nav = ui.nav('bg-white dark:bg-gray-900 shadow mb-6 fixed top-0 left-0 right-0 z-10')(
-                ui.div('max-w-5xl mx-auto px-4 py-2 flex items-center gap-2')(
-                    ui.div('flex flex-wrap gap-1 overflow-auto')(links),
-                    ui.div('flex-1')(),
-                    ui.ThemeSwitcher('ml-auto'),
-                ),
-            );
+        const nav = ui.nav('bg-white dark:bg-gray-900 shadow mb-6 fixed top-0 left-0 right-0 z-10')(
+            ui.div('max-w-5xl mx-auto px-4 py-2 flex items-center gap-2')(
+                ui.div('flex flex-wrap gap-1 overflow-auto')(links),
+                ui.div('flex-1')(),
+                ui.ThemeSwitcher('ml-auto'),
+            ),
+        );
 
-            const content = body(ctx);
-            return app.HTML(
-                title,
-                'bg-gray-200 dark:bg-gray-900 min-h-screen',
-                nav + ui.div('pt-24 max-w-5xl mx-auto px-2 py-8')(content),
-            );
-        };
+        return app.HTML(
+            't-sui Examples',
+            'bg-gray-200 dark:bg-gray-900 min-h-screen',
+            nav + ui.div('pt-24 max-w-5xl mx-auto px-2 py-8')(
+                ui.div('')('__CONTENT__'),
+            ),
+        );
     };
 }
 
@@ -117,10 +126,15 @@ const pageContents: Record<string, (ctx: Context) => string> = {
     '/collate': CollateContent,
     '/captcha': CaptchaContent,
     '/form-assoc': FormAssocContent,
+    '/icons': IconsContent,
+    '/spa': SpaContent,
+    '/reload-redirect': ReloadRedirectContent,
+    '/shared': SharedContent,
+    '/routes': RoutesContent,
 };
 
 // Configure and return the app instance
-export function createExampleApp(locale = 'en'): { app: App; layout: (title: string, body: (ctx: Context) => string) => Callable } {
+export function createExampleApp(locale = 'en'): { app: App } {
     const app = MakeApp(locale);
 
     app.HTMLHead.push(
@@ -130,13 +144,25 @@ export function createExampleApp(locale = 'en'): { app: App; layout: (title: str
 
     const layout = createLayout(app);
 
-    // Register all pages
+    // Register layout with content slot
+    app.Layout(layout);
+
+    // Register all pages - now they return content only
     for (const route of routes) {
         const content = pageContents[route.Path];
         if (content) {
-            app.Page(route.Path, layout(route.Title, content));
+            app.Page(route.Path, route.Title, content);
         }
     }
 
-    return { app, layout };
+    // Register parameterized routes for the routes demo
+    app.Page('/routes/search', 'Search', SearchContent);
+    app.Page('/routes/user/{id}', 'User Detail', UserDetailContent);
+    app.Page('/routes/user/{userId}/post/{postId}', 'Post Detail', UserPostDetailContent);
+    app.Page('/routes/category/{category}/product/{product}', 'Product Detail', CategoryProductDetailContent);
+
+    // Enable smooth navigation
+    app.SmoothNav(true);
+
+    return { app };
 }

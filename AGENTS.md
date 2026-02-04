@@ -674,15 +674,62 @@ app.configureRateLimit(100, 60000);  // 100 requests per minute
 app.enableSecurity();
 app.disableSecurity();
 
-// Register page routes
-app.Page("/", pageHandler);
-app.Page("/about", aboutHandler);
+// Set layout for persistent shell
+app.Layout(function (ctx: Context): string {
+    return app.HTML(
+        "My App",
+        "bg-gray-100 min-h-screen",
+        ui.div("max-w-4xl mx-auto p-6")(
+            ui.div("")("__CONTENT__")  // Content slot where page content is injected
+        )
+    );
+});
+
+// Register page routes (when layout is set, handlers return content only)
+app.Page("/", "Home", function(ctx: Context): string {
+    return ui.div("p-4")("Hello World");
+});
+app.Page("/about", "About", function(ctx: Context): string {
+    return ui.div("p-4")("About page");
+});
 
 // Register action routes
 app.Action("/api/submit", submitHandler);
 
 // Start server
 app.Listen(1423);
+```
+
+### Layout Pattern (Persistent Shell)
+
+When a layout is set using `app.Layout(handler)`, page handlers return content only (not full HTML). The layout renders once on initial page load and includes a `__CONTENT__` marker where page content is dynamically injected.
+
+```typescript
+// Set layout with persistent shell
+app.Layout(function (ctx: Context): string {
+    return app.HTML(
+        "App Title",
+        "bg-gray-100 min-h-screen",
+        ui.div("max-w-5xl mx-auto p-6")(
+            ui.nav("bg-white shadow mb-6 p-4")(
+                ui.a("mr-4", { href: "/" }, ctx.Load("/"))("Home"),
+                ui.a("mr-4", { href: "/about" }, ctx.Load("/about"))("About"),
+            ),
+            ui.div("bg-white shadow p-6")(
+                ui.div("")("__CONTENT__")  // Page content slot
+            ),
+        )
+    );
+});
+
+// Pages return content only
+app.Page("/", "Home", function(ctx: Context): string {
+    return ui.div("p-4")("Welcome home!");
+});
+
+app.Page("/about", "About", function(ctx: Context): string {
+    return ui.div("p-4")("This is the about page.");
+});
 ```
 
 ### Page Layout Pattern
@@ -705,6 +752,76 @@ function layout(title: string, body: (ctx: Context) => string): Callable {
 app.Page("/", layout("Home", HomeContent));
 app.Page("/about", layout("About", AboutContent));
 ```
+
+---
+
+## Route Parameters
+
+t-sui supports path parameters and query parameters for dynamic routing.
+
+### Path Parameters
+
+Define routes with `{paramName}` placeholders and extract values using `ctx.PathParam()`:
+
+```typescript
+// Single path parameter
+app.Page("/users/{id}", "User Profile", function(ctx: Context): string {
+    const userId = ctx.PathParam("id");  // e.g., "123" from /users/123
+    return ui.div()("User ID: " + userId);
+});
+
+// Multiple path parameters
+app.Page("/posts/{postId}/comments/{commentId}", "Comment", function(ctx: Context): string {
+    const postId = ctx.PathParam("postId");
+    const commentId = ctx.PathParam("commentId");
+    return ui.div()("Post: " + postId + ", Comment: " + commentId);
+});
+```
+
+### Query Parameters
+
+Extract query string values using `ctx.QueryParam()`, `ctx.QueryParams()`, or `ctx.AllQueryParams()`:
+
+```typescript
+app.Page("/search", "Search", function(ctx: Context): string {
+    // Single value: ?q=hello
+    const query = ctx.QueryParam("q");
+    
+    // Single value with default: ?page=2
+    const page = ctx.QueryParam("page") || "1";
+    
+    // Multiple values: ?color=red&color=blue
+    const colors = ctx.QueryParams("color");  // ["red", "blue"]
+    
+    // All parameters as map
+    const allParams = ctx.AllQueryParams();  // { q: ["hello"], page: ["2"] }
+    
+    return ui.div()("Search: " + query);
+});
+```
+
+### Combined Example
+
+```typescript
+// Route: /users/{id}?tab=profile&view=grid
+app.Page("/users/{id}", "User", function(ctx: Context): string {
+    const userId = ctx.PathParam("id");     // "123"
+    const tab = ctx.QueryParam("tab");       // "profile"
+    const view = ctx.QueryParam("view");     // "grid"
+    
+    return ui.div()(
+        ui.p()("User: " + userId),
+        ui.p()("Tab: " + tab),
+        ui.p()("View: " + view)
+    );
+});
+```
+
+**Notes:**
+- Path parameters are case-preserving: `{userId}` extracts as `ctx.PathParam("userId")`
+- URL matching is case-insensitive: `/Users/123` matches `/users/{id}`
+- Query parameters work with both direct requests and SPA navigation
+- Path parameters are URL-decoded automatically
 
 ---
 

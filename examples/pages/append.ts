@@ -38,13 +38,13 @@ export function AppendContent(ctx: Context): string {
 			.Button()
 			.Color(ui.Blue)
 			.Class("rounded")
-			.Click(ctx.Call(addEnd).Append(target))
+			.Click(ctx.Click(addEnd).Append(target))
 			.Render("Add at end"),
 		ui
 			.Button()
 			.Color(ui.Green)
 			.Class("rounded")
-			.Click(ctx.Call(addStart).Prepend(target))
+			.Click(ctx.Click(addStart).Prepend(target))
 			.Render("Add at start"),
 	);
 	const container = ui.div("space-y-2", target)(

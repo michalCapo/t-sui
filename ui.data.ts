@@ -516,7 +516,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
                             )
                             .Click(
                                 ctx
-                                    .Call(onSearch, {
+                                    .Click(onSearch, {
                                         Search: "",
                                         Order: query.Order,
                                         Limit: query.Limit,
@@ -534,7 +534,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
         ((excelFields && excelFields.length > 0)) &&
         ui.Button()
             .Color(ui.Blue)
-            .Click(ctx.Call(onXLS, query).None())
+            .Click(ctx.Click(onXLS, query).None())
             .Render(ui.IconLeft("fa fa-download", "XLS")),
 
         // Filter
@@ -590,7 +590,7 @@ function Sorting(ctx: Context, sortFields: TField[], target: Target, onSort: (ct
             .Button()
             .Class("rounded bg-white")
             .Color(color)
-            .Click(ctx.Call(onSort, payload).Replace(target))
+            .Click(ctx.Click(onSort, payload).Replace(target))
             .Render(
                 ui.div("flex gap-2 items-center")(
                     ui.Iff(direction === "asc")(ui.Icon("fa fa-fw fa-sort-amount-asc")),
@@ -619,7 +619,7 @@ function Paging<T>(ctx: Context, result: TCollateResult<T>, initLimit: number, o
                 .Class("bg-white rounded-l")
                 .Color(ui.BlueOutline)
                 .Disabled(size === 0 || size <= Number(initLimit))
-                .Click(ctx.Call(onReset, result.Query).Replace(target))
+                .Click(ctx.Click(onReset, result.Query).Replace(target))
                 .Render(ui.Icon("fa fa-fw fa-undo")),
 
             ui
@@ -627,7 +627,7 @@ function Paging<T>(ctx: Context, result: TCollateResult<T>, initLimit: number, o
                 .Class("rounded-r bg-white")
                 .Color(ui.BlueOutline)
                 .Disabled(size >= Number(result.Filtered))
-                .Click(ctx.Call(onResize, result.Query).Replace(target))
+                .Click(ctx.Click(onResize, result.Query).Replace(target))
                 .Render(
                     ui.div("flex gap-2 items-center")(
                         ui.Icon("fa fa-arrow-down"),

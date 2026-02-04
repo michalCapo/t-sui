@@ -36,28 +36,28 @@ export function Hello(ctx: Context): string {
 				.Button()
 				.Color(ui.GreenOutline)
 				.Class(buttons)
-				.Click(ctx.Call(sayHello).None())
+				.Click(ctx.Click(sayHello).None())
 				.Render("with ok"),
 
 			ui
 				.Button()
 				.Color(ui.RedOutline)
 				.Class(buttons)
-				.Click(ctx.Call(sayError).None())
+				.Click(ctx.Click(sayError).None())
 				.Render("with error"),
 
 			ui
 				.Button()
 				.Color(ui.BlueOutline)
 				.Class(buttons)
-				.Click(ctx.Call(sayDelay).None())
+				.Click(ctx.Click(sayDelay).None())
 				.Render("with delay"),
 
 			ui
 				.Button()
 				.Color(ui.YellowOutline)
 				.Class(buttons)
-				.Click(ctx.Call(sayHelloAgain).None())
+				.Click(ctx.Click(sayHelloAgain).None())
 				.Render("with crash"),
 		),
 	);

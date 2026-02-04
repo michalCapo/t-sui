@@ -635,8 +635,8 @@ function Button(...attrs: Attr[]) {
             state.size = v;
             return api;
         },
-        Click(code: string) {
-            state.onclick = code;
+        Click(code: string | Attr) {
+            state.onclick = typeof code === 'string' ? code : (code.onclick || '');
             return api;
         },
         Href(v: string) {
@@ -2011,6 +2011,1440 @@ function Script(body: string): string {
     return "<script>" + safeBody + "</script>";
 }
 
+// ============================================================================
+// ALERT Component
+// ============================================================================
+
+interface AlertState {
+    message: string;
+    title: string;
+    variant: string;
+    dismissible: boolean;
+    persistKey: string;
+    visible: boolean;
+    css: string;
+}
+
+function Alert() {
+    const state: AlertState = {
+        message: "",
+        title: "",
+        variant: "info",
+        dismissible: false,
+        persistKey: "",
+        visible: true,
+        css: "",
+    };
+
+    const alertId = "alert_" + RandomString(8);
+
+    const api = {
+        Message(value: string) {
+            state.message = value;
+            return api;
+        },
+        Title(value: string) {
+            state.title = value;
+            return api;
+        },
+        Variant(value: string) {
+            state.variant = value;
+            return api;
+        },
+        Dismissible(value: boolean) {
+            state.dismissible = value;
+            return api;
+        },
+        Persist(key: string) {
+            state.persistKey = key;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible || !state.message) {
+                return "";
+            }
+
+            const { baseClasses, iconHTML, iconClasses } = getVariantStyles(state.variant);
+
+            const alertClasses = Classes(
+                baseClasses,
+                "relative flex items-start gap-3 p-4 rounded-lg border shadow-sm",
+                state.css || ""
+            );
+
+            const iconEl = div("flex-shrink-0 mt-0.5 " + iconClasses)(iconHTML);
+
+            let titleEl = "";
+            if (state.title) {
+                titleEl = div("text-sm font-bold mb-1")(state.title);
+            }
+
+            const textClass = state.title ? "text-xs opacity-90" : "text-sm";
+            const messageEl = div(textClass)(state.message);
+
+            let dismissBtn = "";
+            if (state.dismissible) {
+                const closeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+                const persistArg = state.persistKey ? `'${escapeJS(state.persistKey)}'` : "null";
+                dismissBtn = `<button type="button" onclick="tSuiDismissAlert('${escapeJS(alertId)}', ${persistArg})" class="flex-shrink-0 ml-auto -mr-1 p-1 rounded-md opacity-50 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 focus:outline-none transition-all" aria-label="Close alert">${closeIcon}</button>`;
+            }
+
+            const content = div(alertClasses, { id: alertId })(
+                iconEl,
+                div("flex-1 min-w-0")(titleEl, messageEl),
+                dismissBtn
+            );
+
+            let script = "";
+            if (state.dismissible) {
+                let persistCheck = "";
+                let persistAction = "";
+                if (state.persistKey) {
+                    persistCheck = `try { if (localStorage.getItem('${escapeJS(state.persistKey)}') === 'dismissed') { document.getElementById('${escapeJS(alertId)}').remove(); return; } } catch (_) {}`;
+                    persistAction = `try { localStorage.setItem('${escapeJS(state.persistKey)}', 'dismissed'); } catch (_) {}`;
+                }
+                script = Script(`(function(){ var el=document.getElementById('${escapeJS(alertId)}'); if(!el) return; ${persistCheck} window.tSuiDismissAlert=function(id,persist){ var e=document.getElementById(id); if(e){ e.remove(); ${persistAction} } }; })();`);
+            }
+
+            return content + script;
+        },
+    };
+
+    return api;
+}
+
+function getVariantStyles(variant: string): { baseClasses: string; iconHTML: string; iconClasses: string } {
+    const isOutline = variant.endsWith("-outline");
+    const variantName = variant.replace("-outline", "");
+
+    const icons = {
+        success: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+        warning: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+        error: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+        info: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    };
+
+    switch (variantName) {
+        case "success":
+            return {
+                baseClasses: isOutline
+                    ? "bg-white border-green-500 text-green-700 dark:bg-gray-950 dark:border-green-500 dark:text-green-400"
+                    : "bg-green-50 border-green-200 text-green-800 dark:bg-green-950/40 dark:border-green-900/50 dark:text-green-100",
+                iconHTML: icons.success,
+                iconClasses: isOutline ? "text-green-500" : "text-green-600 dark:text-green-400",
+            };
+        case "warning":
+            return {
+                baseClasses: isOutline
+                    ? "bg-white border-yellow-500 text-yellow-700 dark:bg-gray-950 dark:border-yellow-500 dark:text-yellow-400"
+                    : "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/40 dark:border-yellow-900/50 dark:text-yellow-100",
+                iconHTML: icons.warning,
+                iconClasses: isOutline ? "text-yellow-500" : "text-yellow-600 dark:text-yellow-400",
+            };
+        case "error":
+            return {
+                baseClasses: isOutline
+                    ? "bg-white border-red-500 text-red-700 dark:bg-gray-950 dark:border-red-500 dark:text-red-400"
+                    : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900/50 dark:text-red-100",
+                iconHTML: icons.error,
+                iconClasses: isOutline ? "text-red-500" : "text-red-600 dark:text-red-400",
+            };
+        default: // info
+            return {
+                baseClasses: isOutline
+                    ? "bg-white border-blue-500 text-blue-700 dark:bg-gray-950 dark:border-blue-500 dark:text-blue-400"
+                    : "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/40 dark:border-blue-900/50 dark:text-blue-100",
+                iconHTML: icons.info,
+                iconClasses: isOutline ? "text-blue-500" : "text-blue-600 dark:text-blue-400",
+            };
+    }
+}
+
+function escapeJS(s: string): string {
+    return s.replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+function escapeAttr(s: string): string {
+    return s.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// ============================================================================
+// BADGE Component
+// ============================================================================
+
+function Badge(...attrs: Attr[]) {
+    const state = {
+        text: "",
+        color: "gray",
+        dot: false,
+        icon: "",
+        size: "md",
+        rounded: true,
+        visible: true,
+        css: "",
+        attrs: attrs,
+    };
+
+    const api = {
+        Text(value: string) {
+            state.text = value;
+            return api;
+        },
+        Color(value: string) {
+            state.color = value;
+            return api;
+        },
+        Dot() {
+            state.dot = true;
+            return api;
+        },
+        Icon(html: string) {
+            state.icon = html;
+            return api;
+        },
+        Size(value: string) {
+            state.size = value;
+            return api;
+        },
+        Square() {
+            state.rounded = false;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible) {
+                return "";
+            }
+
+            const isOutline = state.color.endsWith("-outline");
+            const isSoft = state.color.endsWith("-soft");
+            const colorName = state.color.replace("-outline", "").replace("-soft", "");
+
+            if (state.dot) {
+                const baseClass = "inline-flex items-center justify-center rounded-full";
+                let sizeClass = "h-2 w-2";
+                if (state.size === "lg") sizeClass = "h-3 w-3";
+                else if (state.size === "sm") sizeClass = "h-1.5 w-1.5";
+
+                const colorClass = getBadgeColorClasses(colorName, isOutline, isSoft);
+                return span(Classes(baseClass, sizeClass, colorClass, state.css), ...state.attrs)();
+            }
+
+            const roundedClass = state.rounded ? "rounded-full" : "rounded-md";
+            let sizeClass = "px-2 py-0.5 text-[10px] h-5";
+            if (state.size === "lg") sizeClass = "px-3 py-1 text-xs h-6";
+            else if (state.size === "sm") sizeClass = "px-1.5 py-0 text-[9px] h-4";
+
+            const baseClass = "inline-flex items-center justify-center font-bold tracking-wide uppercase";
+            const colorClass = getBadgeColorClasses(colorName, isOutline, isSoft);
+
+            let content = state.text;
+            if (state.icon) {
+                let iconSize = "w-3 h-3";
+                if (state.size === "sm") iconSize = "w-2.5 h-2.5";
+                content = `<span class="${iconSize} mr-1 flex items-center justify-center">${state.icon}</span>${state.text}`;
+            }
+
+            return span(Classes(baseClass, sizeClass, roundedClass, colorClass, state.css), ...state.attrs)(content);
+        },
+    };
+
+    return api;
+}
+
+function getBadgeColorClasses(colorName: string, isOutline: boolean, isSoft: boolean): string {
+    const colors: Record<string, { outline: string; soft: string; solid: string }> = {
+        red: {
+            outline: "bg-transparent text-red-600 border border-red-600 dark:text-red-400 dark:border-red-400",
+            soft: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200/50 dark:border-red-800/50",
+            solid: "bg-red-600 text-white dark:bg-red-700 dark:text-red-100",
+        },
+        green: {
+            outline: "bg-transparent text-green-600 border border-green-600 dark:text-green-400 dark:border-green-400",
+            soft: "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300 border border-green-200/50 dark:border-green-800/50",
+            solid: "bg-green-600 text-white dark:bg-green-700 dark:text-green-100",
+        },
+        blue: {
+            outline: "bg-transparent text-blue-600 border border-blue-600 dark:text-blue-400 dark:border-blue-400",
+            soft: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50",
+            solid: "bg-blue-600 text-white dark:bg-blue-700 dark:text-blue-100",
+        },
+        yellow: {
+            outline: "bg-transparent text-yellow-600 border border-yellow-600 dark:text-yellow-400 dark:border-yellow-400",
+            soft: "bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300 border border-yellow-200/50 dark:border-yellow-800/50",
+            solid: "bg-yellow-500 text-gray-900 dark:bg-yellow-600 dark:text-gray-100",
+        },
+        purple: {
+            outline: "bg-transparent text-purple-600 border border-purple-600 dark:text-purple-400 dark:border-purple-400",
+            soft: "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/50 dark:border-purple-800/50",
+            solid: "bg-purple-600 text-white dark:bg-purple-700 dark:text-white",
+        },
+        gray: {
+            outline: "bg-transparent text-gray-600 border border-gray-600 dark:text-gray-400 dark:border-gray-400",
+            soft: "bg-gray-100 text-gray-700 dark:bg-gray-800/60 dark:text-gray-300 border border-gray-200 dark:border-gray-700",
+            solid: "bg-gray-600 text-white dark:bg-gray-700 dark:text-gray-100",
+        },
+    };
+
+    const c = colors[colorName] || colors.gray;
+    if (isOutline) return c.outline;
+    if (isSoft) return c.soft;
+    return c.solid;
+}
+
+// ============================================================================
+// CARD Component
+// ============================================================================
+
+const CardBordered = "bordered";
+const CardShadowed = "shadowed";
+const CardFlat = "flat";
+const CardGlass = "glass";
+
+function Card() {
+    const state = {
+        header: "",
+        body: "",
+        footer: "",
+        image: "",
+        imageAlt: "",
+        variant: CardShadowed,
+        css: "",
+        padding: "p-6",
+        hover: false,
+        compact: false,
+        visible: true,
+    };
+
+    const api = {
+        Header(html: string) {
+            state.header = html;
+            return api;
+        },
+        Body(html: string) {
+            state.body = html;
+            return api;
+        },
+        Footer(html: string) {
+            state.footer = html;
+            return api;
+        },
+        Image(src: string, alt: string) {
+            state.image = src;
+            state.imageAlt = alt;
+            return api;
+        },
+        Padding(value: string) {
+            state.padding = value;
+            return api;
+        },
+        Hover(value: boolean) {
+            state.hover = value;
+            return api;
+        },
+        Compact(value: boolean) {
+            state.compact = value;
+            if (value) state.padding = "p-4";
+            return api;
+        },
+        Variant(value: string) {
+            state.variant = value;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible) {
+                return "";
+            }
+
+            let baseClasses = ["bg-white", "dark:bg-gray-900", "rounded-xl", "overflow-hidden"];
+
+            switch (state.variant) {
+                case CardBordered:
+                    baseClasses.push("border", "border-gray-200", "dark:border-gray-800");
+                    break;
+                case CardShadowed:
+                    baseClasses.push("shadow-sm", "border", "border-gray-100", "dark:border-gray-800/50");
+                    break;
+                case CardFlat:
+                    // No additional classes
+                    break;
+                case CardGlass:
+                    baseClasses = [
+                        "bg-white/70",
+                        "dark:bg-gray-900/70",
+                        "backdrop-blur-md",
+                        "rounded-xl",
+                        "overflow-hidden",
+                        "border",
+                        "border-white/20",
+                        "dark:border-gray-800/50",
+                    ];
+                    break;
+                default:
+                    baseClasses.push("shadow-sm", "border", "border-gray-100", "dark:border-gray-800/50");
+            }
+
+            if (state.hover) {
+                baseClasses.push("transition-all duration-300 hover:shadow-lg hover:-translate-y-1");
+            }
+
+            if (state.css) {
+                baseClasses.push(state.css);
+            }
+
+            const cardClass = Classes(...baseClasses);
+            const sections: string[] = [];
+
+            if (state.image) {
+                const height = state.compact ? "h-32" : "h-48";
+                sections.push(`<img src="${escapeAttr(state.image)}" alt="${escapeAttr(state.imageAlt)}" class="w-full ${height} object-cover">`);
+            }
+
+            if (state.header) {
+                const padding = state.compact ? "px-4 py-3" : "px-6 py-4";
+                sections.push(
+                    div(Classes(padding, "border-b border-gray-100/80 dark:border-gray-800/80 bg-gray-50/30 dark:bg-gray-800/30"))(state.header)
+                );
+            }
+
+            if (state.body) {
+                sections.push(div(state.padding)(state.body));
+            }
+
+            if (state.footer) {
+                const padding = state.compact ? "px-4 py-3" : "px-6 py-4";
+                sections.push(
+                    div(Classes(padding, "border-t border-gray-100/80 dark:border-gray-800/80 bg-gray-50/30 dark:bg-gray-800/30"))(state.footer)
+                );
+            }
+
+            return div(cardClass)(sections.join(""));
+        },
+    };
+
+    return api;
+}
+
+// ============================================================================
+// PROGRESS BAR Component
+// ============================================================================
+
+function ProgressBar() {
+    const state = {
+        value: 0,
+        color: "bg-blue-600",
+        gradient: [] as string[],
+        striped: false,
+        animated: false,
+        indeterminate: false,
+        size: "md",
+        label: "",
+        labelPosition: "inside",
+        css: "",
+        visible: true,
+    };
+
+    const api = {
+        Value(percent: number) {
+            state.value = Math.max(0, Math.min(100, percent));
+            return api;
+        },
+        Color(value: string) {
+            state.color = value;
+            return api;
+        },
+        Gradient(...colors: string[]) {
+            state.gradient = colors;
+            return api;
+        },
+        Size(value: string) {
+            state.size = value;
+            return api;
+        },
+        Striped(value: boolean) {
+            state.striped = value;
+            return api;
+        },
+        Animated(value: boolean) {
+            state.animated = value;
+            return api;
+        },
+        Indeterminate(value: boolean) {
+            state.indeterminate = value;
+            return api;
+        },
+        Label(value: string) {
+            state.label = value;
+            return api;
+        },
+        LabelPosition(value: string) {
+            state.labelPosition = value;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible) {
+                return "";
+            }
+
+            let heightClass = "h-2";
+            switch (state.size) {
+                case "xs": heightClass = "h-1"; break;
+                case "sm": heightClass = "h-1.5"; break;
+                case "md": heightClass = "h-2.5"; break;
+                case "lg": heightClass = "h-4"; break;
+                case "xl": heightClass = "h-6"; break;
+            }
+
+            const containerClasses = [
+                "w-full",
+                "overflow-hidden",
+                "bg-gray-200/50",
+                "dark:bg-gray-800/50",
+                "rounded-full",
+                heightClass,
+            ];
+            if (state.css) containerClasses.push(state.css);
+
+            const barClasses = ["h-full", "rounded-full"];
+            if (state.gradient.length === 0) {
+                barClasses.push(state.color);
+            }
+            if (!state.indeterminate) {
+                barClasses.push("transition-all", "duration-500", "ease-out");
+            } else {
+                barClasses.push("w-1/3", "animate-progress-indeterminate", state.color);
+            }
+
+            let barStyle = "";
+            if (!state.indeterminate) {
+                barStyle = `width: ${state.value}%`;
+            }
+            if (state.gradient.length > 0) {
+                barStyle += `; background: linear-gradient(90deg, ${state.gradient.join(", ")})`;
+            }
+            if (state.striped) {
+                barStyle += "; background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent); background-size: 1rem 1rem";
+            }
+            if (state.animated && state.striped && !state.indeterminate) {
+                barStyle += "; animation: progress-stripes 1s linear infinite";
+            }
+
+            const barHTML = `<div class="${Classes(...barClasses)}" style="${barStyle}"></div>`;
+
+            let labelHTML = "";
+            if (state.label && !state.indeterminate) {
+                if (state.labelPosition === "inside") {
+                    labelHTML = `<div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white mix-blend-difference pointer-events-none">${escapeAttr(state.label)}</div>`;
+                } else {
+                    return div("flex flex-col gap-1.5")(
+                        div("flex justify-between items-center text-xs font-semibold")(
+                            span("")(state.label),
+                            span("text-gray-500")(`${state.value}%`)
+                        ),
+                        div(Classes(...containerClasses), { style: "position: relative;" })(barHTML)
+                    );
+                }
+            }
+
+            const container = div(Classes(...containerClasses), { style: "position: relative;" })(barHTML + labelHTML);
+
+            let animationStyle = "";
+            if ((state.animated && state.striped) || state.indeterminate) {
+                animationStyle = `<style id="__progress-anim__">@keyframes progress-stripes{0%{background-position:1rem 0}100%{background-position:0 0}}@keyframes progress-indeterminate{0%{left:-33%;}100%{left:100%;}}.animate-progress-indeterminate{position:absolute; animation: progress-indeterminate 1.8s infinite cubic-bezier(0.65, 0.815, 0.735, 0.395);}</style>`;
+            }
+
+            return container + animationStyle;
+        },
+    };
+
+    return api;
+}
+
+// ============================================================================
+// STEP PROGRESS Component
+// ============================================================================
+
+function StepProgress(current: number, total: number) {
+    current = Math.max(0, current);
+    total = Math.max(1, total);
+    if (current > total) current = total;
+
+    const state = {
+        current,
+        total,
+        color: "bg-blue-500",
+        size: "md",
+        css: "",
+        visible: true,
+    };
+
+    const api = {
+        Current(value: number) {
+            state.current = Math.max(0, Math.min(state.total, value));
+            return api;
+        },
+        Total(value: number) {
+            state.total = Math.max(1, value);
+            if (state.current > state.total) state.current = state.total;
+            return api;
+        },
+        Color(value: string) {
+            state.color = value;
+            return api;
+        },
+        Size(value: string) {
+            state.size = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Render(): string {
+            if (!state.visible) {
+                return "";
+            }
+
+            const percent = (state.current / state.total) * 100;
+
+            let heightClass = "h-1";
+            switch (state.size) {
+                case "xs": heightClass = "h-0.5"; break;
+                case "sm": heightClass = "h-1"; break;
+                case "md": heightClass = "h-1.5"; break;
+                case "lg": heightClass = "h-2"; break;
+                case "xl": heightClass = "h-3"; break;
+            }
+
+            const containerClasses = [
+                "w-full",
+                "bg-gray-200",
+                "dark:bg-gray-700",
+                "rounded-full",
+                "overflow-hidden",
+                heightClass,
+            ];
+            if (state.css) containerClasses.push(state.css);
+
+            const barClasses = [
+                "h-full",
+                state.color,
+                "rounded-full",
+                "transition-all",
+                "duration-300",
+                "flex-shrink-0",
+            ];
+
+            const bar = `<div class="${Classes(...barClasses)}" style="width: ${percent.toFixed(0)}%;"></div>`;
+            const container = `<div class="${Classes(...containerClasses)}">${bar}</div>`;
+            const labelText = `Step ${state.current} of ${state.total}`;
+            const labelEl = `<div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">${labelText}</div>`;
+
+            return labelEl + container;
+        },
+    };
+
+    return api;
+}
+
+// ============================================================================
+// TOOLTIP Component
+// ============================================================================
+
+function Tooltip() {
+    const state = {
+        content: "",
+        position: "top",
+        variant: "dark",
+        delay: 200,
+        visible: true,
+        css: "",
+    };
+
+    const api = {
+        Content(value: string) {
+            state.content = value;
+            return api;
+        },
+        Position(value: string) {
+            state.position = value;
+            return api;
+        },
+        Variant(value: string) {
+            state.variant = value;
+            return api;
+        },
+        Delay(ms: number) {
+            state.delay = ms;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(wrappedHTML: string): string {
+            if (!state.visible || !state.content) {
+                return wrappedHTML;
+            }
+
+            const tooltipID = "tt_" + RandomString(8);
+            const { tooltipClasses: posClasses, arrowClasses } = getTooltipPositionClasses(state.position);
+            const variantClasses = getTooltipVariantClasses(state.variant);
+            const arrowColor = getTooltipArrowColor(state.variant);
+
+            const tooltipClasses = Classes(
+                "absolute z-[100]",
+                "px-2.5 py-1.5",
+                "text-[11px] font-bold leading-none whitespace-nowrap",
+                "rounded-md shadow-lg",
+                "opacity-0 scale-95",
+                "invisible",
+                "transition-all duration-200 ease-out",
+                "pointer-events-none",
+                posClasses,
+                variantClasses,
+                state.css
+            );
+
+            const arrow = `<div class="${arrowClasses} ${arrowColor}"></div>`;
+            const tooltipHTML = `<div id="${escapeAttr(tooltipID)}" class="${escapeAttr(tooltipClasses)}" data-tooltip-delay="${state.delay}">${state.content}${arrow}</div>`;
+
+            const wrapperClasses = "relative inline-block";
+            const wrapper = `<div class="${wrapperClasses}" onmouseenter="tSuiShowTooltip('${escapeJS(tooltipID)}')" onmouseleave="tSuiHideTooltip('${escapeJS(tooltipID)}')">${wrappedHTML}${tooltipHTML}</div>`;
+
+            const script = Script(`
+                (function() {
+                    window.tSuiTooltipTimers = window.tSuiTooltipTimers || {};
+                    window.tSuiShowTooltip = window.tSuiShowTooltip || function(id) {
+                        var tt = document.getElementById(id);
+                        if (!tt) return;
+                        if (window.tSuiTooltipTimers[id]) clearTimeout(window.tSuiTooltipTimers[id]);
+                        var delay = parseInt(tt.getAttribute('data-tooltip-delay')) || 0;
+                        window.tSuiTooltipTimers[id] = setTimeout(function() {
+                            tt.classList.remove('opacity-0', 'invisible', 'scale-95');
+                            tt.classList.add('opacity-100', 'visible', 'scale-100');
+                        }, delay);
+                    };
+                    window.tSuiHideTooltip = window.tSuiHideTooltip || function(id) {
+                        var tt = document.getElementById(id);
+                        if (!tt) return;
+                        if (window.tSuiTooltipTimers[id]) clearTimeout(window.tSuiTooltipTimers[id]);
+                        tt.classList.remove('opacity-100', 'visible', 'scale-100');
+                        tt.classList.add('opacity-0', 'invisible', 'scale-95');
+                    };
+                })();
+            `);
+
+            return wrapper + script;
+        },
+    };
+
+    return api;
+}
+
+function getTooltipPositionClasses(position: string): { tooltipClasses: string; arrowClasses: string } {
+    switch (position) {
+        case "bottom":
+            return {
+                tooltipClasses: "left-1/2 -translate-x-1/2 top-full mt-2.5",
+                arrowClasses: "absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 rotate-45",
+            };
+        case "left":
+            return {
+                tooltipClasses: "right-full top-1/2 -translate-y-1/2 mr-2.5",
+                arrowClasses: "absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 w-2 h-2 rotate-45",
+            };
+        case "right":
+            return {
+                tooltipClasses: "left-full top-1/2 -translate-y-1/2 ml-2.5",
+                arrowClasses: "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rotate-45",
+            };
+        default: // top
+            return {
+                tooltipClasses: "left-1/2 -translate-x-1/2 bottom-full mb-2.5",
+                arrowClasses: "absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 rotate-45",
+            };
+    }
+}
+
+function getTooltipVariantClasses(variant: string): string {
+    switch (variant) {
+        case "light":
+            return "bg-white text-gray-800 border border-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 shadow-lg";
+        case "blue":
+            return "bg-blue-600 text-white shadow-lg shadow-blue-500/20";
+        case "green":
+            return "bg-green-600 text-white shadow-lg shadow-green-500/20";
+        case "red":
+            return "bg-red-600 text-white shadow-lg shadow-red-500/20";
+        case "yellow":
+            return "bg-yellow-500 text-gray-900 shadow-lg shadow-yellow-500/20";
+        default: // dark
+            return "bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-lg";
+    }
+}
+
+function getTooltipArrowColor(variant: string): string {
+    switch (variant) {
+        case "light":
+            return "bg-white dark:bg-gray-800 border-l border-t border-gray-100 dark:border-gray-700";
+        case "blue":
+            return "bg-blue-600";
+        case "green":
+            return "bg-green-600";
+        case "red":
+            return "bg-red-600";
+        case "yellow":
+            return "bg-yellow-500";
+        default:
+            return "bg-gray-900 dark:bg-white";
+    }
+}
+
+// ============================================================================
+// TABS Component
+// ============================================================================
+
+const TabsStylePills = "pills";
+const TabsStyleUnderline = "underline";
+const TabsStyleBoxed = "boxed";
+const TabsStyleVertical = "vertical";
+
+interface TabData {
+    label: string;
+    icon: string;
+    content: string;
+}
+
+function Tabs() {
+    const id = "tabs_" + RandomString(8);
+    const state = {
+        tabs: [] as TabData[],
+        active: 0,
+        style: TabsStyleUnderline,
+        css: "",
+        visible: true,
+        id,
+    };
+
+    const api = {
+        Tab(label: string, content: string, icon?: string) {
+            state.tabs.push({ label, content, icon: icon || "" });
+            return api;
+        },
+        Active(index: number) {
+            if (index >= 0 && index < state.tabs.length) {
+                state.active = index;
+            }
+            return api;
+        },
+        Style(value: string) {
+            if ([TabsStylePills, TabsStyleUnderline, TabsStyleBoxed, TabsStyleVertical].includes(value)) {
+                state.style = value;
+            } else {
+                state.style = TabsStyleUnderline;
+            }
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible || state.tabs.length === 0) {
+                return "";
+            }
+
+            const buttonIDs = state.tabs.map((_, i) => `${state.id}_btn_${i}_${RandomString(6)}`);
+            const panelIDs = state.tabs.map((_, i) => `${state.id}_panel_${i}_${RandomString(6)}`);
+
+            let builder = '<style>.scrollbar-hide::-webkit-scrollbar{display:none}.scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none}</style>';
+
+            const isVertical = state.style === TabsStyleVertical;
+            const containerClass = Classes(
+                "w-full",
+                isVertical ? "flex flex-col md:flex-row gap-6" : "",
+                state.css
+            );
+
+            builder += `<div id="${escapeAttr(state.id)}" class="${escapeAttr(containerClass)}" data-tabs-active="${state.active}" data-tabs-style="${state.style}">`;
+
+            // Tab buttons
+            builder += renderTabButtons(state, buttonIDs, panelIDs);
+
+            if (isVertical) {
+                builder += '<div class="flex-1">';
+            }
+
+            // Tab panels
+            builder += renderTabPanels(state, panelIDs);
+
+            if (isVertical) {
+                builder += '</div>';
+            }
+
+            builder += '</div>';
+
+            // JavaScript
+            builder += renderTabsJavaScript(state, buttonIDs, panelIDs);
+
+            return builder;
+        },
+    };
+
+    return api;
+}
+
+function renderTabButtons(state: { tabs: TabData[]; active: number; style: string; id: string }, buttonIDs: string[], panelIDs: string[]): string {
+    let wrapperClass = "flex overflow-x-auto scrollbar-hide ";
+    switch (state.style) {
+        case TabsStylePills:
+            wrapperClass += "gap-2 mb-4";
+            break;
+        case TabsStyleUnderline:
+            wrapperClass += "border-b border-gray-200 dark:border-gray-800 mb-4";
+            break;
+        case TabsStyleBoxed:
+            wrapperClass += "gap-0 mb-4 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden p-1 bg-gray-50/50 dark:bg-gray-950/30";
+            break;
+        case TabsStyleVertical:
+            wrapperClass = "flex flex-col gap-1 min-w-[12rem]";
+            break;
+    }
+
+    let html = `<div class="${wrapperClass}" role="tablist">`;
+
+    for (let i = 0; i < state.tabs.length; i++) {
+        const tab = state.tabs[i];
+        const isActive = i === state.active;
+        const buttonClass = getTabButtonClass(state.style, isActive);
+        const ariaSelected = isActive ? "true" : "false";
+        const tabIndex = isActive ? "0" : "-1";
+
+        html += `<button id="${escapeAttr(buttonIDs[i])}" class="${escapeAttr(buttonClass)}" data-tabs-index="${i}" role="tab" aria-selected="${ariaSelected}" aria-controls="${escapeAttr(panelIDs[i])}" tabindex="${tabIndex}">`;
+        if (tab.icon) {
+            html += `<span class="mr-2">${tab.icon}</span>`;
+        }
+        html += `<span>${tab.label}</span></button>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function getTabButtonClass(style: string, isActive: boolean): string {
+    const baseClass = "cursor-pointer font-bold transition-all duration-200 focus:outline-none text-sm whitespace-nowrap flex items-center justify-center";
+
+    switch (style) {
+        case TabsStylePills:
+            return isActive
+                ? Classes(baseClass, "bg-blue-600 text-white shadow-md shadow-blue-500/20 rounded-lg px-4 py-2")
+                : Classes(baseClass, "bg-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800/50 rounded-lg px-4 py-2");
+        case TabsStyleUnderline:
+            return isActive
+                ? Classes(baseClass, "text-blue-600 border-b-2 border-blue-600 dark:text-blue-400 dark:border-blue-400 px-4 py-2.5 -mb-px")
+                : Classes(baseClass, "text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600 px-4 py-2.5 -mb-px");
+        case TabsStyleBoxed:
+            return isActive
+                ? Classes(baseClass, "bg-white text-blue-600 shadow-sm dark:bg-gray-800 dark:text-blue-400 rounded-md px-4 py-1.5 flex-1")
+                : Classes(baseClass, "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-4 py-1.5 flex-1");
+        case TabsStyleVertical:
+            return isActive
+                ? Classes(baseClass, "bg-blue-50 text-blue-700 border-r-2 border-blue-600 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-400 px-4 py-3 text-left rounded-l-md")
+                : Classes(baseClass, "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 border-r-2 border-transparent px-4 py-3 text-left rounded-l-md");
+        default:
+            return Classes(baseClass, "px-4 py-2");
+    }
+}
+
+function renderTabPanels(state: { tabs: TabData[]; active: number; id: string }, panelIDs: string[]): string {
+    let html = "";
+    for (let i = 0; i < state.tabs.length; i++) {
+        const tab = state.tabs[i];
+        const isActive = i === state.active;
+        const hiddenAttr = isActive ? "" : 'hidden=""';
+        const panelClass = Classes(
+            "tab-panel",
+            !isActive ? "hidden opacity-0" : "opacity-100",
+            "transition-opacity duration-300 ease-in-out"
+        );
+
+        html += `<div id="${escapeAttr(panelIDs[i])}" class="${escapeAttr(panelClass)}" data-tabs-panel="${i}" role="tabpanel" aria-labelledby="${state.id}_btn_${i}" ${hiddenAttr}>`;
+        html += tab.content;
+        html += '</div>';
+    }
+    return html;
+}
+
+function renderTabsJavaScript(state: { id: string; active: number; style: string }, buttonIDs: string[], panelIDs: string[]): string {
+    let activeClasses: string, inactiveClasses: string;
+    switch (state.style) {
+        case TabsStylePills:
+            activeClasses = "bg-blue-600 text-white shadow-md shadow-blue-500/20";
+            inactiveClasses = "bg-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800/50";
+            break;
+        case TabsStyleUnderline:
+            activeClasses = "text-blue-600 border-b-2 border-blue-600 dark:text-blue-400 dark:border-blue-400";
+            inactiveClasses = "text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600";
+            break;
+        case TabsStyleBoxed:
+            activeClasses = "bg-white text-blue-600 shadow-sm dark:bg-gray-800 dark:text-blue-400 rounded-md";
+            inactiveClasses = "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
+            break;
+        case TabsStyleVertical:
+            activeClasses = "bg-blue-50 text-blue-700 border-r-2 border-blue-600 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-400";
+            inactiveClasses = "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 border-r-2 border-transparent";
+            break;
+        default:
+            activeClasses = "text-blue-600";
+            inactiveClasses = "text-gray-600";
+    }
+
+    return Script(`(function(){
+        var container=document.getElementById('${escapeJS(state.id)}');
+        if(!container)return;
+        var buttons=container.querySelectorAll('button[data-tabs-index]');
+        var panels=container.querySelectorAll('div[data-tabs-panel]');
+        var activeClasses='${escapeJS(activeClasses)}';
+        var inactiveClasses='${escapeJS(inactiveClasses)}';
+        function setActiveTab(index){
+            buttons.forEach(function(btn){
+                var idx=parseInt(btn.getAttribute('data-tabs-index'));
+                if(idx===index){
+                    btn.setAttribute('aria-selected','true');
+                    inactiveClasses.split(' ').filter(c => c).forEach(c => btn.classList.remove(c));
+                    activeClasses.split(' ').filter(c => c).forEach(c => btn.classList.add(c));
+                    btn.tabIndex=0;
+                }else{
+                    btn.setAttribute('aria-selected','false');
+                    activeClasses.split(' ').filter(c => c).forEach(c => btn.classList.remove(c));
+                    inactiveClasses.split(' ').filter(c => c).forEach(c => btn.classList.add(c));
+                    btn.tabIndex=-1;
+                }
+            });
+            panels.forEach(function(panel){
+                var idx=parseInt(panel.getAttribute('data-tabs-panel'));
+                if(idx===index){
+                    panel.classList.remove('hidden');
+                    panel.removeAttribute('hidden');
+                    setTimeout(function(){ panel.classList.remove('opacity-0'); panel.classList.add('opacity-100'); }, 10);
+                    panel.setAttribute('aria-hidden','false');
+                }else{
+                    panel.classList.add('hidden', 'opacity-0');
+                    panel.setAttribute('hidden', '');
+                    panel.classList.remove('opacity-100');
+                    panel.setAttribute('aria-hidden','true');
+                }
+            });
+            container.setAttribute('data-tabs-active',index);
+        }
+        buttons.forEach(function(btn){
+            btn.addEventListener('click',function(){
+                var index=parseInt(this.getAttribute('data-tabs-index'));
+                setActiveTab(index);
+            });
+            btn.addEventListener('keydown',function(e){
+                var currentIndex=parseInt(container.getAttribute('data-tabs-active'));
+                if(e.key==='ArrowRight' || e.key==='ArrowDown'){
+                    var newIndex=(currentIndex+1)%buttons.length;
+                    buttons[newIndex].focus();
+                    setActiveTab(newIndex);
+                    e.preventDefault();
+                }else if(e.key==='ArrowLeft' || e.key==='ArrowUp'){
+                    var newIndex=(currentIndex-1+buttons.length)%buttons.length;
+                    buttons[newIndex].focus();
+                    setActiveTab(newIndex);
+                    e.preventDefault();
+                }
+            });
+        });
+        setActiveTab(${state.active});
+    })();`);
+}
+
+// ============================================================================
+// ACCORDION Component
+// ============================================================================
+
+const AccordionBordered = "bordered";
+const AccordionGhost = "ghost";
+const AccordionSeparated = "separated";
+
+interface AccordionItemData {
+    title: string;
+    content: string;
+    open: boolean;
+}
+
+function Accordion() {
+    const id = "acc_" + RandomString(8);
+    const state = {
+        items: [] as AccordionItemData[],
+        multiple: false,
+        variant: AccordionBordered,
+        visible: true,
+        css: "",
+        id,
+    };
+
+    const api = {
+        Item(title: string, content: string, open?: boolean) {
+            state.items.push({ title, content, open: open || false });
+            return api;
+        },
+        Multiple(value: boolean) {
+            state.multiple = value;
+            return api;
+        },
+        Variant(value: string) {
+            state.variant = value;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible || state.items.length === 0) {
+                return "";
+            }
+
+            const itemIds = state.items.map((_, i) => `${state.id}_item_${i}`);
+            const contentIds = state.items.map((_, i) => `${state.id}_content_${i}`);
+
+            const itemsHTML = state.items.map((item, i) =>
+                renderAccordionItem(state, itemIds[i], contentIds[i], item.title, item.content, i)
+            ).join("");
+
+            const containerClass = Classes(
+                "accordion",
+                "w-full",
+                state.variant === AccordionBordered ? "border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden" : "",
+                state.variant === AccordionSeparated ? "flex flex-col gap-2" : "",
+                state.css
+            );
+
+            const dataAttr = state.multiple ? "multiple" : "single";
+
+            return div(containerClass, { id: state.id })(itemsHTML) + renderAccordionScript(state, itemIds, contentIds);
+        },
+    };
+
+    return api;
+}
+
+function renderAccordionItem(state: { items: AccordionItemData[]; variant: string }, itemId: string, contentId: string, title: string, content: string, index: number): string {
+    const isSeparated = state.variant === AccordionSeparated;
+    const isOpen = state.items[index].open;
+
+    let headerClass = Classes(
+        "accordion-header",
+        "flex items-center justify-between w-full px-5 py-4 cursor-pointer select-none transition-all duration-200 group",
+        isSeparated ? "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm" : "",
+        !isSeparated && state.variant !== AccordionGhost ? "bg-white dark:bg-gray-900 hover:bg-gray-50/50 dark:hover:bg-gray-800/30" : "",
+        state.variant === AccordionGhost ? "hover:bg-gray-100/50 dark:hover:bg-gray-800/30 rounded-lg" : "",
+        !isSeparated && index > 0 && state.variant === AccordionBordered ? "border-t border-gray-100 dark:border-gray-800" : "",
+        isOpen ? "active-item" : ""
+    );
+
+    const iconClass = Classes(
+        "accordion-icon",
+        "transform transition-transform duration-300",
+        isOpen ? "rotate-180" : "rotate-0",
+        "text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300"
+    );
+
+    let contentClass = Classes(
+        "accordion-content",
+        isOpen ? "open" : "",
+        "overflow-hidden transition-all duration-300 ease-in-out px-5",
+        isSeparated ? "bg-white dark:bg-gray-900 border-x border-b border-gray-100 dark:border-gray-800 rounded-b-lg -mt-2 pt-2 shadow-sm" : "",
+        !isSeparated ? "bg-white dark:bg-gray-900" : "",
+        state.variant === AccordionGhost ? "bg-transparent" : ""
+    );
+
+    const maxHeight = isOpen ? "max-height: 1000px;" : "max-height: 0px;";
+
+    const chevronSvg = `<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+
+    return div(isSeparated ? "mb-2" : "")(
+        div(headerClass)(
+            div("font-bold text-gray-700 dark:text-gray-200 tracking-tight")(title),
+            div(iconClass)(chevronSvg)
+        ),
+        div(contentClass, { id: contentId, style: maxHeight })(
+            div("py-4 text-sm text-gray-600 dark:text-gray-400 leading-relaxed")(content)
+        )
+    );
+}
+
+function renderAccordionScript(state: { id: string; multiple: boolean }, itemIds: string[], contentIds: string[]): string {
+    return Script(`
+        (function() {
+            var accordionId = '${escapeJS(state.id)}';
+            var multiple = ${state.multiple};
+            var accordion = document.getElementById(accordionId);
+            if (!accordion) return;
+            var headers = accordion.querySelectorAll('.accordion-header');
+            var contents = accordion.querySelectorAll('.accordion-content');
+            headers.forEach(function(header, index) {
+                var content = contents[index];
+                if (content.classList.contains('open')) {
+                    content.style.maxHeight = content.scrollHeight + 'px';
+                }
+                header.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var icon = header.querySelector('.accordion-icon');
+                    var isOpen = content.classList.contains('open');
+                    if (!multiple) {
+                        headers.forEach(function(h, i) {
+                            if (i !== index) {
+                                var c = contents[i];
+                                c.style.maxHeight = '0px';
+                                c.classList.remove('open');
+                                h.classList.remove('active-item');
+                                var hi = h.querySelector('.accordion-icon');
+                                if (hi) hi.classList.remove('rotate-180');
+                            }
+                        });
+                    }
+                    if (isOpen) {
+                        content.style.maxHeight = '0px';
+                        content.classList.remove('open');
+                        header.classList.remove('active-item');
+                        if (icon) icon.classList.remove('rotate-180');
+                    } else {
+                        content.classList.add('open');
+                        header.classList.add('active-item');
+                        content.style.maxHeight = content.scrollHeight + 'px';
+                        if (icon) icon.classList.add('rotate-180');
+                    }
+                });
+            });
+            window.addEventListener('resize', function() {
+                contents.forEach(function(content) {
+                    if (content.classList.contains('open')) {
+                        content.style.maxHeight = content.scrollHeight + 'px';
+                    }
+                });
+            });
+        })();
+    `);
+}
+
+// ============================================================================
+// DROPDOWN Component
+// ============================================================================
+
+interface DropdownItemData {
+    label: string;
+    onclick: string;
+    icon: string;
+    variant: string;
+    isDivider: boolean;
+    isHeader: boolean;
+}
+
+function Dropdown() {
+    const target = Target();
+    const state = {
+        trigger: "",
+        items: [] as DropdownItemData[],
+        position: "bottom-left",
+        visible: true,
+        css: "",
+        target,
+    };
+
+    const api = {
+        Trigger(html: string) {
+            state.trigger = html;
+            return api;
+        },
+        Item(label: string, onclick: string, icon?: string) {
+            state.items.push({ label, onclick, icon: icon || "", variant: "default", isDivider: false, isHeader: false });
+            return api;
+        },
+        Danger(label: string, onclick: string, icon?: string) {
+            state.items.push({ label, onclick, icon: icon || "", variant: "danger", isDivider: false, isHeader: false });
+            return api;
+        },
+        Header(label: string) {
+            state.items.push({ label, onclick: "", icon: "", variant: "", isDivider: false, isHeader: true });
+            return api;
+        },
+        Divider() {
+            state.items.push({ label: "", onclick: "", icon: "", variant: "", isDivider: true, isHeader: false });
+            return api;
+        },
+        Position(value: string) {
+            state.position = value;
+            return api;
+        },
+        If(value: boolean) {
+            state.visible = value;
+            return api;
+        },
+        Class(...values: string[]) {
+            state.css = values.join(" ");
+            return api;
+        },
+        Render(): string {
+            if (!state.visible || !state.trigger) {
+                return "";
+            }
+
+            const dropdownID = "dropdown_" + state.target.id;
+            const triggerID = "dropdown_trigger_" + state.target.id;
+
+            const positionClasses = getDropdownPositionClasses(state.position);
+
+            const menuClasses = Classes(
+                "absolute z-50",
+                "min-w-[12rem]",
+                "bg-white dark:bg-gray-900",
+                "border border-gray-200 dark:border-gray-800",
+                "rounded-xl",
+                "shadow-xl",
+                "py-1.5",
+                "hidden",
+                "opacity-0 scale-95 origin-top",
+                "transition-all duration-200 ease-out",
+                positionClasses,
+                state.css
+            );
+
+            const itemsHTML = renderDropdownItems(state.items);
+
+            const menuHTML = `<div id="${escapeAttr(dropdownID)}" class="${escapeAttr(menuClasses)}">${itemsHTML}</div>`;
+            const triggerWrapper = `<div id="${escapeAttr(triggerID)}" class="relative inline-block">${state.trigger}${menuHTML}</div>`;
+
+            const script = Script(`(function(){ 
+                var t=document.getElementById('${escapeJS(triggerID)}'); if(!t) return; 
+                var d=document.getElementById('${escapeJS(dropdownID)}'); if(!d) return; 
+                var o=false; 
+                function show(){
+                    o=true;
+                    d.classList.remove('hidden');
+                    setTimeout(function(){
+                        d.classList.remove('opacity-0', 'scale-95');
+                        d.classList.add('opacity-100', 'scale-100');
+                    }, 10);
+                }
+                function hide(){
+                    o=false;
+                    d.classList.remove('opacity-100', 'scale-100');
+                    d.classList.add('opacity-0', 'scale-95');
+                    setTimeout(function(){
+                        if(!o) d.classList.add('hidden');
+                    }, 200);
+                }
+                t.addEventListener('click',function(e){ 
+                    e.stopPropagation(); 
+                    if(o) hide(); else show();
+                });
+                document.addEventListener('click',function(){ if(o) hide(); });
+                document.addEventListener('keydown', function(e){ if(e.key==='Escape' && o) hide(); });
+            })();`);
+
+            return triggerWrapper + script;
+        },
+    };
+
+    return api;
+}
+
+function getDropdownPositionClasses(position: string): string {
+    switch (position) {
+        case "bottom-right":
+            return "right-0 top-full mt-2 origin-top-right";
+        case "top-left":
+            return "left-0 bottom-full mb-2 origin-bottom-left";
+        case "top-right":
+            return "right-0 bottom-full mb-2 origin-bottom-right";
+        default: // bottom-left
+            return "left-0 top-full mt-2 origin-top-left";
+    }
+}
+
+function renderDropdownItems(items: DropdownItemData[]): string {
+    if (items.length === 0) return "";
+
+    let html = "";
+    for (const item of items) {
+        if (item.isDivider) {
+            html += '<div class="border-t border-gray-100 dark:border-gray-800 my-1.5 mx-2"></div>';
+        } else if (item.isHeader) {
+            html += `<div class="px-4 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">${escapeAttr(item.label)}</div>`;
+        } else {
+            let itemClass = Classes(
+                "flex items-center gap-2 w-full text-left px-3 py-2 mx-1 w-[calc(100%-0.5rem)] text-sm font-bold cursor-pointer rounded-md transition-all duration-150 whitespace-nowrap",
+                item.variant === "danger"
+                    ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                    : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            );
+
+            let iconHTML = '<span class="w-5 h-5 flex-shrink-0 flex items-center justify-center opacity-70">';
+            if (item.icon) iconHTML += item.icon;
+            iconHTML += '</span>';
+
+            html += `<button class="${escapeAttr(itemClass)}" onclick="${escapeAttr(item.onclick)}">${iconHTML}<span class="flex-1">${escapeAttr(item.label)}</span></button>`;
+        }
+    }
+    return html;
+}
+
+// ============================================================================
+// FORM Class
+// ============================================================================
+
 class Form {
     formId: string;
     onSubmit: Attr;
@@ -2157,6 +3591,27 @@ export {
     Hidden,
     Script,
     Form,
+    // New components
+    Alert,
+    Badge,
+    Card,
+    CardBordered,
+    CardShadowed,
+    CardFlat,
+    CardGlass,
+    ProgressBar,
+    StepProgress,
+    Tooltip,
+    Tabs,
+    TabsStylePills,
+    TabsStyleUnderline,
+    TabsStyleBoxed,
+    TabsStyleVertical,
+    Accordion,
+    AccordionBordered,
+    AccordionGhost,
+    AccordionSeparated,
+    Dropdown,
 };
 
 export default {
@@ -2238,4 +3693,25 @@ export default {
     Hidden,
     script: Script,
     Form,
+    // New components
+    Alert,
+    Badge,
+    Card,
+    CardBordered,
+    CardShadowed,
+    CardFlat,
+    CardGlass,
+    ProgressBar,
+    StepProgress,
+    Tooltip,
+    Tabs,
+    TabsStylePills,
+    TabsStyleUnderline,
+    TabsStyleBoxed,
+    TabsStyleVertical,
+    Accordion,
+    AccordionBordered,
+    AccordionGhost,
+    AccordionSeparated,
+    Dropdown,
 };
