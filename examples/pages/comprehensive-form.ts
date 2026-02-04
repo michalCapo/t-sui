@@ -6,6 +6,8 @@ class ComprehensiveFormData {
     // Text & Password
     fullName = 'John Doe';
     email = 'john@example.com';
+    website = 'https://example.com';
+    phone = '+1-555-0123';
     password = 'SecurePass123!';
     confirmPassword = 'SecurePass123!';
 
@@ -30,6 +32,7 @@ class ComprehensiveFormData {
     newsletter = false;
     gender = 'male';
     experience_level = 'intermediate';
+    notification_preference = 'email';
 
     // Hidden field
     userId = '12345';
@@ -65,6 +68,8 @@ export function ComprehensiveFormContent(ctx: Context): string {
             ui.div('space-y-3 text-gray-700')(
                 renderDataField('Full Name', submittedData.fullName),
                 renderDataField('Email', submittedData.email),
+                renderDataField('Website', submittedData.website),
+                renderDataField('Phone', submittedData.phone),
                 renderDataField('Password', '***' + submittedData.password?.slice(-4)),
                 renderDataField('Bio', submittedData.bio),
                 renderDataField('Age', String(submittedData.age)),
@@ -76,6 +81,7 @@ export function ComprehensiveFormContent(ctx: Context): string {
                 renderDataField('Department', submittedData.department),
                 renderDataField('Gender', submittedData.gender),
                 renderDataField('Experience Level', submittedData.experience_level),
+                renderDataField('Notification Preference', submittedData.notification_preference),
                 renderDataField('Agree to Terms', submittedData.agreeTerms ? '✓ Yes' : '✗ No'),
                 renderDataField('Newsletter', submittedData.newsletter ? '✓ Subscribed' : '✗ Not subscribed'),
                 renderDataField('User ID', submittedData.userId),
@@ -102,16 +108,27 @@ export function ComprehensiveFormContent(ctx: Context): string {
 
                 // Section: Text & Password
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('📝 Text & Password'),
+                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('📝 Text Inputs & HTML5 Types'),
                     ui.div('grid grid-cols-2 gap-4')(
                         f.Text('fullName', data)
                             .Required()
                             .Placeholder('Enter full name')
                             .Render('Full Name'),
                         f.Text('email', data)
+                            .Type('email')
                             .Required()
                             .Placeholder('user@example.com')
-                            .Render('Email Address'),
+                            .Render('Email (type=email)'),
+                    ),
+                    ui.div('grid grid-cols-2 gap-4 mt-4')(
+                        f.Text('website', data)
+                            .Type('url')
+                            .Placeholder('https://example.com')
+                            .Render('Website (type=url)'),
+                        f.Text('phone', data)
+                            .Type('tel')
+                            .Placeholder('+1-555-0123')
+                            .Render('Phone (type=tel)'),
                     ),
                     ui.div('grid grid-cols-2 gap-4 mt-4')(
                         f.Password('password', data)
@@ -210,17 +227,28 @@ export function ComprehensiveFormContent(ctx: Context): string {
                     ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('◉ Radio Buttons'),
                     ui.div('grid grid-cols-2 gap-6')(
                         ui.div('space-y-3')(
-                            ui.p('font-semibold text-gray-700 mb-2')('Gender'),
+                            ui.p('font-semibold text-gray-700 mb-2')('Gender (Individual Radios)'),
                             f.Radio('gender', data).Value('male').Render('Male'),
                             f.Radio('gender', data).Value('female').Render('Female'),
                             f.Radio('gender', data).Value('other').Render('Other'),
                         ),
                         ui.div('space-y-3')(
-                            ui.p('font-semibold text-gray-700 mb-2')('Experience Level'),
+                            ui.p('font-semibold text-gray-700 mb-2')('Experience Level (Individual Radios)'),
                             f.Radio('experience_level', data).Value('beginner').Render('Beginner'),
                             f.Radio('experience_level', data).Value('intermediate').Render('Intermediate'),
                             f.Radio('experience_level', data).Value('advanced').Render('Advanced'),
                         ),
+                    ),
+                    ui.div('mt-4')(
+                        f.RadioButtons('notification_preference', data)
+                            .Options([
+                                { id: 'email', value: 'Email Notifications' },
+                                { id: 'sms', value: 'SMS Notifications' },
+                                { id: 'push', value: 'Push Notifications' },
+                                { id: 'none', value: 'No Notifications' },
+                            ])
+                            .Required()
+                            .Render('Notification Preference (RadioButtons Component)'),
                     ),
                 ),
 
