@@ -1241,9 +1241,23 @@ export class App {
                         headers: reqHeadersObj,
                     } as unknown as IncomingMessage;
 
+                    // Create a custom response writer to capture output
+                    const chunks: Buffer[] = [];
                     const mockRes = new ServerResponse(mockReq);
+                    const originalWrite = mockRes.write.bind(mockRes);
+                    const originalEnd = mockRes.end.bind(mockRes);
+                    
+                    mockRes.write = function(chunk: any): boolean {
+                        if (chunk) chunks.push(Buffer.from(chunk));
+                        return originalWrite(chunk);
+                    };
+                    
+                    mockRes.end = function(chunk?: any): any {
+                        if (chunk) chunks.push(Buffer.from(chunk));
+                        return originalEnd(chunk);
+                    };
 
-                    const html = await self._dispatch(path, mockReq, mockRes);
+                    const html = await self._dispatch(path, mockReq, mockRes, body);
 
                     const headers: Record<string, string> = {};
                     const headersObj = mockRes.getHeaders();
@@ -1258,6 +1272,15 @@ export class App {
                                 headers[key] = val.join(',');
                             }
                         }
+                    }
+
+                    // If dispatch wrote to response (e.g., JSON for page POST), use that
+                    if (chunks.length > 0) {
+                        const responseBody = Buffer.concat(chunks).toString();
+                        return new Response(responseBody, {
+                            status: mockRes.statusCode || 200,
+                            headers: headers,
+                        });
                     }
 
                     if (!headers["Content-Type"]) {
@@ -2577,17 +2600,18 @@ export const __submit = ui.Trim(`
                 if (tag === 'form') { form = el; } else { form = el.closest('form'); }
                 const id = form.getAttribute('id');
                 let body = values;
-                let found = Array.prototype.slice.call(document.querySelectorAll('[form=' + id + '][name]'));
+                let found = Array.prototype.slice.call(document.querySelectorAll('[form="' + id + '"][name]'));
                 if (found.length === 0) { found = Array.prototype.slice.call(form.querySelectorAll('[name]')); }
                 for (var i = 0; i < found.length; i++) {
                     var item = found[i];
                     var name = item.getAttribute('name');
                     var typeAttr = item.getAttribute('type');
+                    var coerceType = item.getAttribute('data-coerce');
                     var value = item.value;
                     if (typeAttr === 'checkbox') {
                         value = String(item.checked);
                     }
-                    var finalType = typeAttr;
+                    var finalType = coerceType || typeAttr;
                     if (finalType == null || finalType === '') {
                         finalType = 'string';
                     }
@@ -3450,9 +3474,10 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                         } as unknown as ServerResponse;
                         
                         // Transform BodyItem[] from protocol format to server format
+                        // Preserve the type from client (e.g., "checkbox", "bool", "number") for proper coercion
                         const serverBody: BodyItem[] = (callMsg.vals || []).map(v => ({
                             name: v.name,
-                            type: typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string',
+                            type: v.type || (typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string'),
                             value: String(v.value ?? "")
                         }));
                         
@@ -3650,9 +3675,10 @@ function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): vo
                 } as unknown as ServerResponse;
                 
                 // Transform BodyItem[] from protocol format to server format
+                // Preserve the type from client (e.g., "checkbox", "bool", "number") for proper coercion
                 const serverBody: BodyItem[] = (callMsg.vals || []).map(v => ({
                     name: v.name,
-                    type: typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string',
+                    type: v.type || (typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string'),
                     value: String(v.value ?? "")
                 }));
                 

@@ -42,7 +42,8 @@ export interface Attr {
     required?: boolean;
     readonly?: boolean;
     form?: string;
-    
+    'data-coerce'?: string;
+
     // ARIA attributes
     'aria-label'?: string;
     'aria-required'?: string;
@@ -344,6 +345,9 @@ function attributes(...attrs: Attr[]): string {
         if (a.form) {
             result.push('form="' + a.form + '"');
         }
+        if (a['data-coerce']) {
+            result.push('data-coerce="' + a['data-coerce'] + '"');
+        }
         // ARIA attributes
         if (a['aria-label']) {
             result.push('aria-label="' + a['aria-label'] + '"');
@@ -550,7 +554,7 @@ function ThemeSwitcher(css = ""): string {
         '<button id="' +
         id +
         '" type="button" aria-label="Theme switcher" class="' +
-        "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
+        "cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 " +
         "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
         css +
         '">',
@@ -664,7 +668,7 @@ function Button(...attrs: Attr[]) {
                 merged.push(state.extra[i]);
             }
             if (state.as === "a") {
-                merged.push({ 
+                merged.push({
                     id: state.target.id,
                     'aria-label': stripHTML(text),
                     'aria-disabled': state.disabled ? 'true' : 'false',
@@ -1406,14 +1410,14 @@ function ISelect<T = unknown>(name: string, data?: T) {
             const selected = String(current || "");
             const opts: string[] = [];
             if (state.placeholder) {
-                opts.push(option("", { 
+                opts.push(option("", {
                     value: "",
                     role: 'option',
                     'aria-selected': 'false'
                 })(state.placeholder));
             }
             if (state.empty) {
-                opts.push(option("", { 
+                opts.push(option("", {
                     value: "",
                     role: 'option',
                     'aria-selected': 'false'
@@ -1421,7 +1425,7 @@ function ISelect<T = unknown>(name: string, data?: T) {
             }
             for (let i = 0; i < state.options.length; i++) {
                 const o = state.options[i];
-                const at: Attr = { 
+                const at: Attr = {
                     value: o.id,
                     role: 'option',
                     'aria-selected': selected === o.id ? 'true' : 'false'
@@ -1995,13 +1999,13 @@ function Timeout(timeout: number, callback: () => void) {
 }
 
 function Hidden(name: string, type: string, value: unknown): string {
-    // Use provided type for server-side coercion while visually hiding the input.
-    // Browsers treat unknown types as text; apply inline style to ensure it's hidden.
+    // Use data-coerce attribute for server-side type coercion since browsers
+    // normalize unknown input types to text
     return input("", {
-        type: type,
+        type: "hidden",
         name: name,
         value: String(value),
-        style: "display:none;visibility:hidden;position:absolute;left:-9999px;top:-9999px;",
+        'data-coerce': type,
         // Keep an id off this element to avoid collisions with visible controls.
     });
 }
@@ -3503,8 +3507,8 @@ class Form {
     }
 
     Render(): string {
-        return form("hidden", { 
-            id: this.formId, 
+        return form("hidden", {
+            id: this.formId,
             ...this.onSubmit,
             role: 'form',
             'aria-label': `Form ${this.formId}`,

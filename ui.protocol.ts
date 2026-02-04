@@ -5,6 +5,7 @@
  */
 export interface BodyItem {
     name: string;
+    type?: string;  // optional type hint for coercion (e.g., "checkbox", "bool", "number")
     value: string | number | boolean | null;
 }
 

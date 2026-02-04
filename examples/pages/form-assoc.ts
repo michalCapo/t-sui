@@ -28,9 +28,7 @@ function actionSubmit(ctx: Context): string {
         );
     }
 
-    const successMsg = ui.div(
-        "bg-green-100 dark:bg-green-900/30 border border-green-500 text-green-800 dark:text-green-200 px-6 py-4 rounded-lg",
-    )(
+    const successMsg = ui.div("bg-green-100 dark:bg-green-900/30 border border-green-500 text-green-800 dark:text-green-200 px-6 py-4 rounded-lg")(
         ui.div("font-bold text-lg mb-2")("Message Sent!"),
         ui.div("")(`Thank you, ${form.Name}!`),
         ui.div("text-sm mt-2")(`Email: ${form.Email}`),
@@ -38,20 +36,17 @@ function actionSubmit(ctx: Context): string {
         ui.div("text-sm")(`Newsletter: ${form.Subscribe ? "Yes" : "No"}`),
     );
 
-    return ui.div("space-y-4")(
-        ui.a("inline-block px-4 py-2 bg-blue-800 text-white rounded font-bold hover:bg-blue-700", { href: "/form-assoc" })("Send Another"),
-        successMsg,
-    );
+    return render(ctx, form, successMsg)
 }
 
-function render(ctx: Context, form: ContactForm, message: string): string {
+function render(ctx: Context, data: ContactForm, message: string): string {
     const target = ui.Target();
 
     // Create a FormInstance with the submit handler
     // This allows form elements to be placed outside the visual form element
     const f = new ui.Form(ctx.Submit(actionSubmit).Replace(target));
 
-    return ui.div("space-y-8")(
+    return ui.div("space-y-8", target)(
         ui.div("text-2xl font-bold")("Form Association Demo"),
         ui.div("text-gray-600 dark:text-gray-400")(
             "This demo shows the FormInstance feature. Inputs and buttons can be placed anywhere in the layout " +
@@ -62,22 +57,22 @@ function render(ctx: Context, form: ContactForm, message: string): string {
         f.Render(),
 
         // Result area for displaying messages
-        ui.div("space-y-4", target)(message),
+        ui.div("space-y-4")(message),
 
         // Layout with inputs placed in different sections
         ui.div("grid grid-cols-1 md:grid-cols-2 gap-6")(
             // Left column
             ui.div("space-y-4")(
                 ui.div("text-lg font-semibold")("Personal Information"),
-                f.Text("Name", form).Required().Render("Name"),
-                f.Text("Email", form).Required().Render("Email"),
+                f.Text("Name", data).Required().Render("Name"),
+                f.Text("Email", data).Required().Render("Email"),
             ),
 
             // Right column - these inputs are associated via form attribute
             ui.div("space-y-4")(
                 ui.div("text-lg font-semibold")("Message Details"),
-                f.Area("Message", form).Rows(4).Render("Message"),
-                f.Checkbox("Subscribe", form).Render("Subscribe to newsletter"),
+                f.Area("Message", data).Rows(4).Render("Message"),
+                f.Checkbox("Subscribe", data).Render("Subscribe to newsletter"),
             ),
         ),
 

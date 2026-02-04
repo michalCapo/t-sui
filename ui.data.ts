@@ -504,7 +504,7 @@ function Searching(ctx: Context, query: TQuery, target: Target, targetFilter: Ta
                 ),
                 ui.IText("Search", query)
                     .Class("p-px w-full")
-                    .ClassInput("cursor-pointer bg-white border-gray-300 hover:border-blue-500 block w-full py-3 pl-12 pr-12")
+                    .ClassInput("py-3 pl-12 pr-12")
                     .Placeholder("Search")
                     .Render(""),
                 ui.Iff(String(query.Search || "") !== "")(
