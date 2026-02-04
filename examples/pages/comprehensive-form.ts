@@ -39,72 +39,70 @@ class ComprehensiveFormData {
 }
 
 export function ComprehensiveFormContent(ctx: Context): string {
-    const target = ui.Target();
     const form = new ComprehensiveFormData();
+    return render(ctx, form, '');
+}
 
-    // Result display target
-    const resultTarget = ui.Target();
+function onSubmit(ctx: Context): string {
+    const submittedData = new ComprehensiveFormData();
+    ctx.Body(submittedData);
 
-    // Form submission handler
-    function onSubmit(ctx: Context): string {
-        const submittedData = new ComprehensiveFormData();
-        ctx.Body(submittedData);
-
-        // Validate required fields
-        if (!submittedData.fullName) {
-            ctx.Error('Full Name is required');
-            return render(ctx, submittedData);
-        }
-        if (!submittedData.email) {
-            ctx.Error('Email is required');
-            return render(ctx, submittedData);
-        }
-
-        ctx.Success('Form submitted successfully!');
-
-        // Display the submitted data
-        const resultHtml = ui.div('mt-6 p-6 bg-green-50 border border-green-200 rounded-lg', resultTarget)(
-            ui.div('text-2xl font-bold text-green-800 mb-4')('✓ Form Submitted Successfully'),
-            ui.div('space-y-3 text-gray-700')(
-                renderDataField('Full Name', submittedData.fullName),
-                renderDataField('Email', submittedData.email),
-                renderDataField('Website', submittedData.website),
-                renderDataField('Phone', submittedData.phone),
-                renderDataField('Password', '***' + submittedData.password?.slice(-4)),
-                renderDataField('Bio', submittedData.bio),
-                renderDataField('Age', String(submittedData.age)),
-                renderDataField('Experience (years)', String(submittedData.experience)),
-                renderDataField('Birth Date', submittedData.birthDate),
-                renderDataField('Meeting Time', submittedData.meetingTime),
-                renderDataField('Created At', submittedData.createdAt),
-                renderDataField('Country', submittedData.country),
-                renderDataField('Department', submittedData.department),
-                renderDataField('Gender', submittedData.gender),
-                renderDataField('Experience Level', submittedData.experience_level),
-                renderDataField('Notification Preference', submittedData.notification_preference),
-                renderDataField('Agree to Terms', submittedData.agreeTerms ? '✓ Yes' : '✗ No'),
-                renderDataField('Newsletter', submittedData.newsletter ? '✓ Subscribed' : '✗ Not subscribed'),
-                renderDataField('User ID', submittedData.userId),
-            ),
-        );
-
-        return resultHtml;
+    // Validate required fields
+    if (!submittedData.fullName) {
+        ctx.Error('Full Name is required');
+        return render(ctx, submittedData, '');
     }
-    onSubmit.url = '/comprehensive-form-submit';
+    if (!submittedData.email) {
+        ctx.Error('Email is required');
+        return render(ctx, submittedData, '');
+    }
 
-    function render(ctx: Context, data: ComprehensiveFormData): string {
-        const f = new ui.Form(ctx.Submit(onSubmit).Replace(target));
+    ctx.Success('Form submitted successfully!');
 
-        return ui.div('space-y-8', target)(
+    // Build submitted data display
+    const resultHtml = ui.div('mt-6 p-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg')(
+        ui.div('text-2xl font-bold text-green-800 dark:text-green-200 mb-4')('Form Submitted Successfully'),
+        ui.div('grid grid-cols-1 md:grid-cols-2 gap-4 text-sm')(
+            renderDataField('Full Name', submittedData.fullName),
+            renderDataField('Email', submittedData.email),
+            renderDataField('Website', submittedData.website),
+            renderDataField('Phone', submittedData.phone),
+            renderDataField('Password', '***' + (submittedData.password?.slice(-4) || '')),
+            renderDataField('Bio', submittedData.bio),
+            renderDataField('Age', String(submittedData.age)),
+            renderDataField('Experience (years)', String(submittedData.experience)),
+            renderDataField('Birth Date', submittedData.birthDate),
+            renderDataField('Meeting Time', submittedData.meetingTime),
+            renderDataField('Created At', submittedData.createdAt),
+            renderDataField('Country', submittedData.country),
+            renderDataField('Department', submittedData.department),
+            renderDataField('Gender', submittedData.gender),
+            renderDataField('Experience Level', submittedData.experience_level),
+            renderDataField('Notification Preference', submittedData.notification_preference),
+            renderDataField('Agree to Terms', submittedData.agreeTerms ? 'Yes' : 'No'),
+            renderDataField('Newsletter', submittedData.newsletter ? 'Subscribed' : 'Not subscribed'),
+            renderDataField('User ID (hidden)', submittedData.userId),
+        ),
+    );
+
+    return render(ctx, submittedData, resultHtml);
+}
+onSubmit.url = '/comprehensive-form-submit';
+
+function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string): string {
+    const target = ui.Target();
+    const f = new ui.Form(ctx.Submit(onSubmit).Replace(target));
+
+    return ui.div('space-y-8', target)(
             // Header
             ui.div('mb-6')(
                 ui.div('text-4xl font-bold text-gray-900 mb-2')('Comprehensive Form Demo'),
                 ui.p('text-gray-600')('All form components with prefilled values'),
             ),
 
-            // Form
-            ui.form('space-y-6')(
-                f.Render(),
+            // Form (f.Render() creates hidden form element, inputs link via form attribute)
+            f.Render(),
+            ui.div('space-y-6')(
 
                 // Section: Text & Password
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
@@ -259,18 +257,15 @@ export function ComprehensiveFormContent(ctx: Context): string {
                 ),
             ),
 
-            // Result display
-            ui.div('', resultTarget)(),
+            // Result display (shows submitted data after form submission)
+            resultMessage,
         );
-    }
-
-    return render(ctx, form);
 }
 
 // Helper function to render data fields
 function renderDataField(label: string, value: string): string {
-    return ui.div('flex justify-between items-start py-2 border-b border-green-100')(
-        ui.span('font-semibold text-green-900')(label + ':'),
-        ui.span('text-green-700 text-right break-all')(value),
+    return ui.div('flex justify-between items-start py-2 border-b border-green-100 dark:border-green-800')(
+        ui.span('font-semibold text-green-900 dark:text-green-300')(label + ':'),
+        ui.span('text-green-700 dark:text-green-400 text-right break-all')(value || '-'),
     );
 }
