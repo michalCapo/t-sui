@@ -25,11 +25,13 @@ import { SpaContent } from './pages/spa';
 import { ReloadRedirectContent } from './pages/reload-redirect';
 import { SharedContent } from './pages/shared';
 import { RoutesContent, SearchContent, UserDetailContent, UserPostDetailContent, CategoryProductDetailContent } from './pages/routes';
+import { ComprehensiveFormContent } from './pages/comprehensive-form';
 
 export type Route = { Path: string; Title: string };
 
 export const routes: Route[] = [
     { Path: '/', Title: 'Showcase' },
+    { Path: '/comprehensive-form', Title: 'Comprehensive Form' },
     { Path: '/button', Title: 'Button' },
     { Path: '/text', Title: 'Text' },
     { Path: '/password', Title: 'Password' },
@@ -111,6 +113,7 @@ function createLayout(app: App) {
 // Page content mapping
 const pageContents: Record<string, (ctx: Context) => string> = {
     '/': ShowcaseContent,
+    '/comprehensive-form': ComprehensiveFormContent,
     '/button': ButtonContent,
     '/text': TextContent,
     '/password': PasswordContent,
