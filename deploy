@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# Deploy script for t-sui
+# Creates and pushes a new git tag in vX.Y.Z format.
+
+set -euo pipefail
+
+REPO_PATH="github.com/michalCapo/t-sui"
+
+if ! command -v npm >/dev/null 2>&1; then
+    echo "Error: npm is required but not installed."
+    exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+    echo "Error: node is required but not installed."
+    exit 1
+fi
+
+# Check if working tree is clean
+if ! git diff-index --quiet HEAD --; then
+    echo "Error: Working tree has uncommitted changes. Please commit or stash them first."
+    exit 1
+fi
+
+CURRENT_BRANCH=$(git branch --show-current)
+echo "Current branch: $CURRENT_BRANCH"
+
+echo "Fetching latest tags from origin..."
+git fetch origin --tags
+
+LATEST_TAG=$(git tag -l "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+
+if [ -z "$LATEST_TAG" ]; then
+    PKG_VERSION=$(node -p "require('./package.json').version")
+    if [[ "$PKG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        NEW_VERSION="v$PKG_VERSION"
+        echo "No existing semver tags found. Starting from package.json version: $NEW_VERSION"
+    else
+        echo "Error: package.json version is not valid semver: $PKG_VERSION"
+        exit 1
+    fi
+else
+    echo "Latest version: $LATEST_TAG"
+    MAJOR=$(echo "$LATEST_TAG" | sed 's/^v\([0-9]*\)\..*/\1/')
+    MINOR=$(echo "$LATEST_TAG" | sed 's/^v[0-9]*\.\([0-9]*\)\..*/\1/')
+    PATCH=$(echo "$LATEST_TAG" | sed 's/^v[0-9]*\.[0-9]*\.\([0-9]*\)$/\1/')
+    NEW_PATCH=$((PATCH + 1))
+    NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
+    echo "New version: $NEW_VERSION"
+fi
+
+if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
+    echo "Error: Tag already exists: $NEW_VERSION"
+    exit 1
+fi
+
+echo "Running type check..."
+npm run check
+
+echo "Running tests..."
+npm test
+
+echo "Creating tag $NEW_VERSION..."
+git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
+
+echo "Pushing tag $NEW_VERSION to origin..."
+git push origin "$NEW_VERSION"
+
+echo "Ensuring current branch is pushed..."
+git push origin "$CURRENT_BRANCH" --follow-tags || true
+
+echo ""
+echo "✓ Successfully deployed $NEW_VERSION"
+echo "  Tag created and pushed to origin"
+echo ""
+echo "Install from GitHub tag:"
+echo "  npm install github:michalCapo/t-sui#$NEW_VERSION"
+echo ""
+echo "Next steps:"
+echo "  - Create a GitHub release: https://github.com/michalCapo/t-sui/releases/new"
+echo "  - Select tag: $NEW_VERSION"
+echo "  - Verify dependency usage in downstream projects"

@@ -396,6 +396,7 @@ export class App {
         this.HTMLHead = [
             '<meta charset=\"UTF-8\">',
             '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
+            '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/material-design-icons/3.0.1/iconfont/material-icons.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />',
             '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
             '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>',
             // Configure Tailwind CSS 4 to use class-based dark mode (selector strategy)
@@ -2610,6 +2611,9 @@ export const __submit = ui.Trim(`
                     var value = item.value;
                     if (typeAttr === 'checkbox') {
                         value = String(item.checked);
+                    }
+                    if (typeAttr === 'radio' && !item.checked) {
+                        continue;
                     }
                     var finalType = coerceType || typeAttr;
                     if (finalType == null || finalType === '') {

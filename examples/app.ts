@@ -20,18 +20,24 @@ import { OthersContent } from './pages/others';
 import { CollateContent } from './pages/collate';
 import { CaptchaContent } from './pages/captcha';
 import { FormAssocContent } from './pages/form-assoc';
+import { FormContent } from './pages/form';
 import { IconsContent } from './pages/icons';
 import { SpaContent } from './pages/spa';
 import { ReloadRedirectContent } from './pages/reload-redirect';
 import { SharedContent } from './pages/shared';
 import { RoutesContent, SearchContent, UserDetailContent, UserPostDetailContent, CategoryProductDetailContent } from './pages/routes';
 import { ComprehensiveFormContent } from './pages/comprehensive-form';
+import { ClockContent } from './pages/clock-page';
+import { DeferredContent } from './pages/deferred';
+import { CollateEmptyContent } from './pages/collate-empty';
+import { ImageUploadContent } from './pages/image-upload';
+import { ProxyContent } from './pages/proxy';
 
 export type Route = { Path: string; Title: string };
 
 export const routes: Route[] = [
     { Path: '/', Title: 'Showcase' },
-    { Path: '/comprehensive-form', Title: 'Comprehensive Form' },
+    { Path: '/icons', Title: 'Icons' },
     { Path: '/button', Title: 'Button' },
     { Path: '/text', Title: 'Text' },
     { Path: '/password', Title: 'Password' },
@@ -42,16 +48,24 @@ export const routes: Route[] = [
     { Path: '/checkbox', Title: 'Checkbox' },
     { Path: '/radio', Title: 'Radio' },
     { Path: '/table', Title: 'Table' },
-    { Path: '/append', Title: 'Append' },
-    { Path: '/others', Title: 'Others' },
-    { Path: '/collate', Title: 'Collate' },
+    { Path: '/form', Title: 'Form' },
+    { Path: '/image-upload', Title: 'Image Upload' },
     { Path: '/captcha', Title: 'Captcha' },
-    { Path: '/form-assoc', Title: 'Form Association' },
-    { Path: '/icons', Title: 'Icons' },
+    { Path: '/others', Title: 'Others' },
+    { Path: '/append', Title: 'Append' },
+    { Path: '/clock', Title: 'Clock' },
+    { Path: '/deferred', Title: 'Deferred' },
+    { Path: '/shared', Title: 'Shared' },
+    { Path: '/collate', Title: 'Collate' },
+    { Path: '/collate-empty', Title: 'Collate Empty' },
     { Path: '/spa', Title: 'SPA' },
     { Path: '/reload-redirect', Title: 'Reload & Redirect' },
-    { Path: '/shared', Title: 'Shared' },
     { Path: '/routes', Title: 'Route Params' },
+    { Path: '/proxy', Title: 'Proxy' },
+
+    // t-sui specific examples kept for compatibility
+    { Path: '/comprehensive-form', Title: 'Comprehensive Form' },
+    { Path: '/form-assoc', Title: 'Form Association' },
 ];
 
 const svg =
@@ -92,9 +106,9 @@ function createLayout(app: App) {
             links += a(route.Title);
         }
 
-        const nav = ui.nav('bg-white dark:bg-gray-900 shadow mb-6 fixed top-0 left-0 right-0 z-10')(
-            ui.div('max-w-5xl mx-auto px-4 py-2 flex items-center gap-2')(
-                ui.div('flex flex-wrap gap-1 overflow-auto')(links),
+        const nav = ui.nav('bg-white dark:bg-gray-900 shadow mb-6 w-full')(
+            ui.div('w-full px-4 py-2 flex items-start gap-2')(
+                ui.div('flex flex-wrap gap-1 mt-2 md:mt-0 w-full')(links),
                 ui.div('flex-1')(),
                 ui.ThemeSwitcher('ml-auto'),
             ),
@@ -102,8 +116,8 @@ function createLayout(app: App) {
 
         return app.HTML(
             't-sui Examples',
-            'bg-gray-200 dark:bg-gray-900 min-h-screen',
-            nav + ui.div('pt-24 max-w-5xl mx-auto px-2 py-8')(
+            'bg-gray-200 dark:bg-gray-900 min-h-screen overflow-y-scroll',
+            nav + ui.div('max-w-5xl mx-auto px-2 py-8')(
                 ui.div('')('__CONTENT__'),
             ),
         );
@@ -128,12 +142,18 @@ const pageContents: Record<string, (ctx: Context) => string> = {
     '/others': OthersContent,
     '/collate': CollateContent,
     '/captcha': CaptchaContent,
+    '/form': FormContent,
+    '/image-upload': ImageUploadContent,
+    '/clock': ClockContent,
+    '/deferred': DeferredContent,
     '/form-assoc': FormAssocContent,
     '/icons': IconsContent,
     '/spa': SpaContent,
     '/reload-redirect': ReloadRedirectContent,
     '/shared': SharedContent,
     '/routes': RoutesContent,
+    '/collate-empty': CollateEmptyContent,
+    '/proxy': ProxyContent,
 };
 
 // Configure and return the app instance
@@ -142,7 +162,7 @@ export function createExampleApp(locale = 'en'): { app: App } {
 
     app.HTMLHead.push(
         '<link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,' + encodeURIComponent(svg) + '">',
-        `<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" integrity="sha512-SfTiTlX6kk+qitfevl/7LibUOeJWlt9rbyDn92a1DqWOw9vWG2MFoays0sgObmWazO5BQPiFucnnEAjpAB+/Sw==" crossorigin="anonymous" referrerpolicy="no-referrer" />`,
+        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/material-design-icons/3.0.1/iconfont/material-icons.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />',
     );
 
     const layout = createLayout(app);

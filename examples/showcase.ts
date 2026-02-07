@@ -8,6 +8,10 @@ const app = MakeApp("en");
 
 app.Debug(true);
 
+function materialIcon(name: string): string {
+    return ui.span("material-icons text-[18px] leading-none")(name);
+}
+
 // Demo form class for form inputs showcase
 class DemoForm {
     Name = "";
@@ -177,9 +181,19 @@ app.Page("/buttons", "Buttons", function (ctx: Context): string {
         ui.div("")(
             ui.p("text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3")("With Icons"),
             ui.div("flex flex-wrap gap-3")(
-                ui.Button().Color(ui.Blue).Render(ui.IconStart("fa fa-home", "Home")),
-                ui.Button().Color(ui.Green).Render(ui.IconEnd("fa fa-arrow-right", "Next")),
-                ui.Button().Color(ui.Red).Render(ui.Icon("fa fa-trash")),
+                ui.Button().Color(ui.Blue).Render(
+                    ui.div("inline-flex items-center gap-2")(
+                        materialIcon("home"),
+                        ui.span("")("Home"),
+                    ),
+                ),
+                ui.Button().Color(ui.Green).Render(
+                    ui.div("inline-flex items-center gap-2")(
+                        ui.span("")("Next"),
+                        materialIcon("arrow_forward"),
+                    ),
+                ),
+                ui.Button().Color(ui.Red).Render(materialIcon("delete")),
             ),
         ),
 

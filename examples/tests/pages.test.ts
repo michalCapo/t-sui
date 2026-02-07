@@ -97,6 +97,16 @@ test.it('Example App - Page Tests', function (ctx: TestContext) {
     });
 
     describe('Other Pages', function () {
+        it('should load form page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/form');
+            await ctx.page.waitForSelector('text=Form');
+        });
+
+        it('should load image upload page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/image-upload');
+            await ctx.page.waitForSelector('text=Image Upload');
+        });
+
         it('should load table page', async function () {
             await ctx.page.goto(ctx.baseUrl + '/table');
             await ctx.page.waitForSelector('text=Table');
@@ -112,6 +122,11 @@ test.it('Example App - Page Tests', function (ctx: TestContext) {
             await ctx.page.waitForSelector('text=Collate');
         });
 
+        it('should load collate empty page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/collate-empty');
+            await ctx.page.waitForSelector('text=Collate Empty');
+        });
+
         it('should load captcha page', async function () {
             await ctx.page.goto(ctx.baseUrl + '/captcha');
             await ctx.page.waitForSelector('text=Captcha');
@@ -120,6 +135,21 @@ test.it('Example App - Page Tests', function (ctx: TestContext) {
         it('should load others page', async function () {
             await ctx.page.goto(ctx.baseUrl + '/others');
             await ctx.page.waitForSelector('text=Others');
+        });
+
+        it('should load clock page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/clock');
+            await ctx.page.waitForSelector('text=Clock');
+        });
+
+        it('should load deferred page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
+        });
+
+        it('should load proxy page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/proxy');
+            await ctx.page.waitForSelector('text=Proxy');
         });
     });
 });

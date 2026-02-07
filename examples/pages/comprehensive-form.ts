@@ -38,6 +38,13 @@ class ComprehensiveFormData {
     userId = '12345';
 }
 
+function sectionTitle(icon: string, text: string): string {
+    return ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300 flex items-center gap-2')(
+        ui.span('material-icons text-[20px] leading-none text-gray-600')(icon),
+        ui.span('')(text),
+    );
+}
+
 export function ComprehensiveFormContent(ctx: Context): string {
     const form = new ComprehensiveFormData();
     return render(ctx, form, '');
@@ -106,7 +113,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Text & Password
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('📝 Text Inputs & HTML5 Types'),
+                    sectionTitle('edit', 'Text Inputs & HTML5 Types'),
                     ui.div('grid grid-cols-2 gap-4')(
                         f.Text('fullName', data)
                             .Required()
@@ -142,7 +149,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Textarea
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('📄 Textarea'),
+                    sectionTitle('description', 'Textarea'),
                     f.Area('bio', data)
                         .Rows(4)
                         .Placeholder('Tell us about yourself...')
@@ -151,7 +158,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Numbers
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('🔢 Number Inputs'),
+                    sectionTitle('dialpad', 'Number Inputs'),
                     ui.div('grid grid-cols-2 gap-4')(
                         f.Number('age', data)
                             .Numbers(18, 120, 1)
@@ -166,7 +173,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Date & Time
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('📅 Date & Time'),
+                    sectionTitle('event', 'Date & Time'),
                     ui.div('grid grid-cols-3 gap-4')(
                         f.Date('birthDate', data)
                             .Dates(new Date('1950-01-01'), new Date())
@@ -180,7 +187,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Selects
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('🎯 Select Dropdowns'),
+                    sectionTitle('list', 'Select Dropdowns'),
                     ui.div('grid grid-cols-2 gap-4')(
                         f.Select('country', data)
                             .Options([
@@ -210,7 +217,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Checkboxes
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('☑️ Checkboxes'),
+                    sectionTitle('done', 'Checkboxes'),
                     ui.div('space-y-3')(
                         f.Checkbox('agreeTerms', data)
                             .Required()
@@ -222,7 +229,7 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Radio Buttons
                 ui.div('bg-white p-6 rounded-lg border border-gray-200')(
-                    ui.div('text-xl font-bold text-gray-800 mb-4 pb-2 border-b border-gray-300')('◉ Radio Buttons'),
+                    sectionTitle('radio', 'Radio Buttons'),
                     ui.div('grid grid-cols-2 gap-6')(
                         ui.div('space-y-3')(
                             ui.p('font-semibold text-gray-700 mb-2')('Gender (Individual Radios)'),
@@ -252,7 +259,10 @@ function render(ctx: Context, data: ComprehensiveFormData, resultMessage: string
 
                 // Section: Hidden Fields
                 ui.div('bg-gray-50 p-4 rounded border border-gray-200')(
-                    ui.p('text-sm text-gray-600 mb-2')('🔒 Hidden Field'),
+                    ui.p('text-sm text-gray-600 mb-2 flex items-center gap-2')(
+                        ui.span('material-icons text-[18px] leading-none text-gray-600')('lock'),
+                        ui.span('')('Hidden Field'),
+                    ),
                     f.Button().Submit().Color(ui.Blue).Size(ui.ST).Render('Submit Form'),
                 ),
             ),

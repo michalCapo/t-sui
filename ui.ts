@@ -14,6 +14,11 @@ export interface Attr {
     onchange?: string;
     onsubmit?: string;
     step?: string;
+    accept?: string;
+    enctype?: string;
+    method?: string;
+    multiple?: boolean;
+    capture?: string;
     id?: string;
     href?: string;
     title?: string;
@@ -465,6 +470,10 @@ function Icon(css: string, ...attr: Attr[]): string {
     return div(css, ...attr)();
 }
 
+function MaterialIcon(name: string, css = "", ...attr: Attr[]): string {
+    return span(Classes("material-icons leading-none align-middle", css), ...attr)(name);
+}
+
 function IconStart(css: string, text: string): string {
     return div("flex-1 flex items-center gap-2")(
         Icon(css),
@@ -542,13 +551,9 @@ function Target(): Target {
 // Uses global setTheme() and shows only the current state
 function ThemeSwitcher(css = ""): string {
     const id = "tsui_theme_" + RandomString(8);
-    // inline SVG icons
-    const sun =
-        '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.8 1.42-1.42zm10.48 14.32l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM12 4V1h-0 0 0 0v3zm0 19v-3h0 0 0 0v3zM4 12H1v0 0 0 0h3zm19 0h-3v0 0 0 0h3zM6.76 19.16l-1.79 1.8 1.41 1.41 1.8-1.79-1.42-1.42zM19.16 6.76l1.8-1.79-1.41-1.41-1.8 1.79 1.41 1.41zM12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>';
-    const moon =
-        '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
-    const desktop =
-        '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 4h18v12H3z"/><path d="M8 20h8v-2H8z"/></svg>';
+    const sun = MaterialIcon("light_mode", "text-lg", { "aria-hidden": "true" });
+    const moon = MaterialIcon("dark_mode", "text-lg", { "aria-hidden": "true" });
+    const auto = MaterialIcon("brightness_auto", "text-lg", { "aria-hidden": "true" });
 
     const container = [
         '<button id="' +
@@ -558,7 +563,7 @@ function ThemeSwitcher(css = ""): string {
         "hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 shadow-sm " +
         css +
         '">',
-        '  <span class="icon">' + desktop + "</span>",
+        '  <span class="icon inline-flex items-center justify-center">' + auto + "</span>",
         '  <span class="label">Auto</span>',
         "</button>",
     ].join("");
@@ -567,17 +572,16 @@ function ThemeSwitcher(css = ""): string {
         "<script>(function(){",
         'var btn=document.getElementById("' + id + '"); if(!btn) return;',
         'var modes=["system","light","dark"]; function getPref(){ try { return localStorage.getItem("theme")||"system"; } catch(_) { return "system"; } }',
-        'function resolve(mode){ if(mode==="system"){ try { return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"; } catch(_) { return "light"; } } return mode; }',
         'function setMode(mode){ try { if (typeof setTheme === "function") setTheme(mode); } catch(_){} }',
         'function labelFor(mode){ return mode==="system"?"Auto":(mode.charAt(0).toUpperCase()+mode.slice(1)); }',
-        'function iconFor(effective){ if(effective==="dark"){ return ' +
+        'function iconFor(mode){ if(mode==="dark"){ return ' +
         JSON.stringify(moon) +
-        '; } if(effective==="light"){ return ' +
+        '; } if(mode==="light"){ return ' +
         JSON.stringify(sun) +
         "; } return " +
-        JSON.stringify(desktop) +
+        JSON.stringify(auto) +
         "; }",
-        'function render(){ var pref=getPref(); var eff=resolve(pref); var icon=iconFor(eff); var i=btn.querySelector(".icon"); if(i){ i.innerHTML=icon; } var l=btn.querySelector(".label"); if(l){ l.textContent=labelFor(pref); } }',
+        'function render(){ var pref=getPref(); var icon=iconFor(pref); var i=btn.querySelector(".icon"); if(i){ i.innerHTML=icon; } var l=btn.querySelector(".label"); if(l){ l.textContent=labelFor(pref); } }',
         "render();",
         'btn.addEventListener("click", function(){ var pref=getPref(); var idx=modes.indexOf(pref); var next=modes[(idx+1)%modes.length]; setMode(next); render(); });',
         'try { if (window.matchMedia){ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(){ if(getPref()==="system"){ render(); } }); } } catch(_){ }',
@@ -2096,7 +2100,7 @@ function Alert() {
 
             let dismissBtn = "";
             if (state.dismissible) {
-                const closeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+                const closeIcon = MaterialIcon("close", "text-base", { "aria-hidden": "true" });
                 const persistArg = state.persistKey ? `'${escapeJS(state.persistKey)}'` : "null";
                 dismissBtn = `<button type="button" onclick="tSuiDismissAlert('${escapeJS(alertId)}', ${persistArg})" class="flex-shrink-0 ml-auto -mr-1 p-1 rounded-md opacity-50 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 focus:outline-none transition-all" aria-label="Close alert">${closeIcon}</button>`;
             }
@@ -2130,10 +2134,10 @@ function getVariantStyles(variant: string): { baseClasses: string; iconHTML: str
     const variantName = variant.replace("-outline", "");
 
     const icons = {
-        success: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
-        warning: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-        error: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
-        info: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+        success: MaterialIcon("check_circle", "text-xl", { "aria-hidden": "true" }),
+        warning: MaterialIcon("warning", "text-xl", { "aria-hidden": "true" }),
+        error: MaterialIcon("cancel", "text-xl", { "aria-hidden": "true" }),
+        info: MaterialIcon("info", "text-xl", { "aria-hidden": "true" }),
     };
 
     switch (variantName) {
@@ -3216,7 +3220,7 @@ function renderAccordionItem(state: { items: AccordionItemData[]; variant: strin
 
     const maxHeight = isOpen ? "max-height: 1000px;" : "max-height: 0px;";
 
-    const chevronSvg = `<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+    const chevronSvg = MaterialIcon("expand_more", "text-xl", { "aria-hidden": "true" });
 
     return div(isSeparated ? "mb-2" : "")(
         div(headerClass)(
@@ -3504,6 +3508,16 @@ class Form {
 
     Button(): ReturnType<typeof Button> {
         return Button().Form(this.formId) as any;
+    }
+
+    Hidden(name: string, type: string, value: unknown): string {
+        return input("", {
+            type: "hidden",
+            name: name,
+            value: String(value),
+            form: this.formId,
+            'data-coerce': type,
+        });
     }
 
     Render(): string {

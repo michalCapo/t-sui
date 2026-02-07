@@ -4,6 +4,7 @@
 .features/
 .zed/
 docs/.~*
+build/
 
 tmp/
 __debug*

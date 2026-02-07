@@ -2,30 +2,38 @@ import ui from "../../ui";
 import { Context } from "../../ui.server";
 
 export function Icons(): string {
-    const icon = ui.div("flex items-center gap-3 border rounded p-4");
+    const row = ui.div("flex items-center gap-3 border rounded p-4");
+
+    function icon(name: string, color: string): string {
+        return ui.span("material-icons text-2xl leading-none " + color)(name);
+    }
 
     return ui.div("bg-white rounded-lg shadow w-full")(
         ui.div("flex flex-col gap-3")(
-            icon(
-                ui.IconStart(
-                    "w-6 h-6 bg-gray-400 rounded",
-                    "Start aligned icon",
+            row(
+                ui.div("flex-1 flex items-center gap-2")(
+                    icon("home", "text-gray-600"),
+                    ui.div("text-center")("Start aligned icon"),
                 ),
             ),
-            icon(
-                ui.IconLeft(
-                    "w-6 h-6 bg-blue-600 rounded",
-                    "Centered with icon left",
+            row(
+                ui.div("flex-1 flex items-center justify-center gap-2")(
+                    icon("person", "text-blue-600"),
+                    ui.div("text-center")("Centered with icon left"),
                 ),
             ),
-            icon(
-                ui.IconRight(
-                    "w-6 h-6 bg-green-600 rounded",
-                    "Centered with icon right",
+            row(
+                ui.div("flex-1 flex items-center justify-center gap-2")(
+                    ui.div("text-center")("Centered with icon right"),
+                    icon("arrow_forward", "text-green-600"),
                 ),
             ),
-            icon(
-                ui.IconEnd("w-6 h-6 bg-purple-600 rounded", "End-aligned icon"),
+            row(
+                ui.div("flex-1 flex items-center gap-2")(
+                    ui.div("flex-1")(),
+                    ui.div("text-center")("End-aligned icon"),
+                    icon("settings", "text-purple-600"),
+                ),
             ),
         ),
     );
