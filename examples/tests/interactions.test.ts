@@ -15,7 +15,7 @@ test.it('Example App - Interaction Tests', function (ctx: TestContext) {
     describe('Counter Component - Real User Flow', function () {
         it('should display counter component on page', async function () {
             // User visits others page which contains counter
-            await ctx.page.goto(ctx.baseUrl + '/others');
+            await ctx.page.goto(ctx.baseUrl + '/others', { waitUntil: 'domcontentloaded' });
             await ctx.page.waitForSelector('text=Others');
 
             // Verify counter heading exists (use .first() to avoid strict mode violation)
@@ -39,11 +39,11 @@ test.it('Example App - Interaction Tests', function (ctx: TestContext) {
         });
 
         it('should have count display with initial value', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
+            await ctx.page.goto(ctx.baseUrl + '/others', { waitUntil: 'domcontentloaded' });
             await ctx.page.waitForSelector('text=Others');
 
-            // Find all count displays (should be 2 counters on the page)
-            const countDisplays = await ctx.page.locator('.text-2xl').all();
+            // Scope to counter components only; other cards also use .text-2xl
+            const countDisplays = await ctx.page.locator('div.bg-purple-500 .text-2xl').all();
 
             assert.ok(
                 countDisplays.length >= 2,
@@ -63,7 +63,7 @@ test.it('Example App - Interaction Tests', function (ctx: TestContext) {
         });
 
         it('should have interactive elements for counter manipulation', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
+            await ctx.page.goto(ctx.baseUrl + '/others', { waitUntil: 'domcontentloaded' });
             await ctx.page.waitForSelector('text=Others');
 
             // Find counter container by looking for the heading

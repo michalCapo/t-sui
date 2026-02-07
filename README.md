@@ -1,184 +1,119 @@
-# t-sui — TypeScript Server‑Rendered UI
+# t-sui
 
-A lightweight server-side UI framework for TypeScript that renders HTML strings and provides a minimal HTTP server for routing, WebSocket updates, and form handling. Features Tailwind-compatible components, real-time patches, and zero client-side framework dependencies.
+TypeScript server-rendered UI framework with real-time WebSocket patches.
+
+t-sui renders HTML on the server, sends actions over WebSocket, and updates specific DOM targets without full page reloads.
 
 ## Documentation
 
-See [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) for a comprehensive reference guide and architecture documentation.
-
-## Claude Code Skills
-
-[t-sui](https://github.com/michalCapo/t-sui) includes **Claude Code skills** to help Claude (and other LLMs) understand the framework better. These skills provide comprehensive documentation that Claude can reference when answering questions or generating code.
-
-### Install Skills
-
-```bash
-mkdir -p ~/.claude/skills/t-sui && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SKILL.md -o ~/.claude/skills/t-sui/SKILL.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/CORE.md -o ~/.claude/skills/t-sui/CORE.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/COMPONENTS.md -o ~/.claude/skills/t-sui/COMPONENTS.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/DATA.md -o ~/.claude/skills/t-sui/DATA.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SERVER.md -o ~/.claude/skills/t-sui/SERVER.md && curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/PATTERNS.md -o ~/.claude/skills/t-sui/PATTERNS.md
-```
-
-Then restart Claude Code to load the skills.
+- Full docs: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md)
+- LLM/Claude skill docs: [`docs/skills/SKILL.md`](docs/skills/SKILL.md)
 
 ## Features
 
-- **Minimal server** — GET/POST routing with native HTTP (Node.js) or Bun serve
-- **HTML builder API** — Composable components with curried functions
-- **Tailwind-compatible** — Class strings work out of the box
-- **Form helpers** — Auto-serialization, validation, and fetch-based posting
-- **Partial updates** — Replace, inner, append, or prepend DOM elements
-- **WebSocket patches** — Real-time updates without page reloads
-- **Dev auto-reload** — Live reload on file changes
-- **Skeleton placeholders** — Deferred content loading with loading states
-- **Data collation** — Built-in search, sort, filter, and pagination helpers
-- **Full ARIA support** — WCAG 2.1 Level AA compliant accessibility out of the box
-- **Cross-runtime** — Supports Node.js 18+ and Bun 1.0+
+- Server-side rendering with composable HTML builders (`ui.div`, `ui.form`, `ui.input`, ...)
+- Reactive updates via `ctx.Patch(target.<mode>, html)`
+- Form and click actions (`ctx.Submit`, `ctx.Click`, deprecated `ctx.Call`)
+- Route params and query params (`ctx.PathParam`, `ctx.QueryParam`, ...)
+- Built-in data collation (`createCollate`) for search/sort/filter/pagination
+- Built-in component set: forms, tables, alerts, badges, cards, tabs, accordion, dropdown
+- Accessibility-friendly output (ARIA roles/attributes on core controls)
+- Node.js and Bun runtime support
 
 ## Quick Start
 
-Prerequisites: Node.js 18+ or Bun 1.0+
+Requirements: Node.js 18+ or Bun 1.0+
 
 ```bash
-# Install dependencies
 npm install
-
-# Run the examples server
 npm run dev
-
-# Or with Bun
-npm run dev:bun
 ```
 
-Visit `http://localhost:1423` to see the demo application.
+Visit `http://localhost:1423`.
 
-## Minimal Example
-
-```typescript
-// app.ts
-import ui from "./ui";
-import { MakeApp, Context } from "./ui.server";
-
-const app = MakeApp("en");
-
-function Home(ctx: Context): string {
-    const body = ui.Div("p-6 max-w-xl mx-auto bg-white rounded shadow")(
-        ui.Div("text-xl font-bold")("Hello from t-sui"),
-        ui.Div("text-gray-600")(
-            "Server-rendered UI without a client framework.",
-        ),
-    );
-    return app.HTML("Home", "bg-gray-100 min-h-screen", body);
-}
-
-app.Page("/", Home);
-app.AutoReload(true);
-app.Listen(1423);
-```
-
-Run with `node --import tsx app.ts` or `bun app.ts`.
-
-## Forms and Actions
-
-Create interactive forms with partial page updates:
+## Minimal App
 
 ```typescript
 import ui from "./ui";
-import { MakeApp, Context } from "./ui.server";
+import { Context, MakeApp } from "./ui.server";
 
 const app = MakeApp("en");
 
-class Model {
-    Name = "";
-}
-
-const target = ui.Target();
-
-function Page(ctx: Context): string {
-    const m = new Model();
-    return ctx.app.HTML(
-        "Form Demo",
+app.Page("/", "Home", function (ctx: Context): string {
+    return app.HTML(
+        "Home",
         "bg-gray-100 min-h-screen",
-        ui.Div("max-w-xl mx-auto p-6", target)(
-            ui.Form(
-                "bg-white p-4 rounded shadow space-y-4",
-                target,
-                ctx.Submit(Save).Replace(target),
-            )(
-                ui.IText("Name", m).Required().Render("Your name"),
-                ui.Button()
-                    .Submit()
-                    .Color(ui.Blue)
-                    .Class("rounded")
-                    .Render("Save"),
+        ui.div("max-w-2xl mx-auto p-6")(
+            ui.div("text-2xl font-bold")("Hello from t-sui"),
+            ui.p("text-gray-600 mt-2")(
+                "Server-rendered HTML with WebSocket patches.",
             ),
         ),
     );
-}
+});
 
-function Save(ctx: Context): string {
-    const m = new Model();
-    ctx.Body(m); // Populate from posted form data
-    ctx.Success("Saved!"); // Enqueue a toast message
-    return Page(ctx); // Re-render into the target
-}
-
-app.Page("/forms", Page);
 app.Listen(1423);
 ```
 
-### Swap Modes
-
-- `Replace(target)` — Replace entire element (outerHTML)
-- `Render(target)` — Replace inner content (innerHTML)
-- `Append(target)` — Insert at end of target
-- `Prepend(target)` — Insert at start of target
-- `None()` — No DOM update (side effects only)
-
-## Real-Time Updates
-
-Use WebSocket patches for server-initiated updates:
+## Actions and Targets
 
 ```typescript
-function Clock(ctx: Context): string {
-    const target = ui.Target();
+import ui from "./ui";
+import { Context, MakeApp } from "./ui.server";
 
-    function renderClock(d: Date): string {
-        return ui.Div("text-4xl font-mono", target)(
-            d.toLocaleTimeString()
-        );
-    }
+const app = MakeApp("en");
 
-    // Start interval - cleanup on target invalidation
-    const stop = ui.Interval(1000, function () {
-        ctx.Patch(target.Replace(), renderClock(new Date()));
-    });
-
-    return renderClock(new Date());
+function save(ctx: Context): string {
+    const form = { Name: "" };
+    ctx.Body(form);
+    ctx.Success("Saved " + form.Name);
+    return render(ctx, form);
 }
+save.url = "/save";
+
+function render(ctx: Context, model: { Name: string }): string {
+    const target = ui.Target();
+    return ui.form("space-y-4", target, ctx.Submit(save).Replace(target))(
+        ui.IText("Name", model).Required().Render("Name"),
+        ui.Button().Submit().Color(ui.Blue).Render("Save"),
+    );
+}
+
+app.Page("/form", "Form", function (ctx: Context): string {
+    return app.HTML("Form", "bg-gray-100 min-h-screen", render(ctx, { Name: "" }));
+});
+
+app.Listen(1423);
 ```
 
-## Project Structure
+Swap modes for `ctx.Submit` / `ctx.Click`:
 
+- `Render(target)` - replace inner HTML
+- `Replace(target)` - replace element (outer HTML)
+- `Append(target)` - append HTML
+- `Prepend(target)` - prepend HTML
+- `None()` - no DOM swap
+
+## Install Claude Skills
+
+```bash
+mkdir -p ~/.claude/skills/t-sui
+curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SKILL.md -o ~/.claude/skills/t-sui/SKILL.md
+curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/CORE.md -o ~/.claude/skills/t-sui/CORE.md
+curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/COMPONENTS.md -o ~/.claude/skills/t-sui/COMPONENTS.md
+curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SERVER.md -o ~/.claude/skills/t-sui/SERVER.md
+curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/DATA.md -o ~/.claude/skills/t-sui/DATA.md
+curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/PATTERNS.md -o ~/.claude/skills/t-sui/PATTERNS.md
 ```
-t-sui/
-├── ui.ts              # HTML builder and components
-├── ui.server.ts       # Server, routing, WebSocket, sessions
-├── ui.data.ts         # Data collation helpers
-├── ui.captcha.ts      # CAPTCHA component
-├── examples/          # Demo application
-├── test/              # Test framework and specs
-├── docs/              # Documentation
-│   ├── skills/        # Claude Code skills
-│   └── DOCUMENTATION.md
-└── README.md
-```
 
-## NPM Scripts
+Restart Claude Code after installing.
 
-| Script | Description |
-|--------|-------------|
-| `npm run check` | Type-check without emitting JS |
-| `npm run dev` | Run examples (Node.js) |
-| `npm run dev:bun` | Run examples (Bun) |
-| `npm test` | Run Playwright tests |
+## Scripts
+
+- `npm run check` - TypeScript check
+- `npm run dev` - run examples (Node)
+- `npm run dev:bun` - run examples (Bun)
+- `npm test` - run tests
 
 ## License
 

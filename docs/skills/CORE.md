@@ -1,245 +1,113 @@
 ---
 name: t-sui
-description: Server-rendered TypeScript UI framework. Use when building t-sui applications, creating UI components, handling forms with server actions, using data tables, setting up routes, or implementing WebSocket patches. Triggered by "t-sui", "server-rendered UI", "TypeScript UI framework", form handling, or data collation.
+description: Core t-sui concepts: Context, Targets, actions, patching, navigation, and state flow.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
 # t-sui Core Concepts
 
-## Context API
+## Rendering model
 
-The `Context` interface carries request-scoped data and provides methods for handling actions, responses, and state.
+- Handlers return HTML strings.
+- `app.Page(path, title, handler)` handles HTTP route rendering.
+- Client events call actions and patch targets over WebSocket.
 
-### Request Data
+## Context
 
-```typescript
-ctx.Request   // Request object with method, url, headers, body
-ctx.IP()      // Client IP address
-ctx.Body(data)  // Parse form data into object with automatic type inference
-ctx.RawBody()  // Raw request body as string
-ctx.Query(key)  // Get query parameter value
-ctx.QueryAll()  // All query parameters as object
+Common `Context` methods:
+
+- `ctx.Body(obj)` - parse submitted values into typed object
+- `ctx.PathParam(name)` - path params from route pattern
+- `ctx.QueryParam(name)` - first query value
+- `ctx.QueryParams(name)` - all query values
+- `ctx.AllQueryParams()` - full query map
+- `ctx.Load(path)` - smooth navigation onclick attr
+- `ctx.Redirect(path)` - push redirect operation
+- `ctx.Reload()` - push reload operation
+- `ctx.Title(text)` - update document title
+- `ctx.Success/Error/Info/ErrorReload(msg)` - notifications
+- `ctx.Patch(targetSwap, html)` - patch a target
+
+## Targets
+
+```ts
+const target = ui.Target();
+
+ui.div("", target)("Initial");
+
+ctx.Patch(target.Render, "inner html");
+ctx.Patch(target.Replace, ui.div("", target)("new node"));
+ctx.Patch(target.Append, ui.div()("append"));
+ctx.Patch(target.Prepend, ui.div()("prepend"));
 ```
 
-### Type Inference in ctx.Body
+Skeleton helpers:
 
-Form data is automatically parsed into typed objects:
+- `target.Skeleton()`
+- `target.Skeleton("list" | "component" | "page" | "form")`
 
-```typescript
-class UserForm {
-    Name: string = "";
-    Age: number = 0;
-    Height: number = 0;
-    Active: boolean = false;
-    BirthDate: Date = new Date();
+## Actions
+
+### Registering handlers
+
+```ts
+function save(ctx: Context): string {
+    return ui.div()("ok");
 }
+save.url = "/save";
 
-function Submit(ctx: Context): string {
-    const form = new UserForm();
-    ctx.Body(form);  // All types parsed automatically
-    // form.Age is number, form.Active is boolean, form.BirthDate is Date
+// or app.Action("/save", save)
+```
+
+### Submit actions
+
+```ts
+ui.form("", target, ctx.Submit(save).Replace(target))(
+    ui.Button().Submit().Render("Save"),
+);
+```
+
+### Click actions
+
+```ts
+ui.Button().Click(ctx.Click(save).Render(target)).Render("Run");
+```
+
+`ctx.Call(...)` exists but is deprecated; use `ctx.Click(...)`.
+
+Swap methods available on `Submit`, `Click`, and `Send`:
+
+- `Render(target)`
+- `Replace(target)`
+- `Append(target)`
+- `Prepend(target)`
+- `None()`
+
+## Passing payloads
+
+```ts
+ui.Button()
+    .Click(ctx.Click(increment, { Count: 1 }).Replace(target))
+    .Render("+");
+
+function increment(ctx: Context): string {
+    const model = { Count: 0 };
+    ctx.Body(model);
+    model.Count += 1;
+    return ui.div()(String(model.Count));
 }
 ```
 
-### User Feedback (Toasts)
+## Deferred and realtime
 
-```typescript
-ctx.Success("Operation completed");  // Green toast
-ctx.Error("Something went wrong");   // Red toast
-ctx.Info("FYI message");             // Blue toast
-ctx.Reload();                        // Reload page with error toast
-```
-
-### Navigation
-
-```typescript
-ctx.Redirect("/url");   // Navigate to different URL
-ctx.Title("New Title"); // Update page title dynamically
-```
-
-## Targets & Actions
-
-### Creating Targets
-
-```typescript
-const target = ui.Target();  // Returns Attr with unique ID
-
-// Use in elements
-ui.Div("class", target)("content")
-
-// Use in actions
-ctx.Call(Save).Replace(target)
-```
-
-### Swap Strategies
-
-```typescript
-target.Render()   // Swap innerHTML (default)
-target.Replace()  // Replace entire element (outerHTML)
-target.Append()   // Append to element
-target.Prepend()  // Prepend to element
-```
-
-### Action Methods
-
-**ctx.Call** - Returns JS string for onclick/onchange handlers:
-
-```typescript
-ctx.Call(handler).Render(target)   // innerHTML
-ctx.Call(handler).Replace(target)  // outerHTML
-ctx.Call(handler).Append(target)   // Append
-ctx.Call(handler).Prepend(target)  // Prepend
-ctx.Call(handler).None()           // Fire-and-forget
-```
-
-**ctx.Submit** - Returns Attr for form onsubmit:
-
-```typescript
-ctx.Submit(handler).Render(target)
-ctx.Submit(handler).Replace(target)
-ctx.Submit(handler).Append(target)
-ctx.Submit(handler).Prepend(target)
-ctx.Submit(handler).None()
-```
-
-## Stateful Components
-
-Pass state through form data:
-
-```typescript
-class CounterState {
-    Count: number = 0;
-}
-
-function Increment(ctx: Context): string {
-    const state = new CounterState();
-    ctx.Body(state);  // Restore state from request
-    state.Count++;
-    return RenderCounter(state);
-}
-
-function RenderCounter(state: CounterState): string {
+```ts
+function clock(ctx: Context): string {
     const target = ui.Target();
-    return ui.Div("flex gap-2", target)(
-        ui.Button().Click(ctx.Call(Increment).Replace(target)).Render(
-            "Count: " + state.Count
-        ),
-    );
-}
-```
-
-## WebSocket Patches (Real-time Updates)
-
-Push HTML updates to connected clients:
-
-```typescript
-// Convenience methods
-ctx.Patch(target.Render(), html);   // Replace innerHTML
-ctx.Patch(target.Replace(), html);  // Replace entire element
-ctx.Patch(target.Append(), html);   // Append
-ctx.Patch(target.Prepend(), html);  // Prepend
-```
-
-### Live Updates Example
-
-```typescript
-function Clock(ctx: Context): string {
-    const target = ui.Target();
-
-    function renderClock(): string {
-        return ui.Div("text-4xl font-mono", target)(
-            new Date().toLocaleTimeString()
-        );
-    }
-
-    // Start interval - cleanup on target invalidation
-    const stop = ui.Interval(1000, function() {
-        ctx.Patch(target.Replace(), renderClock());
+    const stop = ui.Interval(1000, function () {
+        ctx.Patch(target.Replace, ui.div("", target)(new Date().toLocaleTimeString()), stop);
     });
-
-    return renderClock();
+    return ui.div("", target)(new Date().toLocaleTimeString());
 }
 ```
 
-## HTML DSL
-
-### Elements
-
-```typescript
-ui.Div(class, attr...)(children...)    // <div>
-ui.Span(class, attr...)(children...)   // <span>
-ui.P(class, attr...)(children...)      // <p>
-ui.A(class, attr...)(children...)      // <a>
-ui.Form(class, attr...)(children...)   // <form>
-ui.Input(class, attr...)               // <input />
-ui.Img(class, attr...)                 // <img />
-ui.Button(class, attr...)(children...) // <button>
-```
-
-### Attributes
-
-```typescript
-{
-    ID: "myid",
-    Class: "extra",
-    Href: "/path",
-    Value: "val",
-    OnClick: "js()",
-    Required: true,
-    Disabled: true,
-    Type: "text",
-    Name: "field",
-}
-```
-
-### Control Flow
-
-```typescript
-ui.Map(items, function(item, i) { return ... })  // Map array
-ui.For(0, 10, function(i) { return ... })        // Loop
-ui.If(condition, function() { return ... })       // Conditional
-```
-
-## Skeleton Loading States
-
-```typescript
-target.Skeleton()                    // Default (3 lines)
-target.Skeleton("list")              // List items
-target.Skeleton("component")         // Component block
-target.Skeleton("page")              // Full page
-target.Skeleton("form")              // Form layout
-```
-
-### Deferred Loading Pattern
-
-```typescript
-function DeferredComponent(ctx: Context): string {
-    const target = ui.Target();
-
-    // Show skeleton immediately
-    const skeleton = target.Skeleton("component");
-
-    // Load data and patch when ready
-    setTimeout(function() {
-        const data = fetchData();
-        ctx.Patch(target.Replace(), renderContent(data));
-    }, 2000);
-
-    return skeleton;
-}
-```
-
-## Interval Management
-
-Create auto-cleaning intervals:
-
-```typescript
-const stop = ui.Interval(ms, function() {
-    // ... code that calls ctx.Patch()
-});
-
-// Interval auto-stops when target is invalidated
-// Or manually: stop()
-```
-
-This ensures proper cleanup when components are replaced or removed.
+Use `ui.Timeout` / `ui.Interval` for async patches and timed updates.

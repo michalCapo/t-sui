@@ -1,278 +1,125 @@
 ---
 name: t-sui
-description: Server-rendered TypeScript UI framework. Use when building t-sui applications, creating UI components, handling forms with server actions, using data tables, setting up routes, or implementing WebSocket patches. Triggered by "t-sui", "server-rendered UI", "TypeScript UI framework", form handling, or data collation.
+description: t-sui data collation reference (`ui.data.ts`) for search, sort, filters, pagination, and rendering.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
 # t-sui Data Collation
 
-Data management helpers for search, sort, filter, and pagination.
+`ui.data.ts` provides a reusable collate model for list UIs.
 
-## TQuery Interface
+## Imports
 
-```typescript
+```ts
+import {
+    createCollate,
+    NormalizeForSearch,
+    TField,
+    TQuery,
+    BOOL,
+    NOT_ZERO_DATE,
+    ZERO_DATE,
+    DATES,
+    SELECT,
+} from "./ui.data";
+```
+
+## Types
+
+`TQuery`:
+
+```ts
 interface TQuery {
-    Limit: number;      // Items per page
-    Offset: number;     // Items to skip
-    Order: string;      // Sort column + direction (e.g., "name asc")
-    Search: string;     // Search query
-    Filter: Filter[];   // Active filters
+    Limit: number;
+    Offset: number;
+    Order: string;
+    PendingOrder: string;
+    Search: string;
+    Filter: TField[];
 }
 ```
 
-## Filter Types
+`TField`:
 
-```typescript
-interface Filter {
-    Field: string;      // Field name
-    As: string;         // Filter type: BOOL, SELECT, DATES, ZERO_DATE, NOT_ZERO_DATE
-    Value: string;      // Filter value
-    Value2?: string;    // Second value for date ranges
+```ts
+interface TField {
+    DB: string;
+    Field: string;
+    Text: string;
+    Value: string;
+    As: number;
+    Condition: string;
+    Options: { id: string; value: string }[];
+    Bool: boolean;
+    Dates: { From: Date; To: Date };
 }
-
-// Filter type constants
-const BOOL = "bool";
-const SELECT = "select";
-const DATES = "dates";
-const ZERO_DATE = "zero_date";
-const NOT_ZERO_DATE = "not_zero_date";
 ```
 
-## Complete Example
+Filter constants:
 
-```typescript
-import { createCollate, TQuery, BOOL, SELECT } from "./ui.data";
+- `BOOL = 0`
+- `NOT_ZERO_DATE = 1`
+- `ZERO_DATE = 2`
+- `DATES = 3`
+- `SELECT = 4`
 
-interface User {
-    id: number;
-    name: string;
-    email: string;
-    country: string;
-    status: string;
-    active: boolean;
-    created_at: Date;
-}
+## Basic usage
 
-async function loadUsers(query: TQuery): Promise<{total: number, filtered: number, data: User[]}> {
-    const data = await db.users.findMany({
-        take: query.Limit,
-        skip: query.Offset,
-        orderBy: parseOrder(query.Order),
-        where: parseFilters(query)
+```ts
+const init: TQuery = {
+    Limit: 10,
+    Offset: 0,
+    Order: "name asc",
+    PendingOrder: "",
+    Search: "",
+    Filter: [],
+};
+
+const collate = createCollate<User>(init, async function (query) {
+    const data = await loadUsers(query);
+    return {
+        total: data.total,
+        filtered: data.filtered,
+        data: data.items,
+    };
+});
+
+collate
+    .setSearch(searchFields)
+    .setSort(sortFields)
+    .setFilter(filterFields)
+    .Row(function (item, index) {
+        return ui.div("p-2 border-b")(item.name);
     });
 
-    return {
-        total: await db.users.count(),
-        filtered: data.length,
-        data: data
-    };
-}
-
-const collate = createCollate<User>(
-    {Limit: 10, Offset: 0, Order: "name asc", Search: "", Filter: []},
-    loadUsers
-);
-
-// Configure search fields
-collate.setSearch([
-    {DB: "name", Field: "name", Text: "Name", Value: "", As: SELECT},
-    {DB: "email", Field: "email", Text: "Email", Value: "", As: SELECT},
-]);
-
-// Configure sort fields
-collate.setSort([
-    {DB: "name", Field: "name", Text: "Name", Value: "", As: SELECT},
-    {DB: "email", Field: "email", Text: "Email", Value: "", As: SELECT},
-]);
-
-// Configure filter fields
-collate.setFilter([
-    {DB: "active", Field: "active", Text: "Active", As: BOOL},
-    {DB: "country", Field: "country", Text: "Country", As: SELECT, Options: [
-        {V: "us", T: "USA"},
-        {V: "uk", T: "UK"},
-    ]},
-]);
-
-// Row renderer
-collate.Row(function(user, index) {
-    return ui.Div("flex gap-4 p-2 bg-white rounded")(
-        ui.Div()(user.name),
-        ui.Div()(user.email),
-        ui.Div()(user.active ? "Active" : "Inactive"),
-    );
-});
-
-function UsersTable(ctx: Context): string {
-    return collate.Render(ctx);
-}
+return collate.Render(ctx);
 ```
 
-## Field Configuration
+## Collate API
 
-```typescript
-interface Field {
-    DB: string;         // Database column name
-    Field: string;      // Object property name
-    Text: string;       // Display label
-    As?: string;        // Filter type (BOOL, SELECT, DATES, etc.)
-    Value?: string;     // Current value
-    Value2?: string;    // Second value for ranges
-    Options?: Option[]; // Options for SELECT type
-}
+- `.setSearch(fields)`
+- `.setSort(fields)`
+- `.setFilter(fields)`
+- `.setExcel(fields)`
+- `.setColor(colors)`
+- `.Row(renderFn)`
+- `.Empty(renderFn)`
+- `.EmptyIcon(iconName)`
+- `.EmptyText(text)`
+- `.EmptyAction(text, handler)`
+- `.Export(exporter)`
+- `.Render(ctx)`
 
-interface Option {
-    V: string;  // Value
-    T: string;  // Text (display)
-}
-```
+## Color presets
 
-## Filter Examples
+- `CollateBlue`
+- `CollateGreen`
+- `CollatePurple`
+- `CollateRed`
+- `CollateYellow`
+- `CollateGray`
 
-### Boolean Filter
+## Notes
 
-```typescript
-{DB: "active", Field: "active", Text: "Active only", As: BOOL}
-```
-
-### Select Filter
-
-```typescript
-{
-    DB: "country",
-    Field: "country",
-    Text: "Country",
-    As: SELECT,
-    Options: [
-        {V: "us", T: "USA"},
-        {V: "uk", T: "UK"},
-        {V: "de", T: "Germany"},
-    ]
-}
-```
-
-### Date Range Filter
-
-```typescript
-{DB: "created_at", Field: "created_at", Text: "Created between", As: DATES}
-```
-
-### Date Presence Filters
-
-```typescript
-// Has logged in (date is not null/zero)
-{DB: "last_login", Field: "last_login", Text: "Has logged in", As: NOT_ZERO_DATE}
-
-// Never logged in (date is null/zero)
-{DB: "last_login", Field: "last_login", Text: "Never logged in", As: ZERO_DATE}
-```
-
-## Pagination
-
-The collate helper automatically handles pagination:
-
-```typescript
-// Set page size
-collate.setInit({Limit: 20, Offset: 0, Order: "name asc", Search: "", Filter: []});
-```
-
-Pagination controls are automatically rendered with:
-- Previous/Next buttons
-- Page numbers
-- Items per page selector (10, 20, 50, 100)
-- "Showing X-Y of Z items" display
-
-## Custom Row Actions
-
-```typescript
-collate.Row(function(user, index) {
-    return ui.Div("flex justify-between items-center p-3 bg-white rounded")(
-        ui.Div("flex-1")(
-            ui.Div("font-semibold")(user.name),
-            ui.Div("text-sm text-gray-500")(user.email),
-        ),
-        ui.Div("flex gap-2")(
-            ui.Button().Size(ui.SM).Color(ui.Blue).
-                Click(ctx.Call(EditUser, user).Replace("#main")).
-                Render("Edit"),
-            ui.Button().Size(ui.SM).Color(ui.Red).
-                Click(ctx.Call(DeleteUser, user).Replace("#main")).
-                Render("Delete"),
-        ),
-    );
-});
-```
-
-## Sorting
-
-Click column headers to sort. Toggle between ascending/descending:
-
-```typescript
-collate.setSort([
-    {DB: "name", Field: "name", Text: "Name"},
-    {DB: "email", Field: "email", Text: "Email"},
-    {DB: "created_at", Field: "created_at", Text: "Created"},
-]);
-```
-
-## Search
-
-Search across multiple fields:
-
-```typescript
-collate.setSearch([
-    {DB: "name", Field: "name", Text: "Name"},
-    {DB: "email", Field: "email", Text: "Email"},
-    {DB: "country", Field: "country", Text: "Country"},
-]);
-```
-
-The search box will appear and search across all configured fields.
-
-## Accessing Query State
-
-```typescript
-// Inside your handler, parse TQuery from request
-function UsersPage(ctx: Context): string {
-    const query = parseQuery(ctx.RawBody());
-    // query.Limit, query.Offset, query.Search, query.Order, query.Filter available
-    return collate.Render(ctx);
-}
-```
-
-## Helper Functions
-
-### parseOrder
-
-Convert order string to database order:
-
-```typescript
-function parseOrder(order: string) {
-    const [col, dir] = order.split(" ");
-    return {[col]: dir === "asc" ? "asc" : "desc"};
-}
-```
-
-### parseFilters
-
-Convert filters to database where clause:
-
-```typescript
-function parseFilters(query: TQuery) {
-    const conditions = [];
-
-    for (const f of query.Filter) {
-        if (f.As === BOOL && f.Value === "true") {
-            conditions.push({[f.Field]: true});
-        }
-        if (f.As === SELECT && f.Value) {
-            conditions.push({[f.Field]: f.Value});
-        }
-        if (f.As === DATES && f.Value) {
-            conditions.push({[f.Field]: {gte: new Date(f.Value)}});
-        }
-    }
-
-    return {AND: conditions};
-}
-```
+- Use `NormalizeForSearch` when implementing backend-side accent-insensitive matching.
+- Keep loader deterministic: honor `Limit`, `Offset`, `Order`, `Search`, and `Filter`.
