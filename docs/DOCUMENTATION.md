@@ -2,22 +2,37 @@
 
 Reference for the current t-sui API.
 
+## 0) Feature Snapshot
+
+- Server-rendered pages with composable HTML helpers (`ui.div`, `ui.form`, `ui.input`, ...)
+- Real-time UI updates via WebSocket patches (`ctx.Patch`, `Replace`, `Render`, `Append`, `Prepend`)
+- Server actions for forms and clicks (`ctx.Submit`, `ctx.Click`) with target-based DOM swaps
+- Route and URL handling (`ctx.PathParam`, `ctx.QueryParam`, `ctx.QueryParams`, `ctx.AllQueryParams`)
+- Built-in form components, including form association with `ui.Form`
+- Data collation with search, filter, sort, and pagination via `createCollate`
+- Accessibility-ready output with ARIA roles and attributes across core controls
+- Cross-runtime support for Node.js and Bun
+
 ## 1) Core model
 
 - UI is generated on the server as HTML strings.
-- Interactions (`Submit`, `Click`) post action payloads over WebSocket.
+- Interactions (`Submit`, `Click`) send action payloads over WebSocket.
 - DOM updates are target-based (`Render`, `Replace`, `Append`, `Prepend`).
 - You can still serve full pages over HTTP (`app.Page`) and progressively patch regions.
 
-## 2) Project files
+## 2) Project Files
 
 - `ui.ts` - UI DSL and components
 - `ui.server.ts` - app server, routes, context, WS protocol
 - `ui.data.ts` - collate/search/sort/filter/paging helper
 - `ui.captcha.ts` - CAPTCHA support
-- `examples/` - runnable examples
+- `examples/` - runnable example app and tests
+- `examples/app.ts` - shared example app configuration and route registration
+- `examples/main.ts` - local development entrypoint for the example app
+- `examples/pages/` - focused feature pages used by the example app
+- `examples/tests/` - behavior and regression tests for examples
 
-## 3) Quick app
+## 3) Quick App
 
 ```ts
 import ui from "../ui";
@@ -99,8 +114,8 @@ function render(ctx: Context, form: { Name: string }): string {
 
 ### Click actions
 
-- Preferred: `ctx.Click(handler)`
-- Deprecated alias: `ctx.Call(handler)`
+- Use `ctx.Click(handler)`.
+- `ctx.Call(handler)` is a deprecated alias.
 
 ```ts
 ui.Button().Click(ctx.Click(removeItem, { id: 10 }).Replace(target)).Render("Remove");
@@ -235,10 +250,10 @@ return collate.Render(ctx);
 
 ## 12) Runtime
 
-- Node.js: `npm run dev` or `node --import tsx examples/main.ts`
-- Bun: `npm run dev:bun` or `bun examples/main.ts`
+- Node.js: run `npm run dev` or `node --import tsx examples/main.ts`.
+- Bun: run `npm run dev:bun` or `bun examples/main.ts`.
 
-## 13) Skills docs
+## 13) Skill Docs
 
 For LLM assistants, keep these files synchronized with API changes:
 

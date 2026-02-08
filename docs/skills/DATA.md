@@ -6,7 +6,13 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 # t-sui Data Collation
 
-`ui.data.ts` provides a reusable collate model for list UIs.
+## Example App
+
+- `examples/pages/collate.ts` - primary collate usage
+- `examples/pages/collate-empty.ts` - empty-state handling
+- `examples/tests/collate.test.ts` - collate behavior checks
+
+`ui.data.ts` provides a reusable collation model for list UIs.
 
 ## Imports
 

@@ -6,6 +6,12 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 # t-sui UI Components
 
+## Example App
+
+- `examples/pages/form.ts` - form inputs and submit patterns
+- `examples/pages/comprehensive-form.ts` - broad input coverage
+- `examples/pages/showcase.ts` - component combinations in layouts
+
 ## HTML builders (lowercase)
 
 Use `ui.element(className?, attrs?)(children...)`.
@@ -70,7 +76,7 @@ Type-specific:
 
 ## Form class (`ui.Form`)
 
-Associates controls to one hidden form element.
+Associates controls with one hidden form element.
 
 ```ts
 const f = new ui.Form(ctx.Submit(save).Replace(target));

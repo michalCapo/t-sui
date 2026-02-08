@@ -6,6 +6,12 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 # t-sui Core Concepts
 
+## Example App
+
+- `examples/app.ts` - route map and layout setup
+- `examples/pages/` - concrete action and target examples
+- `examples/tests/` - behavior verification
+
 ## Rendering model
 
 - Handlers return HTML strings.
@@ -73,7 +79,7 @@ ui.form("", target, ctx.Submit(save).Replace(target))(
 ui.Button().Click(ctx.Click(save).Render(target)).Render("Run");
 ```
 
-`ctx.Call(...)` exists but is deprecated; use `ctx.Click(...)`.
+Use `ctx.Click(...)`. `ctx.Call(...)` is a deprecated alias.
 
 Swap methods available on `Submit`, `Click`, and `Send`:
 
@@ -98,7 +104,7 @@ function increment(ctx: Context): string {
 }
 ```
 
-## Deferred and realtime
+## Deferred and Real-Time
 
 ```ts
 function clock(ctx: Context): string {

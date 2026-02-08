@@ -1,10 +1,16 @@
 ---
 name: t-sui
-description: Practical t-sui implementation patterns for forms, actions, targets, validation, layout, and realtime updates.
+description: Practical t-sui implementation patterns for forms, actions, targets, validation, layout, and real-time updates.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
 # t-sui Patterns
+
+## Example App
+
+- `examples/pages/form.ts` - submit/replace form workflow
+- `examples/pages/append.ts` - append/prepend target swaps
+- `examples/pages/deferred.ts` and `examples/pages/clock-page.ts` - async and real-time patching
 
 ## 1) Form submit + target replace
 

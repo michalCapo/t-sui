@@ -12,6 +12,17 @@ t-sui is a TypeScript server-rendered UI framework.
 - Browser interactions call server handlers.
 - Updates are applied with target-based patches over WebSocket.
 
+## Feature Snapshot
+
+- Server-rendered pages with composable HTML helpers
+- WebSocket patch updates with `ctx.Patch` and target swap modes
+- Server actions for forms and clicks (`ctx.Submit`, `ctx.Click`)
+- Route + query param APIs for dynamic pages
+- Form components and form association (`ui.Form`)
+- Data collation (`createCollate`) for search/filter/sort/pagination
+- ARIA-friendly output for core controls
+- Node.js and Bun runtime support
+
 ## Quick Start
 
 ```ts
@@ -39,6 +50,13 @@ app.Listen(1423);
 
 - Use lowercase HTML builders: `ui.div`, `ui.form`, `ui.input`.
 - `app.Page` signature is `Page(path, title, handler)`.
-- Prefer `ctx.Click(...)`; `ctx.Call(...)` is deprecated alias.
+- Use `ctx.Click(...)`. `ctx.Call(...)` is a deprecated alias.
 - Targets expose swap objects as properties: `target.Render`, `target.Replace`, `target.Append`, `target.Prepend`.
 - Route params use braces, for example `/users/{id}` with `ctx.PathParam("id")`.
+
+## Example App
+
+- `examples/app.ts` - app configuration, layout, and route registration
+- `examples/main.ts` - local dev entrypoint
+- `examples/pages/` - feature pages
+- `examples/tests/` - behavior tests

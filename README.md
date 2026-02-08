@@ -6,23 +6,23 @@ t-sui renders HTML on the server, sends actions over WebSocket, and updates spec
 
 ## Documentation
 
-- Full docs: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md)
-- LLM/Claude skill docs: [`docs/skills/SKILL.md`](docs/skills/SKILL.md)
+- Full API docs: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md)
+- Assistant skill docs: [`docs/skills/SKILL.md`](docs/skills/SKILL.md)
 
 ## Features
 
-- Server-side rendering with composable HTML builders (`ui.div`, `ui.form`, `ui.input`, ...)
-- Reactive updates via `ctx.Patch(target.<mode>, html)`
-- Form and click actions (`ctx.Submit`, `ctx.Click`, deprecated `ctx.Call`)
-- Route params and query params (`ctx.PathParam`, `ctx.QueryParam`, ...)
-- Built-in data collation (`createCollate`) for search/sort/filter/pagination
-- Built-in component set: forms, tables, alerts, badges, cards, tabs, accordion, dropdown
-- Accessibility-friendly output (ARIA roles/attributes on core controls)
-- Node.js and Bun runtime support
+- Server-rendered pages with composable HTML helpers (`ui.div`, `ui.form`, `ui.input`, ...)
+- Real-time UI updates via WebSocket patches (`ctx.Patch`, `Replace`, `Render`, `Append`, `Prepend`)
+- Server actions for forms and clicks (`ctx.Submit`, `ctx.Click`) with target-based DOM swaps
+- Route and URL handling (`ctx.PathParam`, `ctx.QueryParam`, `ctx.QueryParams`, `ctx.AllQueryParams`)
+- Built-in form components including form association (`ui.Form`) and validation-friendly inputs
+- Data collation (`createCollate`) with search, filter, sort, and pagination
+- Accessibility-ready output with ARIA roles/attributes across core controls
+- Cross-runtime support for Node.js and Bun
 
 ## Quick Start
 
-Requirements: Node.js 18+ or Bun 1.0+
+Requirements: Node.js 18+ or Bun 1.0+.
 
 ```bash
 npm install
@@ -30,6 +30,17 @@ npm run dev
 ```
 
 Visit `http://localhost:1423`.
+
+## Example App
+
+The repository includes a full example app with pages for forms, routing, patch modes, data collation, and smooth navigation.
+
+- App setup and route registration: [`examples/app.ts`](examples/app.ts)
+- Local dev entrypoint: [`examples/main.ts`](examples/main.ts)
+- Example pages: [`examples/pages`](examples/pages)
+- Example tests: [`examples/tests`](examples/tests)
+
+Run it with `npm run dev` (Node) or `npm run dev:bun` (Bun).
 
 ## Minimal App
 
@@ -107,13 +118,6 @@ curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/P
 ```
 
 Restart Claude Code after installing.
-
-## Scripts
-
-- `npm run check` - TypeScript check
-- `npm run dev` - run examples (Node)
-- `npm run dev:bun` - run examples (Bun)
-- `npm test` - run tests
 
 ## License
 

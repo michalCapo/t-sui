@@ -6,6 +6,12 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 # t-sui Server
 
+## Example App
+
+- `examples/app.ts` - full app setup with layout and page registration
+- `examples/main.ts` - local development server entrypoint
+- `examples/pages/routes.ts` - path/query parameter patterns
+
 ## Initialize app
 
 ```ts
@@ -93,7 +99,7 @@ Default port is `1422` if omitted.
 - `ctx.Submit(handler, ...values)` for form `onsubmit`
 - `ctx.Click(handler, ...values)` for `onclick`
 - `ctx.Send(handler, ...values)` for form-target posting utilities
-- `ctx.Call(...)` deprecated alias for `ctx.Click(...)`
+- `ctx.Call(...)` is a deprecated alias for `ctx.Click(...)`
 
 Each supports:
 
