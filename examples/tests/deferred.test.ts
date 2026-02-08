@@ -12,23 +12,23 @@ const test = setupTest(function (port: number) {
 test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Deferred Rendering', function () {
-        it('should display deferred section on Others page', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+        it('should display deferred section on Deferred page', async function () {
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
-            const deferredText = await ctx.page.locator('text=Deferred (WS)').textContent();
+            const deferredText = await ctx.page.locator('text=Deferred').first().textContent();
 
             assert.ok(
-                deferredText?.includes('Deferred') || deferredText?.includes('skeleton'),
+                deferredText?.includes('Deferred'),
                 'Deferred section should be displayed'
             );
         });
 
         it('should show skeleton initially', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
-            const deferredSection = ctx.page.locator('text=Deferred (WS)').first();
+            const deferredSection = ctx.page.locator('text=Deferred').first();
             const sectionExists = await deferredSection.count() > 0;
 
             assert.ok(
@@ -40,8 +40,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Skeleton Loading', function () {
         it('should have skeleton loader', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Wait a brief moment for skeleton to appear
             await ctx.page.waitForTimeout(100);
@@ -56,8 +56,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should replace skeleton with content', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Wait for async content to load (2+ seconds)
             await ctx.page.waitForTimeout(3000);
@@ -73,8 +73,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Async Content Loading', function () {
         it('should load content after delay', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Initial state - skeleton or loading indicator
             const initialState = await ctx.page.textContent('body');
@@ -92,8 +92,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should show loaded content with message', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Wait for content to load
             await ctx.page.waitForTimeout(3000);
@@ -115,8 +115,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Skeleton Buttons', function () {
         it('should have skeleton type buttons', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Wait for buttons to appear
             await ctx.page.waitForTimeout(2500);
@@ -130,8 +130,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should have different skeleton types', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Wait for buttons
             await ctx.page.waitForTimeout(2500);
@@ -153,8 +153,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Deferred Styling', function () {
         it('should have card-style container', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             const shadowedDivs = await ctx.page.locator('div[class*="shadow"]').count();
 
@@ -165,8 +165,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should have proper spacing', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             const pageContent = await ctx.page.textContent('body');
 
@@ -179,8 +179,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Loading State', function () {
         it('should show loading indicator initially', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Immediately check for loading state
             await ctx.page.waitForTimeout(100);
@@ -193,8 +193,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should transition from loading to loaded', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Get initial state
             const initialState = await ctx.page.textContent('body');
@@ -214,8 +214,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('WebSocket Updates', function () {
         it('should update via WebSocket patches', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Check page content for WebSocket references
             const pageContent = await ctx.page.textContent('body');
@@ -228,8 +228,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should update without page reload', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             const initialUrl = ctx.page.url();
 
@@ -248,8 +248,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Deferred Accessibility', function () {
         it('should be accessible during loading', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Check that loading state is accessible
             const ariaElements = await ctx.page.locator('[role], [aria-label]').count();
@@ -261,8 +261,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should be accessible after loading', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Wait for content to load
             await ctx.page.waitForTimeout(3000);
@@ -279,8 +279,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
 
     describe('Deferred User Experience', function () {
         it('should provide visual feedback during loading', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             // Check for visual feedback (skeleton, loading text, etc.)
             const pageContent = await ctx.page.textContent('body');
@@ -292,8 +292,8 @@ test.it('Example App - Deferred Tests', function (ctx: TestContext) {
         });
 
         it('should show content in reasonable time', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/others');
-            await ctx.page.waitForSelector('text=Others');
+            await ctx.page.goto(ctx.baseUrl + '/deferred');
+            await ctx.page.waitForSelector('text=Deferred');
 
             const startTime = Date.now();
 
