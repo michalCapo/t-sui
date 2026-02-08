@@ -40,10 +40,7 @@ export function getProxyStatus(): { running: boolean; config?: ProxyRuntimeConfi
     };
 }
 
-export async function startProxyServer(
-    config: ProxyRuntimeConfig,
-    appPort?: number,
-): Promise<ProxyStartResult> {
+export async function startProxyServer(config: ProxyRuntimeConfig, appPort?: number): Promise<ProxyStartResult> {
     const normalized = normalizeConfig(config);
     if (!normalized.ok) {
         return { ok: false, error: normalized.error };

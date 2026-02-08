@@ -31,7 +31,7 @@ function updateConfig(ctx: Context): string {
 }
 updateConfig.url = "/proxy-config-update";
 
-function startProxy(ctx: Context): Promise<string> {
+async function startProxy(ctx: Context): Promise<string> {
     return startProxyServer(state.config, getAppPort(ctx)).then(function (result) {
         state.status = result.ok ? "running" : "stopped";
 
@@ -46,7 +46,7 @@ function startProxy(ctx: Context): Promise<string> {
 }
 startProxy.url = "/proxy-start";
 
-function stopProxy(ctx: Context): Promise<string> {
+async function stopProxy(ctx: Context): Promise<string> {
     return stopProxyServer().then(function (result) {
         state.status = "stopped";
         ctx.Info(result.message);
@@ -73,7 +73,11 @@ function render(ctx: Context): string {
         ui.div("text-gray-600")(
             "Real reverse-proxy controls with HTTP and WebSocket forwarding.",
         ),
-        ui.form("bg-white p-6 rounded-lg border border-gray-200 shadow space-y-4", target, ctx.Submit(updateConfig).Replace(target))(
+        ui.div("rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900")(
+            ui.div("font-semibold")("Warning"),
+            ui.div("text-sm mt-1")("Proxy implementation is currently not working."),
+        ),
+        ui.form("bg-white p-6 rounded-lg border border-gray-200 shadow space-y-4", ctx.Submit(updateConfig).Replace(target))(
             ui.div("grid grid-cols-1 md:grid-cols-3 gap-4")(
                 ui.IText("ProxyPort", config).Placeholder("1423").Render("Proxy Port"),
                 ui.IText("TargetHost", config).Placeholder("localhost").Render("Target Host"),
@@ -89,11 +93,11 @@ function render(ctx: Context): string {
             ui.div("font-semibold")("Status: " + (isRunning ? "Running" : "Stopped")),
             ui.div("text-sm text-gray-700 mt-1")(
                 "Route: http://localhost:" +
-                    config.ProxyPort +
-                    " -> " +
-                    config.TargetHost +
-                    ":" +
-                    config.TargetPort,
+                config.ProxyPort +
+                " -> " +
+                config.TargetHost +
+                ":" +
+                config.TargetPort,
             ),
             ui.div("text-xs text-gray-600 mt-2")(
                 "Proxy rewrites target port references so links and WebSocket endpoints stay on the proxy port.",
