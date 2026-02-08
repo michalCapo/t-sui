@@ -298,14 +298,15 @@ function Collate<T>(uid: string, init: TQuery, loader: Loader<T>): CollateModel<
 
         if (loading || !result) {
             const skeletonRows = Skeleton.List(ui.Target(), 6);
-            const skeletonPager = ui.div("flex items-center justify-center")(
-                ui.div("mx-4 font-bold text-lg")("\u00A0"),
-                ui.div("flex gap-px flex-1 justify-end")(
-                    ui.div("bg-gray-200 h-9 w-10 rounded-l border")(),
-                    ui.div("bg-gray-200 h-9 w-36 rounded-r border")(),
-                ),
-            );
-            return ui.div("flex flex-col gap-2 mt-2", state.Target)(header, skeletonRows, skeletonPager);
+            // const skeletonPager = ui.div("flex items-center justify-center")(
+            //     ui.div("mx-4 font-bold text-lg")("\u00A0"),
+            //     ui.div("flex gap-px flex-1 justify-end")(
+            //         ui.div("bg-gray-200 h-9 w-10 rounded-l border")(),
+            //         ui.div("bg-gray-200 h-9 w-36 rounded-r border")(),
+            //     ),
+            // );
+
+            return ui.div("flex flex-col gap-2 mt-2", state.Target)(header, skeletonRows);
         }
 
         const rows = renderRows(result.Data, state.OnRow);

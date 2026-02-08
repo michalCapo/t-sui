@@ -2255,6 +2255,10 @@ export const __jselement = ui.Trim(`
             case 'notify':
                 if (op.msg) {
                     var variant = op.variant || 'info';
+                    if (variant === 'error-reload') {
+                        try { __error(op.msg); } catch(_) { displayMessage(op.msg, 'bg-red-700 text-white'); }
+                        break;
+                    }
                     var colorClass = '';
                     if (variant === 'success') colorClass = 'bg-green-700 text-white';
                     else if (variant === 'error') colorClass = 'bg-red-700 text-white';
@@ -3492,7 +3496,10 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                         const ctx = new Context(app, mockReq, mockRes, sid);
                         
                         // Execute handler (may be async)
-                        Promise.resolve(callable(ctx))
+                        Promise.resolve()
+                            .then(function() {
+                                return callable(ctx);
+                            })
                             .then(function(html: string) {
                                 let resultHtml = html;
                                 if (ctx.append.length) resultHtml += ctx.append.join("");
@@ -3524,14 +3531,25 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                             })
                             .catch(function(err: unknown) {
                                 console.error("Error executing action handler:", err);
+                                const message = err instanceof Error && err.message
+                                    ? "Server error: " + err.message
+                                    : "Server error while executing action";
                                 wsSend(socket, JSON.stringify({
                                     type: "response",
                                     rid: rid,
-                                    ops: [{ op: "notify", msg: "Action execution failed", variant: "error" }]
+                                    ops: [{ op: "notify", msg: message, variant: "error-reload" }]
                                 }));
                             });
                     } catch (err) {
                         console.error("Error handling call message:", err);
+                        const message = err instanceof Error && err.message
+                            ? "Server error: " + err.message
+                            : "Server error while handling action";
+                        wsSend(socket, JSON.stringify({
+                            type: "response",
+                            rid: String((msg as unknown as JSCallMessage).rid || ""),
+                            ops: [{ op: "notify", msg: message, variant: "error-reload" }]
+                        }));
                     }
                 } else if (t === "invalid") {
                     try {
@@ -3693,7 +3711,10 @@ function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): vo
                 const ctx = new Context(app, mockReq, mockRes, sid);
                 
                 // Execute handler (may be async)
-                Promise.resolve(callable(ctx))
+                Promise.resolve()
+                    .then(function() {
+                        return callable(ctx);
+                    })
                     .then(function(html: string) {
                         let resultHtml = html;
                         if (ctx.append.length) resultHtml += ctx.append.join("");
@@ -3725,14 +3746,25 @@ function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): vo
                     })
                     .catch(function(err: unknown) {
                         console.error("Error executing action handler:", err);
+                        const message = err instanceof Error && err.message
+                            ? "Server error: " + err.message
+                            : "Server error while executing action";
                         wsSend(ws, JSON.stringify({
                             type: "response",
                             rid: rid,
-                            ops: [{ op: "notify", msg: "Action execution failed", variant: "error" }]
+                            ops: [{ op: "notify", msg: message, variant: "error-reload" }]
                         }));
                     });
             } catch (err) {
                 console.error("Error handling call message:", err);
+                const message = err instanceof Error && err.message
+                    ? "Server error: " + err.message
+                    : "Server error while handling action";
+                wsSend(ws, JSON.stringify({
+                    type: "response",
+                    rid: String((parsedMsg as unknown as JSCallMessage).rid || ""),
+                    ops: [{ op: "notify", msg: message, variant: "error-reload" }]
+                }));
             }
         } else if (msgType === "invalid") {
             try {
