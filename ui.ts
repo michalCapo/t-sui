@@ -170,6 +170,10 @@ function Iff(cond: boolean) {
     };
 }
 
+function Or<T>(cond: boolean, trueValue: T, falseValue: T): T {
+    return cond ? trueValue : falseValue;
+}
+
 function Map<T>(values: T[], iter: (value: T, i: number, first: boolean, last: boolean) => string): string {
     const out: string[] = [];
     for (let i = 0; i < values.length; i++) {
@@ -247,6 +251,8 @@ const White =
     " bg-white text-black hover:bg-gray-200 border-gray-200 flex items-center justify-center";
 const WhiteOutline =
     " border border-white text-black hover:text-black hover:bg-white flex items-center justify-center";
+const Black =
+    " bg-black text-white hover:bg-gray-900 border-black flex items-center justify-center";
 
 const space = "&nbsp;";
 
@@ -1328,6 +1334,457 @@ function IDateTime(name: string, data?: object) {
     return base;
 }
 
+function IPhone(name: string, data?: object) {
+    return IText(name, data)
+        .Type("tel")
+        .Autocomplete("tel")
+        .Placeholder("+421")
+        .Pattern("\\+[0-9]{10,14}");
+}
+
+function IEmail(name: string, data?: object) {
+    return IText(name, data)
+        .Type("email")
+        .Autocomplete("email")
+        .Placeholder("name@gmail.com");
+}
+
+function IValue(data?: object) {
+    const base = createBase("", data, "text");
+
+    base.Render = function (label: string): string {
+        if (!base.visible) {
+            return "";
+        }
+        const value = base.resolveValue();
+        return div(base.css)(
+            Label(base.cssLabel) (label),
+            div(
+                Classes(
+                    VALUE,
+                    base.size,
+                    "px-3 flex items-center",
+                    base.cssInput,
+                ),
+                {
+                    'aria-label': label,
+                    role: 'status',
+                },
+            )(String(value || "")),
+        );
+    };
+
+    return base;
+}
+
+function IFile(name: string) {
+    const state = {
+        target: Target(),
+        name,
+        css: "",
+        cssLabel: "",
+        cssInput: "",
+        cssZone: "",
+        accept: "",
+        multiple: false,
+        required: false,
+        disabled: false,
+        onchange: "",
+        formId: "",
+        visible: true,
+        zone: false,
+        zoneTitle: "Drop files here",
+        zoneHint: "or click to browse",
+        zoneIcon: MaterialIcon("upload_file", "text-3xl text-gray-500", { "aria-hidden": "true" }),
+        zoneContent: "",
+    };
+
+    const api = {
+        Class(...v: string[]) {
+            state.css = v.join(" ");
+            return api;
+        },
+        ClassLabel(...v: string[]) {
+            state.cssLabel = v.join(" ");
+            return api;
+        },
+        ClassInput(...v: string[]) {
+            state.cssInput = v.join(" ");
+            return api;
+        },
+        ClassZone(...v: string[]) {
+            state.cssZone = v.join(" ");
+            return api;
+        },
+        Accept(v: string) {
+            state.accept = v;
+            return api;
+        },
+        Multiple(v = true) {
+            state.multiple = v;
+            return api;
+        },
+        Required(v = true) {
+            state.required = v;
+            return api;
+        },
+        Disabled(v = true) {
+            state.disabled = v;
+            return api;
+        },
+        Change(code: string) {
+            state.onchange = code;
+            return api;
+        },
+        Form(formId: string) {
+            state.formId = formId;
+            return api;
+        },
+        If(v: boolean) {
+            state.visible = v;
+            return api;
+        },
+        Zone(title?: string, hint?: string) {
+            state.zone = true;
+            if (typeof title === "string" && title) state.zoneTitle = title;
+            if (typeof hint === "string" && hint) state.zoneHint = hint;
+            return api;
+        },
+        ZoneIcon(iconHtml?: string) {
+            if (typeof iconHtml === "string" && iconHtml) {
+                state.zoneIcon = iconHtml;
+            }
+            return api;
+        },
+        ZoneContent(content?: string) {
+            if (typeof content === "string") {
+                state.zoneContent = content;
+            }
+            return api;
+        },
+        Render(labelText: string): string {
+            if (!state.visible) {
+                return "";
+            }
+
+            const inputEl = input(
+                Classes(
+                    INPUT,
+                    state.cssInput,
+                    state.disabled && DISABLED,
+                    state.zone && "sr-only absolute opacity-0 pointer-events-none h-0 w-0",
+                ),
+                {
+                    id: state.target.id,
+                    name: state.name,
+                    type: "file",
+                    accept: state.accept || undefined,
+                    multiple: state.multiple || undefined,
+                    required: state.required,
+                    disabled: state.disabled,
+                    onchange: state.onchange || undefined,
+                    form: state.formId || undefined,
+                    'aria-label': labelText,
+                    'aria-required': state.required ? 'true' : 'false',
+                    'aria-disabled': state.disabled ? 'true' : 'false',
+                },
+            );
+
+            if (!state.zone) {
+                return div(state.css)(
+                    Label(state.cssLabel, { for: state.target.id, required: state.required })(labelText),
+                    inputEl,
+                );
+            }
+
+            const zoneId = state.target.id + "__zone";
+            const zoneContent = state.zoneContent || div("space-y-2")(
+                div("flex justify-center")(state.zoneIcon),
+                div("text-base font-semibold text-gray-800")(state.zoneTitle),
+                div("text-xs text-gray-500")(state.zoneHint),
+            );
+
+            const zone = div(
+                Classes(
+                    "cursor-pointer rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-6 text-center transition-colors",
+                    "hover:border-blue-400 hover:bg-blue-50",
+                    state.disabled && "opacity-60 pointer-events-none",
+                    state.cssZone,
+                ),
+                { id: zoneId, role: "button", tabindex: "0", 'aria-label': labelText + " upload zone" },
+            )(zoneContent);
+
+            const script = Script(Trim(`
+                (function(){
+                    var input = document.getElementById('${state.target.id}');
+                    var zone = document.getElementById('${zoneId}');
+                    if(!input || !zone){ return; }
+                    function openPicker(){ try { input.click(); } catch(_){} }
+                    zone.addEventListener('click', function(){ openPicker(); });
+                    zone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openPicker(); } });
+                    zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('border-blue-500'); });
+                    zone.addEventListener('dragleave', function(){ zone.classList.remove('border-blue-500'); });
+                    zone.addEventListener('drop', function(e){
+                        e.preventDefault();
+                        zone.classList.remove('border-blue-500');
+                        try {
+                            if(e.dataTransfer && e.dataTransfer.files){
+                                input.files = e.dataTransfer.files;
+                                input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        } catch(_){ }
+                    });
+                })();
+            `));
+
+            return div(state.css)(
+                Label(state.cssLabel, { for: state.target.id, required: state.required })(labelText),
+                inputEl,
+                zone,
+                script,
+            );
+        },
+    };
+
+    return api;
+}
+
+function IImagePreview(inputID: string) {
+    const state = {
+        multiple: false,
+        maxWidth: 320,
+        maxHeight: 240,
+        css: "",
+        visible: true,
+        target: Target(),
+    };
+
+    const api = {
+        Multiple(v = true) {
+            state.multiple = v;
+            return api;
+        },
+        MaxSize(width: number, height?: number) {
+            if (Number.isFinite(width) && width > 0) {
+                state.maxWidth = width;
+            }
+            if (typeof height === "number" && Number.isFinite(height) && height > 0) {
+                state.maxHeight = height;
+            } else {
+                state.maxHeight = state.maxWidth;
+            }
+            return api;
+        },
+        Class(...v: string[]) {
+            state.css = v.join(" ");
+            return api;
+        },
+        If(v: boolean) {
+            state.visible = v;
+            return api;
+        },
+        Render(): string {
+            if (!state.visible) {
+                return "";
+            }
+            const previewId = state.target.id;
+            const itemClass = state.multiple ? "grid grid-cols-2 md:grid-cols-3 gap-3" : "";
+            const script = Script(Trim(`
+                (function(){
+                    var input = document.getElementById('${inputID}');
+                    var out = document.getElementById('${previewId}');
+                    if(!input || !out){ return; }
+                    function draw(){
+                        try {
+                            var files = input.files ? Array.prototype.slice.call(input.files) : [];
+                            out.innerHTML = '';
+                            for(var i=0;i<files.length;i++){
+                                var f = files[i];
+                                if (!f || !f.type || f.type.indexOf('image/') !== 0) { continue; }
+                                var img = document.createElement('img');
+                                img.className = 'rounded border border-gray-200 object-cover';
+                                img.style.maxWidth = '${String(state.maxWidth)}px';
+                                img.style.maxHeight = '${String(state.maxHeight)}px';
+                                img.alt = f.name || 'Preview';
+                                img.src = URL.createObjectURL(f);
+                                out.appendChild(img);
+                                if(!${state.multiple ? "true" : "false"}){ break; }
+                            }
+                        } catch(_){ }
+                    }
+                    input.addEventListener('change', draw);
+                    draw();
+                })();
+            `));
+            return div(Classes(itemClass, state.css), { id: previewId, 'aria-live': 'polite', 'aria-atomic': 'true' })() + script;
+        },
+    };
+
+    return api;
+}
+
+function IImageUpload(name: string) {
+    const state = {
+        target: Target(),
+        css: "",
+        cssPreview: "",
+        cssZone: "",
+        accept: "image/*",
+        multiple: false,
+        required: false,
+        disabled: false,
+        onchange: "",
+        formId: "",
+        visible: true,
+        zone: false,
+        zoneTitle: "Drop image here",
+        zoneHint: "or click to browse",
+        zoneIcon: MaterialIcon("add_photo_alternate", "text-3xl text-gray-500", { "aria-hidden": "true" }),
+        zoneContent: "",
+        maxWidth: 420,
+        maxHeight: 280,
+    };
+
+    const api = {
+        Class(...v: string[]) { state.css = v.join(" "); return api; },
+        ClassPreview(...v: string[]) { state.cssPreview = v.join(" "); return api; },
+        ClassZone(...v: string[]) { state.cssZone = v.join(" "); return api; },
+        Accept(v: string) { state.accept = v; return api; },
+        Multiple(v = true) { state.multiple = v; return api; },
+        Required(v = true) { state.required = v; return api; },
+        Disabled(v = true) { state.disabled = v; return api; },
+        Change(code: string) { state.onchange = code; return api; },
+        Form(formId: string) { state.formId = formId; return api; },
+        If(v: boolean) { state.visible = v; return api; },
+        Zone(title?: string, hint?: string) {
+            state.zone = true;
+            if (typeof title === "string" && title) state.zoneTitle = title;
+            if (typeof hint === "string" && hint) state.zoneHint = hint;
+            return api;
+        },
+        ZoneIcon(iconHtml?: string) { if (iconHtml) state.zoneIcon = iconHtml; return api; },
+        ZoneContent(content?: string) { if (typeof content === "string") state.zoneContent = content; return api; },
+        MaxSize(width: number, height?: number) {
+            if (Number.isFinite(width) && width > 0) state.maxWidth = width;
+            if (typeof height === "number" && Number.isFinite(height) && height > 0) {
+                state.maxHeight = height;
+            } else {
+                state.maxHeight = state.maxWidth;
+            }
+            return api;
+        },
+        Render(label: string): string {
+            if (!state.visible) {
+                return "";
+            }
+
+            const inputId = state.target.id + "__input";
+            const zoneId = state.target.id + "__zone";
+            const previewWrapId = state.target.id + "__preview_wrap";
+            const previewId = state.target.id + "__preview";
+            const changeBtnId = state.target.id + "__change";
+
+            const inputEl = input("sr-only absolute opacity-0 pointer-events-none h-0 w-0", {
+                id: inputId,
+                name,
+                type: "file",
+                accept: state.accept,
+                multiple: state.multiple || undefined,
+                required: state.required,
+                disabled: state.disabled,
+                onchange: state.onchange || undefined,
+                form: state.formId || undefined,
+                'aria-label': label,
+                'aria-required': state.required ? 'true' : 'false',
+                'aria-disabled': state.disabled ? 'true' : 'false',
+            });
+
+            const zoneContent = state.zoneContent || div("space-y-2")(
+                div("flex justify-center")(state.zoneIcon),
+                div("text-base font-semibold text-gray-800")(state.zoneTitle),
+                div("text-xs text-gray-500")(state.zoneHint),
+            );
+
+            const zone = div(
+                Classes(
+                    "cursor-pointer rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-6 text-center transition-colors",
+                    "hover:border-blue-400 hover:bg-blue-50",
+                    state.disabled && "opacity-60 pointer-events-none",
+                    state.cssZone,
+                ),
+                { id: zoneId, role: "button", tabindex: "0", 'aria-label': label + " upload zone" },
+            )(zoneContent);
+
+            const preview = div(Classes("hidden space-y-3", state.cssPreview), { id: previewWrapId })(
+                div(Classes(state.multiple ? "grid grid-cols-2 md:grid-cols-3 gap-3" : ""), { id: previewId, 'aria-live': 'polite', 'aria-atomic': 'true' })(),
+                Button().Class("rounded").Size(SM).Color(BlueOutline).Render("Change Image").replace("<div ", `<div id="${changeBtnId}" `),
+            );
+
+            const script = Script(Trim(`
+                (function(){
+                    var input = document.getElementById('${inputId}');
+                    var zone = document.getElementById('${zoneId}');
+                    var wrap = document.getElementById('${previewWrapId}');
+                    var out = document.getElementById('${previewId}');
+                    var btn = document.getElementById('${changeBtnId}');
+                    if(!input || !zone || !wrap || !out){ return; }
+
+                    function openPicker(){ try { input.click(); } catch(_){} }
+                    function setState(hasFiles){
+                        if(hasFiles){ zone.classList.add('hidden'); wrap.classList.remove('hidden'); }
+                        else { wrap.classList.add('hidden'); zone.classList.remove('hidden'); }
+                    }
+                    function render(){
+                        var files = input.files ? Array.prototype.slice.call(input.files) : [];
+                        out.innerHTML = '';
+                        for(var i=0;i<files.length;i++){
+                            var f = files[i];
+                            if (!f || !f.type || f.type.indexOf('image/') !== 0) { continue; }
+                            var img = document.createElement('img');
+                            img.className = 'rounded border border-gray-200 object-cover';
+                            img.style.maxWidth = '${String(state.maxWidth)}px';
+                            img.style.maxHeight = '${String(state.maxHeight)}px';
+                            img.alt = f.name || 'Preview';
+                            img.src = URL.createObjectURL(f);
+                            out.appendChild(img);
+                            if(!${state.multiple ? "true" : "false"}){ break; }
+                        }
+                        setState(out.childNodes.length > 0);
+                    }
+
+                    zone.addEventListener('click', function(){ openPicker(); });
+                    zone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openPicker(); } });
+                    zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('border-blue-500'); });
+                    zone.addEventListener('dragleave', function(){ zone.classList.remove('border-blue-500'); });
+                    zone.addEventListener('drop', function(e){
+                        e.preventDefault();
+                        zone.classList.remove('border-blue-500');
+                        try {
+                            if(e.dataTransfer && e.dataTransfer.files){
+                                input.files = e.dataTransfer.files;
+                                input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        } catch(_){ }
+                    });
+                    if(btn){ btn.addEventListener('click', function(){ openPicker(); }); }
+                    input.addEventListener('change', render);
+                    render();
+                })();
+            `));
+
+            return div(state.css)(
+                Label("", { for: inputId, required: state.required })(label),
+                inputEl,
+                zone,
+                preview,
+                script,
+            );
+        },
+    };
+
+    return api;
+}
+
 function ISelect<T = unknown>(name: string, data?: T) {
     const state = {
         data: data as object | undefined,
@@ -2019,6 +2476,190 @@ function Script(body: string): string {
     return "<script>" + safeBody + "</script>";
 }
 
+function Captcha(siteKey: string, secured: string): string {
+    const rootId = "recaptcha_" + RandomString(8);
+    const widgetId = rootId + "_widget";
+    const secureId = rootId + "_secured";
+    const statusId = rootId + "_status";
+
+    const content = div("space-y-3", { id: rootId })(
+        div("", { id: widgetId })(),
+        div("text-sm text-gray-600", { id: statusId, 'aria-live': 'polite', 'aria-atomic': 'true' })("Please complete reCAPTCHA verification."),
+        div("hidden", { id: secureId })(secured),
+    );
+
+    const script = Script(Trim(`
+        (function(){
+            var siteKey = '${escapeJS(String(siteKey || ""))}';
+            var widgetEl = document.getElementById('${widgetId}');
+            var secureEl = document.getElementById('${secureId}');
+            var statusEl = document.getElementById('${statusId}');
+            if (!widgetEl || !secureEl || !statusEl) { return; }
+
+            function setState(ok, msg) {
+                if (ok) {
+                    secureEl.classList.remove('hidden');
+                    statusEl.className = 'text-sm text-green-700';
+                } else {
+                    secureEl.classList.add('hidden');
+                    statusEl.className = 'text-sm text-red-700';
+                }
+                statusEl.textContent = msg || '';
+            }
+
+            function renderCaptcha() {
+                try {
+                    if (!window.grecaptcha || !siteKey) {
+                        setState(false, 'reCAPTCHA is not configured.');
+                        return;
+                    }
+                    window.grecaptcha.render(widgetEl, {
+                        sitekey: siteKey,
+                        callback: function() {
+                            setState(true, 'Verification successful.');
+                        },
+                        'expired-callback': function() {
+                            setState(false, 'Verification expired. Please verify again.');
+                        },
+                        'error-callback': function() {
+                            setState(false, 'Verification failed. Please retry.');
+                        }
+                    });
+                } catch (_) {
+                    setState(false, 'Failed to initialize reCAPTCHA.');
+                }
+            }
+
+            if (window.grecaptcha) {
+                renderCaptcha();
+                return;
+            }
+
+            var existing = document.querySelector('script[data-tsui-recaptcha="1"]');
+            if (!existing) {
+                var s = document.createElement('script');
+                s.src = 'https://www.google.com/recaptcha/api.js?render=explicit';
+                s.async = true;
+                s.defer = true;
+                s.setAttribute('data-tsui-recaptcha', '1');
+                s.onload = renderCaptcha;
+                s.onerror = function(){ setState(false, 'Unable to load reCAPTCHA script.'); };
+                document.head.appendChild(s);
+            } else {
+                var tries = 0;
+                var t = setInterval(function(){
+                    tries += 1;
+                    if (window.grecaptcha) {
+                        clearInterval(t);
+                        renderCaptcha();
+                    }
+                    if (tries > 100) {
+                        clearInterval(t);
+                        setState(false, 'Timed out loading reCAPTCHA.');
+                    }
+                }, 100);
+            }
+        })();
+    `));
+
+    return content + script;
+}
+
+function Markdown(css = "") {
+    function esc(s: string): string {
+        return String(s || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function safeHref(href: string): string {
+        const h = href.trim().toLowerCase();
+        if (h.startsWith("javascript:") || h.startsWith("data:") || h.startsWith("vbscript:")) {
+            return "";
+        }
+        return href;
+    }
+
+    function inlineFormat(s: string): string {
+        let out = esc(s);
+        out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+        out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+        out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_match, text, url) {
+            const href = safeHref(url);
+            return href ? '<a href="' + href + '">' + text + '</a>' : '<a>' + text + '</a>';
+        });
+        return out;
+    }
+
+    return function (content: string): string {
+        const src = String(content || "").replace(/\r\n/g, "\n");
+        const lines = src.split("\n");
+        const out: string[] = [];
+        let inCode = false;
+        let codeLang = "";
+        let inList = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith("```")) {
+                if (!inCode) {
+                    inCode = true;
+                    codeLang = line.slice(3).trim();
+                    out.push('<pre><code' + (codeLang ? ' class="language-' + esc(codeLang) + '"' : "") + ">");
+                } else {
+                    inCode = false;
+                    codeLang = "";
+                    out.push("</code></pre>");
+                }
+                continue;
+            }
+
+            if (inCode) {
+                out.push(esc(line));
+                continue;
+            }
+
+            if (/^\s*[-*]\s+/.test(line)) {
+                if (!inList) {
+                    inList = true;
+                    out.push("<ul>");
+                }
+                out.push("<li>" + inlineFormat(line.replace(/^\s*[-*]\s+/, "")) + "</li>");
+                continue;
+            }
+
+            if (inList) {
+                inList = false;
+                out.push("</ul>");
+            }
+
+            if (/^\s*$/.test(line)) {
+                continue;
+            }
+
+            const heading = line.match(/^(#{1,6})\s+(.*)$/);
+            if (heading) {
+                const level = Math.min(6, heading[1].length);
+                out.push("<h" + level + ">" + inlineFormat(heading[2]) + "</h" + level + ">");
+                continue;
+            }
+
+            out.push("<p>" + inlineFormat(line) + "</p>");
+        }
+
+        if (inList) {
+            out.push("</ul>");
+        }
+        if (inCode) {
+            out.push("</code></pre>");
+        }
+
+        return div(css)(out.join(""));
+    };
+}
+
 // ============================================================================
 // ALERT Component
 // ============================================================================
@@ -2177,11 +2818,122 @@ function getVariantStyles(variant: string): { baseClasses: string; iconHTML: str
 }
 
 function escapeJS(s: string): string {
-    return s.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    let out = String(s || "");
+    out = out.replace(/\\/g, "\\\\");
+    out = out.replace(/'/g, "\\'");
+    out = out.replace(/"/g, '\\"');
+    out = out.replace(/\r/g, "\\r");
+    out = out.replace(/\n/g, "\\n");
+    out = out.replace(/\u2028/g, "\\u2028");
+    out = out.replace(/\u2029/g, "\\u2029");
+    out = out.replace(/<\//g, "<\\/");
+    return out;
 }
 
 function escapeAttr(s: string): string {
     return s.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function faToMaterialIcon(faClass: string): string {
+    const c = String(faClass || "").toLowerCase();
+    const map: Record<string, string> = {
+        "fa fa-user": "person",
+        "fa fa-users": "groups",
+        "fa fa-home": "home",
+        "fa fa-search": "search",
+        "fa fa-edit": "edit",
+        "fa fa-pencil": "edit",
+        "fa fa-trash": "delete",
+        "fa fa-plus": "add",
+        "fa fa-minus": "remove",
+        "fa fa-check": "check",
+        "fa fa-close": "close",
+        "fa fa-times": "close",
+        "fa fa-save": "save",
+        "fa fa-download": "download",
+        "fa fa-upload": "upload",
+        "fa fa-envelope": "mail",
+        "fa fa-phone": "call",
+        "fa fa-calendar": "calendar_today",
+        "fa fa-clock": "schedule",
+        "fa fa-info": "info",
+        "fa fa-warning": "warning",
+        "fa fa-exclamation": "error",
+        "fa fa-cog": "settings",
+        "fa fa-gear": "settings",
+        "fa fa-lock": "lock",
+        "fa fa-unlock": "lock_open",
+        "fa fa-eye": "visibility",
+        "fa fa-eye-slash": "visibility_off",
+    };
+    if (map[c]) {
+        return map[c];
+    }
+    return "help";
+}
+
+function ErrorField(err: unknown): string {
+    if (!err) {
+        return "";
+    }
+    return div("rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700")(String(err));
+}
+
+function ErrorForm(errs: unknown, translations?: Record<string, string>): string {
+    const out: string[] = [];
+    if (Array.isArray(errs)) {
+        for (let i = 0; i < errs.length; i++) {
+            const key = String(errs[i]);
+            const txt = translations && translations[key] ? translations[key] : key;
+            out.push(li("text-sm text-red-700")(txt));
+        }
+    } else if (errs && typeof errs === "object") {
+        const obj = errs as Record<string, unknown>;
+        const keys = Object.keys(obj);
+        for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            const raw = String(obj[k] || "");
+            const txt = translations && translations[raw] ? translations[raw] : raw;
+            out.push(li("text-sm text-red-700")(k + ": " + txt));
+        }
+    } else if (errs) {
+        out.push(li("text-sm text-red-700")(String(errs)));
+    }
+    if (out.length === 0) {
+        return "";
+    }
+    return div("rounded border border-red-300 bg-red-50 px-3 py-2")(
+        div("font-semibold text-red-800 mb-1")("Validation errors"),
+        ul("list-disc pl-5 space-y-1")(out.join("")),
+    );
+}
+
+function ErrorPanel(err: unknown): string {
+    let message = "Unknown error";
+    let stack = "";
+    try {
+        if (err instanceof globalThis.Error) {
+            message = err.message || message;
+            stack = String(err.stack || "");
+        } else if (err != null) {
+            message = String(err);
+        }
+    } catch (_) { }
+    return div("rounded-lg border border-red-300 bg-red-50 p-4 space-y-2")(
+        div("font-bold text-red-800")("Error"),
+        div("text-sm text-red-700")(message),
+        Iff(!!stack)(div("text-xs text-red-700 whitespace-pre-wrap overflow-auto max-h-64")(stack)),
+    );
+}
+
+function Print(value: unknown): string {
+    let txt = "";
+    try {
+        txt = JSON.stringify(value, null, 2);
+    } catch (_) {
+        txt = String(value);
+    }
+    return div("rounded border border-gray-300 bg-gray-50 p-3 text-xs font-mono whitespace-pre-wrap")(txt);
 }
 
 // ============================================================================
@@ -3490,6 +4242,26 @@ class Form {
         return IDateTime(name, data).Form(this.formId) as any;
     }
 
+    Phone(name: string, data?: object): ReturnType<typeof IPhone> {
+        return IPhone(name, data).Form(this.formId) as any;
+    }
+
+    Email(name: string, data?: object): ReturnType<typeof IEmail> {
+        return IEmail(name, data).Form(this.formId) as any;
+    }
+
+    Value(name: string, data?: object): ReturnType<typeof IValue> {
+        return IValue(data).Value(name).Form(this.formId) as any;
+    }
+
+    File(name: string): ReturnType<typeof IFile> {
+        return IFile(name).Form(this.formId) as any;
+    }
+
+    ImageUpload(name: string): ReturnType<typeof IImageUpload> {
+        return IImageUpload(name).Form(this.formId) as any;
+    }
+
     Select<T = unknown>(name: string, data?: T): ReturnType<typeof ISelect<T>> {
         return ISelect<T>(name, data).Form(this.formId) as any;
     }
@@ -3536,6 +4308,7 @@ export {
     Classes,
     If,
     Iff,
+    Or,
     Map,
     Map2,
     For,
@@ -3566,6 +4339,7 @@ export {
     GrayOutline,
     White,
     WhiteOutline,
+    Black,
     a,
     i,
     p,
@@ -3598,6 +4372,12 @@ export {
     IDate,
     ITime,
     IDateTime,
+    IPhone,
+    IEmail,
+    IValue,
+    IFile,
+    IImagePreview,
+    IImageUpload,
     ISelect,
     ICheckbox,
     IRadio,
@@ -3608,6 +4388,12 @@ export {
     Timeout,
     Hidden,
     Script,
+    Captcha,
+    Markdown,
+    ErrorField,
+    ErrorForm,
+    faToMaterialIcon,
+    Print,
     Form,
     // New components
     Alert,
@@ -3629,6 +4415,7 @@ export {
     AccordionBordered,
     AccordionGhost,
     AccordionSeparated,
+    ErrorPanel as Error,
     Dropdown,
 };
 
@@ -3638,6 +4425,7 @@ export default {
     Classes,
     If,
     Iff,
+    Or,
     Map,
     Map2,
     For,
@@ -3668,6 +4456,7 @@ export default {
     GrayOutline,
     White,
     WhiteOutline,
+    Black,
     a,
     i,
     p,
@@ -3700,6 +4489,12 @@ export default {
     IDate,
     ITime,
     IDateTime,
+    IPhone,
+    IEmail,
+    IValue,
+    IFile,
+    IImagePreview,
+    IImageUpload,
     ISelect,
     ICheckbox,
     IRadio,
@@ -3710,6 +4505,12 @@ export default {
     Timeout,
     Hidden,
     script: Script,
+    Captcha,
+    Markdown,
+    ErrorField,
+    ErrorForm,
+    faToMaterialIcon,
+    Print,
     Form,
     // New components
     Alert,
@@ -3731,5 +4532,6 @@ export default {
     AccordionBordered,
     AccordionGhost,
     AccordionSeparated,
+    Error: ErrorPanel,
     Dropdown,
 };

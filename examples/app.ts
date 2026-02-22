@@ -162,7 +162,7 @@ export function createExampleApp(locale = 'en'): { app: App } {
 
     app.HTMLHead.push(
         '<link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,' + encodeURIComponent(svg) + '">',
-        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/material-design-icons/3.0.1/iconfont/material-icons.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />',
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" crossorigin="anonymous" referrerpolicy="no-referrer" />',
     );
 
     const layout = createLayout(app);

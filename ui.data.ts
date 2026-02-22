@@ -1,5 +1,6 @@
 import ui, { AOption, Target, Skeleton } from "./ui";
 import { Context } from "./ui.server";
+import * as XLSX from "xlsx";
 
 // Go-style data collation helpers for server-side UI (TypeScript port)
 // Follows project conventions: no arrows, no destructuring, no spreads, explicit types.
@@ -717,7 +718,38 @@ function Collate<T>(uid: string, init: TQuery, loader: Loader<T>): CollateModel<
 
     onXLS.url = "/xls-" + uid;
     function onXLS(ctx: Context): string {
-        ctx.Info("Export not implemented in this build.");
+        const query = makeQuery(state.Init);
+        ctx.Body(query);
+        if (query.Limit <= 0) {
+            query.Limit = state.Init.Limit > 0 ? state.Init.Limit : 1000;
+        }
+        if (query.Offset < 0) {
+            query.Offset = 0;
+        }
+
+        const loadPromise = state.Loader ? state.Loader(query) : Promise.resolve({ total: 0, filtered: 0, data: [] as T[] });
+        loadPromise
+            .then(function (r: LoadResult<T>) {
+                const items = r && Array.isArray(r.data) ? r.data : [] as T[];
+                if (state.OnExcel) {
+                    return Promise.resolve(state.OnExcel(items))
+                        .then(function (custom) {
+                            if (!custom) {
+                                ctx.Error("Export failed: empty payload");
+                                return;
+                            }
+                            ctx.DownloadAs(custom.content || "", custom.mime || "application/octet-stream", custom.filename || "export.bin");
+                            ctx.Success("Export ready");
+                        });
+                }
+
+                const excel = buildXLSX(items, state.ExcelFields);
+                ctx.DownloadAs(excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "export.xlsx");
+                ctx.Success("Export ready");
+            })
+            .catch(function () {
+                ctx.Error("Export failed");
+            });
         return "";
     }
 
@@ -852,6 +884,107 @@ function Collate<T>(uid: string, init: TQuery, loader: Loader<T>): CollateModel<
     };
 
     return model;
+}
+
+function getByPath(input: unknown, path: string): unknown {
+    if (input == null) {
+        return undefined;
+    }
+    const parts = String(path || "").split(".");
+    let cur: unknown = input;
+    for (let i = 0; i < parts.length; i++) {
+        if (cur == null) {
+            return undefined;
+        }
+        const key = parts[i];
+        if (Array.isArray(cur)) {
+            const idx = parseInt(key, 10);
+            if (Number.isNaN(idx)) {
+                return undefined;
+            }
+            cur = cur[idx];
+            continue;
+        }
+        if (typeof cur !== "object") {
+            return undefined;
+        }
+        cur = (cur as Record<string, unknown>)[key];
+    }
+    return cur;
+}
+
+function buildXLSX<T>(items: T[], fields: TField[]): Buffer {
+    const headers: string[] = [];
+    const keys: string[] = [];
+
+    if (fields && fields.length > 0) {
+        for (let i = 0; i < fields.length; i++) {
+            const f = fields[i];
+            headers.push(String(f.Text || f.Field || ""));
+            keys.push(String(f.Field || ""));
+        }
+    } else if (items && items.length > 0) {
+        const first = items[0] as unknown as Record<string, unknown>;
+        const ks = Object.keys(first || {});
+        for (let i = 0; i < ks.length; i++) {
+            headers.push(ks[i]);
+            keys.push(ks[i]);
+        }
+    }
+
+    const rows: unknown[][] = [];
+    rows.push(headers);
+
+    for (let i = 0; i < items.length; i++) {
+        const row: unknown[] = [];
+        for (let j = 0; j < keys.length; j++) {
+            const v = getByPath(items[i], keys[j]);
+            if (v instanceof Date) {
+                row.push(v);
+            } else if (typeof v === "number" || typeof v === "boolean") {
+                row.push(v);
+            } else if (v == null) {
+                row.push("");
+            } else {
+                row.push(String(v));
+            }
+        }
+        rows.push(row);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows, { cellDates: true });
+    const cols: { wch: number }[] = [];
+    for (let c = 0; c < headers.length; c++) {
+        let max = String(headers[c] || "").length;
+        for (let r = 1; r < rows.length; r++) {
+            const val = rows[r][c];
+            const len = String(val == null ? "" : val).length;
+            if (len > max) {
+                max = len;
+            }
+        }
+        cols.push({ wch: Math.min(60, Math.max(10, max + 2)) });
+    }
+    (ws as unknown as { "!cols"?: { wch: number }[] })["!cols"] = cols;
+
+    for (let r = 1; r < rows.length; r++) {
+        for (let c = 0; c < headers.length; c++) {
+            const addr = XLSX.utils.encode_cell({ r: r, c: c });
+            const cell = (ws as Record<string, unknown>)[addr] as { z?: string; t?: string } | undefined;
+            if (!cell) {
+                continue;
+            }
+            const raw = rows[r][c];
+            if (raw instanceof Date) {
+                cell.t = "d";
+                cell.z = "yyyy-mm-dd hh:mm";
+            }
+        }
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Export");
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx", compression: true }) as Buffer;
 }
 
 function makeQuery(def: TQuery): TQuery {

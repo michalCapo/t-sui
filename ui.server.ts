@@ -2,7 +2,12 @@
 
 import http, { IncomingMessage, Server, ServerResponse } from "node:http";
 import crypto from "node:crypto";
+import { gzipSync } from "node:zlib";
+
 import type { Socket } from "node:net";
+import { readFile } from "node:fs/promises";
+import nodePath from "node:path";
+
 import ui, { Attr, Target, Swap } from "./ui";
 import { htmlToJSElement, JSElement, JSPatchOp, JSHTTPResponse, JSResponseMessage, JSCallMessage } from "./ui.protocol";
 
@@ -72,14 +77,164 @@ function safeJsonParse<T>(jsonString: string, maxLength = 1000000): T | undefine
     }
 }
 
+function headerValue(req: IncomingMessage | { headers?: { [k: string]: string | undefined } }, name: string): string {
+    try {
+        const h = req.headers || {};
+        const v = (h as Record<string, string | string[] | undefined>)[name.toLowerCase()];
+        if (Array.isArray(v)) {
+            return String(v[0] || "");
+        }
+        return String(v || "");
+    } catch (_) {
+        return "";
+    }
+}
+
+function parseMultipartBoundary(contentType: string): string {
+    const m = String(contentType || "").match(/boundary=([^;]+)/i);
+    if (!m || !m[1]) {
+        return "";
+    }
+    let b = m[1].trim();
+    if ((b.startsWith('"') && b.endsWith('"')) || (b.startsWith("'") && b.endsWith("'"))) {
+        b = b.slice(1, -1);
+    }
+    return b;
+}
+
+function parseMultipartBody(raw: Buffer, boundary: string): BodyItem[] {
+    const out: BodyItem[] = [];
+    if (!raw || raw.length === 0 || !boundary) {
+        return out;
+    }
+    const delimiter = "--" + boundary;
+    const full = raw.toString("latin1");
+    const parts = full.split(delimiter);
+    for (let i = 0; i < parts.length; i++) {
+        let part = parts[i];
+        if (!part || part === "--" || part === "--\r\n") {
+            continue;
+        }
+        if (part.startsWith("\r\n")) {
+            part = part.slice(2);
+        }
+        if (part.endsWith("\r\n")) {
+            part = part.slice(0, -2);
+        }
+        if (part.endsWith("--")) {
+            part = part.slice(0, -2);
+        }
+
+        const sep = part.indexOf("\r\n\r\n");
+        if (sep < 0) {
+            continue;
+        }
+        const headerBlock = part.slice(0, sep);
+        const bodyBlock = part.slice(sep + 4);
+        const headers = headerBlock.split("\r\n");
+
+        let fieldName = "";
+        let filename = "";
+        let contentType = "application/octet-stream";
+
+        for (let h = 0; h < headers.length; h++) {
+            const line = headers[h];
+            const lower = line.toLowerCase();
+            if (lower.startsWith("content-disposition:")) {
+                const nameMatch = line.match(/name="([^"]+)"/i);
+                const fileMatch = line.match(/filename="([^"]*)"/i);
+                if (nameMatch && nameMatch[1]) {
+                    fieldName = nameMatch[1];
+                }
+                if (fileMatch && typeof fileMatch[1] === "string") {
+                    filename = fileMatch[1];
+                }
+            } else if (lower.startsWith("content-type:")) {
+                const idx = line.indexOf(":");
+                if (idx >= 0) {
+                    contentType = line.slice(idx + 1).trim() || "application/octet-stream";
+                }
+            }
+        }
+
+        if (!fieldName) {
+            continue;
+        }
+
+        const bodyBuf = Buffer.from(bodyBlock, "latin1");
+        if (filename) {
+            const payload: FileUpload = {
+                Name: filename,
+                Data: bodyBuf.toString("base64"),
+                ContentType: contentType,
+                Size: bodyBuf.length,
+            };
+            out.push({
+                name: fieldName,
+                type: "file",
+                value: JSON.stringify(payload),
+            });
+        } else {
+            out.push({
+                name: fieldName,
+                type: "string",
+                value: bodyBuf.toString("utf8"),
+            });
+        }
+    }
+    return out;
+}
+
+function parseRequestBodyItems(raw: Buffer, contentType: string): BodyItem[] | undefined {
+    if (!raw || raw.length === 0) {
+        return undefined;
+    }
+
+    const ct = String(contentType || "").toLowerCase();
+    if (ct.includes("application/json")) {
+        const asText = validateAndSanitizeInput(raw.toString("utf8"), 20_000_000);
+        const parsed = safeJsonParse<BodyItem[]>(asText, 20_000_000);
+        if (parsed && Array.isArray(parsed)) {
+            for (let i = 0; i < parsed.length; i++) {
+                const item = parsed[i];
+                if (!item || typeof item.name !== "string" || typeof item.value !== "string") {
+                    return undefined;
+                }
+                item.name = validateAndSanitizeInput(item.name, 1000);
+                item.type = validateAndSanitizeInput(String(item.type || "string"), 100);
+                item.value = validateAndSanitizeInput(item.value, 20_000_000);
+            }
+            return parsed;
+        }
+        return undefined;
+    }
+
+    if (ct.includes("application/x-www-form-urlencoded")) {
+        const params = new URLSearchParams(raw.toString("utf8"));
+        const out: BodyItem[] = [];
+        for (const [k, v] of params.entries()) {
+            out.push({ name: k, type: "string", value: v });
+        }
+        return out;
+    }
+
+    if (ct.includes("multipart/form-data")) {
+        const boundary = parseMultipartBoundary(contentType);
+        const parsed = parseMultipartBody(raw, boundary);
+        return parsed.length > 0 ? parsed : undefined;
+    }
+
+    return undefined;
+}
+
 // Security headers configuration
 function setSecurityHeaders(res: ServerResponse, isSecure = false): void {
     // Content Security Policy - updated to allow external stylesheets
     const csp = [
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",  // Allow inline scripts for framework functionality
-        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com ",   // Allow external stylesheets from CDNJS
-        "font-src 'self' https://cdnjs.cloudflare.com ",  // Allow fonts from CDNJS
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",   // Allow external stylesheets from Google Fonts
+        "font-src 'self' https://fonts.gstatic.com",  // Allow fonts from Google Fonts
         "img-src 'self' data: https:",
         "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",        // Allow WebSocket connections
         "object-src 'none'",
@@ -161,10 +316,17 @@ function getClientIP(req: IncomingMessage): string {
 // Internal: associate parsed request bodies without mutating IncomingMessage
 
 const REQ_BODY = new Map<string, BodyItem[] | undefined>();
+const REQ_FILES = new Map<string, Map<string, FileUpload[]> | undefined>();
 
 function setRequestBody(sessionId: string, body: BodyItem[] | undefined): void {
     if (sessionId) {
         REQ_BODY.set(sessionId, body);
+    }
+}
+
+function setRequestFiles(sessionId: string, files: Map<string, FileUpload[]> | undefined): void {
+    if (sessionId) {
+        REQ_FILES.set(sessionId, files);
     }
 }
 
@@ -177,6 +339,141 @@ export interface BodyItem {
     name: string;
     type: string;
     value: string;
+}
+
+export interface FileUpload {
+    Name: string;
+    Data: string;
+    ContentType: string;
+    Size: number;
+}
+
+export interface SessionDB {
+    get(name: string, sessionID: string): Promise<string | undefined> | string | undefined;
+    set(name: string, sessionID: string, value: string, expiresAt: number): Promise<void> | void;
+}
+
+export interface TSession {
+    Load<T extends object>(data: T): Promise<boolean>;
+    Save<T extends object>(data: T): Promise<void>;
+}
+
+function mimeByExt(filePath: string): string {
+    const ext = nodePath.extname(String(filePath || "")).toLowerCase();
+    const map: Record<string, string> = {
+        ".js": "application/javascript; charset=utf-8",
+        ".mjs": "application/javascript; charset=utf-8",
+        ".cjs": "application/javascript; charset=utf-8",
+        ".ts": "application/typescript; charset=utf-8",
+        ".tsx": "text/plain; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".html": "text/html; charset=utf-8",
+        ".htm": "text/html; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".xml": "application/xml; charset=utf-8",
+        ".txt": "text/plain; charset=utf-8",
+        ".md": "text/markdown; charset=utf-8",
+        ".csv": "text/csv; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".ico": "image/x-icon",
+        ".bmp": "image/bmp",
+        ".avif": "image/avif",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
+        ".otf": "font/otf",
+        ".eot": "application/vnd.ms-fontobject",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".ogg": "audio/ogg",
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".mov": "video/quicktime",
+        ".wasm": "application/wasm",
+        ".pdf": "application/pdf",
+        ".zip": "application/zip",
+        ".gz": "application/gzip",
+    };
+    return map[ext] || "application/octet-stream";
+}
+
+export interface PWAIcon {
+    src: string;
+    sizes: string;
+    type: string;
+    purpose?: string;
+}
+
+export interface PWAConfig {
+    Name: string;
+    ShortName?: string;
+    ID?: string;
+    Description?: string;
+    ThemeColor?: string;
+    BackgroundColor?: string;
+    Display?: string;
+    StartURL?: string;
+    Icons?: PWAIcon[];
+    GenerateServiceWorker?: boolean;
+    CacheAssets?: string[];
+    OfflinePage?: string;
+}
+
+function parseFileUpload(raw: string): FileUpload | undefined {
+    const parsed = safeJsonParse<Record<string, unknown>>(raw, 20_000_000);
+    if (!parsed || typeof parsed !== "object") {
+        return undefined;
+    }
+    const name = validateAndSanitizeInput(String(parsed.Name || ""), 1024);
+    const data = validateAndSanitizeInput(String(parsed.Data || ""), 20_000_000);
+    const contentType = validateAndSanitizeInput(String(parsed.ContentType || "application/octet-stream"), 512);
+    const sizeNum = Number(parsed.Size);
+    const size = Number.isFinite(sizeNum) && sizeNum >= 0 ? sizeNum : 0;
+    if (!name || !data) {
+        return undefined;
+    }
+    return {
+        Name: name,
+        Data: data,
+        ContentType: contentType || "application/octet-stream",
+        Size: size,
+    };
+}
+
+function extractRequestFiles(body: BodyItem[] | undefined): Map<string, FileUpload[]> | undefined {
+    if (!Array.isArray(body) || body.length === 0) {
+        return undefined;
+    }
+    const out = new Map<string, FileUpload[]>();
+    for (let i = 0; i < body.length; i++) {
+        const item = body[i];
+        if (!item || item.type !== "file") {
+            continue;
+        }
+        const file = parseFileUpload(item.value);
+        if (!file) {
+            continue;
+        }
+        const key = String(item.name || "");
+        if (!key) {
+            continue;
+        }
+        const existing = out.get(key);
+        if (existing) {
+            existing.push(file);
+        } else {
+            out.set(key, [file]);
+        }
+    }
+    if (out.size === 0) {
+        return undefined;
+    }
+    return out;
 }
 
 // add url field to callable
@@ -193,6 +490,9 @@ export interface Route {
     paramNames: string[]; // names of parameters in order
     hasParams: boolean;   // whether this route has path parameters
 }
+
+type CustomMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+type CustomHandler = (ctx: Context) => string | Promise<string> | void | Promise<void>;
 
 function generateUUID(): string {
     return crypto.randomBytes(16).toString('hex');
@@ -280,6 +580,13 @@ export class App {
     _rateLimiterIntervalHandle: ReturnType<typeof setInterval> | null = null;
     layout: Callable | null = null;
     _smoothNav: boolean = false;
+    _pwaConfig: PWAConfig | null = null;
+    _customHandlers: Map<string, CustomHandler> = new Map();
+    _assetsDir: string = "";
+    _assetsMaxAge: number = 0;
+    _faviconPath: string = "";
+    _faviconMaxAge: number = 0;
+    _staticCacheMaxAge: number = 0;
 
     // Security configuration methods
     configureRateLimit(maxRequests: number, windowMs: number): void {
@@ -307,6 +614,8 @@ export class App {
 
         for (const id of expiredSessions) {
             this._sessions.delete(id);
+            REQ_BODY.delete(id);
+            REQ_FILES.delete(id);
             this._log("Expired session cleaned up:", id);
         }
     }
@@ -365,6 +674,8 @@ export class App {
 
                 this._log("Deleting session", sid);
                 this._sessions.delete(sid);
+                REQ_BODY.delete(sid);
+                REQ_FILES.delete(sid);
             }
         }
     }
@@ -396,7 +707,7 @@ export class App {
         this.HTMLHead = [
             '<meta charset=\"UTF-8\">',
             '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
-            '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/material-design-icons/3.0.1/iconfont/material-icons.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />',
+            '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" crossorigin="anonymous" referrerpolicy="no-referrer" />',
             '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
             '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>',
             // Configure Tailwind CSS 4 to use class-based dark mode (selector strategy)
@@ -570,6 +881,152 @@ export class App {
         this.HTMLHead.push("<script>" + client + "</script>");
     }
 
+    CacheControl(maxAge: number): void {
+        if (Number.isFinite(maxAge) && maxAge >= 0) {
+            this._staticCacheMaxAge = Math.floor(maxAge);
+        }
+    }
+
+    Assets(dirPath: string, maxAge?: number): void {
+        this._assetsDir = String(dirPath || "");
+        if (typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0) {
+            this._assetsMaxAge = Math.floor(maxAge);
+        } else {
+            this._assetsMaxAge = this._staticCacheMaxAge;
+        }
+    }
+
+    Favicon(filePath: string, maxAge?: number): void {
+        this._faviconPath = String(filePath || "");
+        if (typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0) {
+            this._faviconMaxAge = Math.floor(maxAge);
+        } else {
+            this._faviconMaxAge = this._staticCacheMaxAge;
+        }
+    }
+
+    PWA(config: PWAConfig): void {
+        const resolved: PWAConfig = {
+            Name: String(config.Name || "App"),
+            ShortName: String(config.ShortName || config.Name || "App"),
+            ID: String(config.ID || "/"),
+            Description: String(config.Description || ""),
+            ThemeColor: String(config.ThemeColor || "#1f2937"),
+            BackgroundColor: String(config.BackgroundColor || "#ffffff"),
+            Display: String(config.Display || "standalone"),
+            StartURL: String(config.StartURL || "/"),
+            Icons: Array.isArray(config.Icons) ? config.Icons : [],
+            GenerateServiceWorker: config.GenerateServiceWorker !== false,
+            CacheAssets: Array.isArray(config.CacheAssets) ? config.CacheAssets : [],
+            OfflinePage: String(config.OfflinePage || ""),
+        };
+
+        this._pwaConfig = resolved;
+
+        this.HTMLHead.push('<link rel="manifest" href="/manifest.webmanifest">');
+        this.HTMLHead.push('<meta name="theme-color" content="' + resolved.ThemeColor + '">');
+        this.HTMLHead.push('<meta name="apple-mobile-web-app-capable" content="yes">');
+        this.HTMLHead.push('<meta name="apple-mobile-web-app-status-bar-style" content="default">');
+        this.HTMLHead.push('<meta name="apple-mobile-web-app-title" content="' + (resolved.ShortName || resolved.Name) + '">');
+
+        if (resolved.GenerateServiceWorker) {
+            this.HTMLHead.push('<script>if(typeof navigator!=="undefined" && "serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/sw.js").catch(function(){});});}</script>');
+        }
+    }
+
+    Description(text: string): void {
+        const safe = String(text || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        this.HTMLHead.push('<meta name="description" content="' + safe + '">');
+    }
+
+    private _manifestJSON(): string {
+        const cfg = this._pwaConfig;
+        if (!cfg) {
+            return "{}";
+        }
+        return JSON.stringify({
+            name: cfg.Name,
+            short_name: cfg.ShortName || cfg.Name,
+            id: cfg.ID || "/",
+            description: cfg.Description || "",
+            theme_color: cfg.ThemeColor || "#1f2937",
+            background_color: cfg.BackgroundColor || "#ffffff",
+            display: cfg.Display || "standalone",
+            start_url: cfg.StartURL || "/",
+            icons: cfg.Icons || [],
+        });
+    }
+
+    private _serviceWorkerJS(): string {
+        const cfg = this._pwaConfig;
+        if (!cfg) {
+            return "self.addEventListener('install', function(){ self.skipWaiting(); });";
+        }
+        const offline = String(cfg.OfflinePage || "");
+        const assets = Array.isArray(cfg.CacheAssets) ? cfg.CacheAssets.slice() : [];
+        if (offline && assets.indexOf(offline) < 0) {
+            assets.push(offline);
+        }
+        if (assets.indexOf("/") < 0) {
+            assets.push("/");
+        }
+        const cacheName = "tsui-pwa-v1-" + crypto.randomBytes(4).toString("hex");
+        const serializedAssets = JSON.stringify(assets);
+        return ui.Trim(`
+            const CACHE_NAME = '${cacheName}';
+            const PRECACHE = ${serializedAssets};
+            const OFFLINE_PAGE = ${JSON.stringify(offline)};
+
+            self.addEventListener('install', function(event) {
+                event.waitUntil(caches.open(CACHE_NAME).then(function(cache){ return cache.addAll(PRECACHE); }).catch(function(){}));
+                self.skipWaiting();
+            });
+
+            self.addEventListener('activate', function(event) {
+                event.waitUntil(
+                    caches.keys().then(function(keys){
+                        return Promise.all(keys.map(function(k){
+                            if (k !== CACHE_NAME) { return caches.delete(k); }
+                        }));
+                    })
+                );
+                self.clients.claim();
+            });
+
+            self.addEventListener('fetch', function(event) {
+                const req = event.request;
+                if (req.method !== 'GET') { return; }
+
+                if (req.mode === 'navigate') {
+                    event.respondWith(
+                        fetch(req)
+                            .then(function(res){
+                                const copy = res.clone();
+                                caches.open(CACHE_NAME).then(function(c){ c.put(req, copy); });
+                                return res;
+                            })
+                            .catch(function(){
+                                return caches.match(req)
+                                    .then(function(hit){ return hit || (OFFLINE_PAGE ? caches.match(OFFLINE_PAGE) : undefined); });
+                            })
+                    );
+                    return;
+                }
+
+                event.respondWith(
+                    caches.match(req).then(function(hit){
+                        if (hit) { return hit; }
+                        return fetch(req).then(function(res){
+                            const copy = res.clone();
+                            caches.open(CACHE_NAME).then(function(c){ c.put(req, copy); });
+                            return res;
+                        });
+                    })
+                );
+            });
+        `);
+    }
+
     private register(method: "GET" | "POST", path: string, callable: Callable): void {
         if (!path)
             throw new Error("Path cannot be empty");
@@ -678,6 +1135,109 @@ export class App {
         }
         this.register(POST, uid, action);
         return action;
+    }
+
+    Custom(method: CustomMethod, path: string, handler: CustomHandler): CustomHandler {
+        const m = String(method || "GET").toUpperCase() as CustomMethod;
+        const p = normalizePath(path);
+        const key = m + " " + p;
+        this._customHandlers.set(key, handler);
+        return handler;
+    }
+
+    GET(path: string, handler: CustomHandler): CustomHandler {
+        return this.Custom("GET", path, handler);
+    }
+
+    POST(path: string, handler: CustomHandler): CustomHandler {
+        return this.Custom("POST", path, handler);
+    }
+
+    PUT(path: string, handler: CustomHandler): CustomHandler {
+        return this.Custom("PUT", path, handler);
+    }
+
+    DELETE(path: string, handler: CustomHandler): CustomHandler {
+        return this.Custom("DELETE", path, handler);
+    }
+
+    PATCH(path: string, handler: CustomHandler): CustomHandler {
+        return this.Custom("PATCH", path, handler);
+    }
+
+    Handler(): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+        const self = this;
+        return async function(req: IncomingMessage, res: ServerResponse): Promise<void> {
+            try {
+                const url = req.url as string;
+                const path = url.split("?")[0];
+
+                let sid = "";
+                try {
+                    const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
+                    const cookies = parseCookies(cookieHeader);
+                    sid = String(cookies["tsui__sid"] || "");
+                } catch (_) { }
+                if (!sid) {
+                    sid = self._getOrCreateSessionId(req, res);
+                    try {
+                        const prev = String((req.headers && (req.headers["cookie"] as string)) || "");
+                        req.headers["cookie"] = (prev ? prev + "; " : "") + "tsui__sid=" + encodeURIComponent(sid);
+                    } catch (_) { }
+                }
+
+                const chunks: Buffer[] = [];
+                let bodySize = 0;
+                await new Promise(function(resolve) {
+                    let done = false;
+                    function finish() {
+                        if (done) return;
+                        done = true;
+                        resolve(undefined);
+                    }
+                    req.on("data", function(chunk: unknown) {
+                        const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+                        chunks.push(b);
+                        bodySize += b.length;
+                        if (bodySize > 20_000_000) {
+                            req.destroy();
+                            finish();
+                        }
+                    });
+                    req.on("end", finish);
+                    req.on("aborted", finish);
+                    req.on("close", finish);
+                    setTimeout(finish, 10000);
+                });
+
+                try {
+                    const raw = Buffer.concat(chunks);
+                    const parsed = parseRequestBodyItems(raw, headerValue(req, "content-type"));
+                    setRequestBody(sid, parsed);
+                    setRequestFiles(sid, extractRequestFiles(parsed));
+                } catch (_) {
+                    setRequestBody(sid, undefined);
+                    setRequestFiles(sid, undefined);
+                }
+
+                const rawTextBody = Buffer.concat(chunks).toString("utf8");
+                const html = await self._dispatch(path, req, res, rawTextBody);
+                if (html !== "") {
+                    const out = maybeGzipNode(req, res, html);
+                    res.write(out);
+                    res.end();
+                }
+            } catch (err) {
+                console.error("Handler error:", err);
+                if (!res.headersSent) {
+                    res.statusCode = 500;
+                    res.setHeader("Content-Type", "text/html; charset=utf-8");
+                }
+                if (!res.writableEnded) {
+                    res.end(devErrorPage());
+                }
+            }
+        };
     }
 
     Callable(callable: Callable): Callable {
@@ -825,6 +1385,79 @@ export class App {
     async _dispatch(path: string, req: IncomingMessage, res: ServerResponse, body?: string): Promise<string> {
         const p = normalizePath(path);
         const method = req.method || "GET";
+
+        if (method === "GET" && p === "/favicon.ico" && this._faviconPath) {
+            try {
+                const data = await readFile(this._faviconPath);
+                res.setHeader("Content-Type", mimeByExt(this._faviconPath));
+                const maxAge = this._faviconMaxAge;
+                if (maxAge > 0) {
+                    res.setHeader("Cache-Control", "public, max-age=" + String(maxAge));
+                }
+                res.write(data);
+                res.end();
+                return "";
+            } catch (_) {
+                res.statusCode = 404;
+                return "Not found";
+            }
+        }
+
+        if (method === "GET" && this._assetsDir && p.startsWith("/assets/")) {
+            const rel = p.slice("/assets/".length);
+            const base = nodePath.resolve(this._assetsDir);
+            const file = nodePath.resolve(base, rel);
+            if (!file.startsWith(base)) {
+                res.statusCode = 403;
+                return "Forbidden";
+            }
+            try {
+                const data = await readFile(file);
+                res.setHeader("Content-Type", mimeByExt(file));
+                const maxAge = this._assetsMaxAge;
+                if (maxAge > 0) {
+                    res.setHeader("Cache-Control", "public, max-age=" + String(maxAge));
+                }
+                res.write(data);
+                res.end();
+                return "";
+            } catch (_) {
+                res.statusCode = 404;
+                return "Not found";
+            }
+        }
+
+        const custom = this._customHandlers.get(String(method).toUpperCase() + " " + p);
+        if (custom) {
+            const sid = this._getOrCreateSessionId(req, res);
+            const ctx = new Context(this, req, res, sid);
+            const out = await custom(ctx);
+            if (res.writableEnded) {
+                return "";
+            }
+            if (typeof out === "string") {
+                if (!res.getHeader("Content-Type")) {
+                    res.setHeader("Content-Type", "text/html; charset=utf-8");
+                }
+                return out;
+            }
+            res.end();
+            return "";
+        }
+
+        if (method === "GET" && this._pwaConfig && p === "/manifest.webmanifest") {
+            res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+            res.write(this._manifestJSON());
+            res.end();
+            return "";
+        }
+
+        if (method === "GET" && this._pwaConfig && this._pwaConfig.GenerateServiceWorker !== false && p === "/sw.js") {
+            res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+            res.write(this._serviceWorkerJS());
+            res.end();
+            return "";
+        }
 
         // Parse query parameters from URL
         let queryParams: URLSearchParams | null = null;
@@ -975,8 +1608,16 @@ export class App {
                     const cookies = parseCookies(cookieHeader);
                     sid = String(cookies["tsui__sid"] || "");
                 } catch (_) { }
+                if (!sid) {
+                    sid = self._getOrCreateSessionId(req, res);
+                    try {
+                        const prev = String((req.headers && (req.headers["cookie"] as string)) || "");
+                        req.headers["cookie"] = (prev ? prev + "; " : "") + "tsui__sid=" + encodeURIComponent(sid);
+                    } catch (_) { }
+                }
 
-                let body = "";
+                const chunks: Buffer[] = [];
+                let bodySize = 0;
                 await new Promise(function (resolve) {
                     let done = false;
                     function finish() {
@@ -985,8 +1626,10 @@ export class App {
                         resolve(undefined);
                     }
                     req.on("data", function (chunk: unknown) {
-                        body += String(chunk as string);
-                        if (body.length > 1_000_000) {
+                        const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+                        chunks.push(b);
+                        bodySize += b.length;
+                        if (bodySize > 20_000_000) {
                             req.destroy();
                             finish();
                         }
@@ -997,39 +1640,21 @@ export class App {
                     setTimeout(finish, 10000);
                 });
                 try {
-                    let parsed: BodyItem[] | undefined = undefined;
-                    if (body) {
-                        // Enhanced input validation and parsing
-                        const sanitizedBody = validateAndSanitizeInput(body, 1000000);
-                        parsed = safeJsonParse<BodyItem[]>(sanitizedBody);
-
-                        // Additional validation for BodyItem array
-                        if (parsed && Array.isArray(parsed)) {
-                            // Validate each item in the array
-                            for (const item of parsed) {
-                                if (!item || typeof item !== 'object' ||
-                                    typeof item.name !== 'string' ||
-                                    typeof item.type !== 'string' ||
-                                    typeof item.value !== 'string') {
-                                    parsed = undefined;
-                                    break;
-                                }
-                                // Sanitize individual fields
-                                item.name = validateAndSanitizeInput(item.name, 1000);
-                                item.type = validateAndSanitizeInput(item.type, 100);
-                                item.value = validateAndSanitizeInput(item.value, 10000);
-                            }
-                        }
-                    }
+                    const raw = Buffer.concat(chunks);
+                    const parsed = parseRequestBodyItems(raw, headerValue(req, "content-type"));
                     setRequestBody(sid, parsed);
+                    setRequestFiles(sid, extractRequestFiles(parsed));
                 } catch (error) {
                     console.warn('Request body parsing failed:', error);
                     setRequestBody(sid, undefined);
+                    setRequestFiles(sid, undefined);
                 }
 
-                const html = await self._dispatch(path, req, res, body);
+                const rawTextBody = Buffer.concat(chunks).toString("utf8");
+                const html = await self._dispatch(path, req, res, rawTextBody);
                 if (html !== "") {
-                    res.write(html);
+                    const out = maybeGzipNode(req, res, html);
+                    res.write(out);
                     res.end();
                 }
             } catch (err) {
@@ -1042,59 +1667,7 @@ export class App {
                 }
 
                 res.setHeader("Content-Type", "text/html; charset=utf-8");
-                const page =
-                    "<!DOCTYPE html>\n" +
-                    '<html lang="en">\n' +
-                    "<head>\n" +
-                    '  <meta charset="UTF-8">\n' +
-                    '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-                    "  <title>Something went wrong…</title>\n" +
-                    "  <style>\n" +
-                    "    html,body{height:100%}\n" +
-                    "    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n" +
-                    "    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n" +
-                    "    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n" +
-                    "    .sub{font-size:14px;color:#6b7280}\n" +
-                    "  </style>\n" +
-                    "</head>\n" +
-                    "<body>\n" +
-                    '  <div class="card">\n' +
-                    '    <div class="title">Something went wrong…</div>\n' +
-                    '    <div class="sub">Waiting for server changes. Page will refresh when ready.</div>\n' +
-                    "  </div>\n" +
-                    "  <script>\n" +
-                    "    (function(){\n" +
-                    "      try {\n" +
-                    '        var KEY="__tsui_last_error_reload";\n' +
-                    "        function shouldReload() {\n" +
-                    "          try {\n" +
-                    "            var v=sessionStorage.getItem(KEY);\n" +
-                    "            var last=v?parseInt(v,10):0;\n" +
-                    "            var now=Date.now();\n" +
-                    "            if(!last||now-last>2500){\n" +
-                    "              sessionStorage.setItem(KEY,String(now));\n" +
-                    "              return true;\n" +
-                    "            }\n" +
-                    "            return false;\n" +
-                    "          } catch(_){\n" +
-                    "            return true;\n" +
-                    "          }\n" +
-                    "        }\n" +
-                    "        function connect() {\n" +
-                    '          var p=(location.protocol==="https:")?"wss://":"ws://";\n' +
-                    '          var ws=new WebSocket(p+location.host+"/__ws");\n' +
-                    "          ws.onopen=function(){\n" +
-                    "            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n" +
-                    "          };\n" +
-                    "          ws.onclose=function(){ setTimeout(connect,1000); };\n" +
-                    "          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n" +
-                    "        }\n" +
-                    "        connect();\n" +
-                    "      } catch(_){ /* noop */ }\n" +
-                    "    })();\n" +
-                    "  </script>\n" +
-                    "</body>\n" +
-                    "</html>\n";
+                const page = devErrorPage();
                 res.end(page);
             }
         });
@@ -1189,42 +1762,35 @@ export class App {
                     }
 
                     let body = "";
+                    let rawBody = Buffer.alloc(0);
                     if (req.method === "POST" || req.method === "PUT") {
                         try {
-                            body = await req.text?.() || "";
-                            if (body.length > 1_000_000) {
+                            if (typeof (req as any).arrayBuffer === "function") {
+                                const ab = await (req as any).arrayBuffer();
+                                rawBody = Buffer.from(ab);
+                                body = rawBody.toString("utf8");
+                            } else {
+                                body = await req.text?.() || "";
+                                rawBody = Buffer.from(body, "utf8");
+                            }
+                            if (rawBody.length > 20_000_000) {
                                 return new Response("Request body too large", { status: 413 });
                             }
                         } catch (e) {
                             body = "";
+                            rawBody = Buffer.alloc(0);
                         }
                     }
 
                     try {
-                        let parsed: BodyItem[] | undefined = undefined;
-                        if (body) {
-                            const sanitizedBody = validateAndSanitizeInput(body, 1000000);
-                            parsed = safeJsonParse<BodyItem[]>(sanitizedBody);
-
-                            if (parsed && Array.isArray(parsed)) {
-                                for (const item of parsed) {
-                                    if (!item || typeof item !== 'object' ||
-                                        typeof item.name !== 'string' ||
-                                        typeof item.type !== 'string' ||
-                                        typeof item.value !== 'string') {
-                                        parsed = undefined;
-                                        break;
-                                    }
-                                    item.name = validateAndSanitizeInput(item.name, 1000);
-                                    item.type = validateAndSanitizeInput(item.type, 100);
-                                    item.value = validateAndSanitizeInput(item.value, 10000);
-                                }
-                            }
-                        }
+                        const contentType = String(req.headers.get("content-type") || "");
+                        const parsed = parseRequestBodyItems(rawBody, contentType);
                         setRequestBody(sid, parsed);
+                        setRequestFiles(sid, extractRequestFiles(parsed));
                     } catch (error) {
                         console.warn('Request body parsing failed:', error);
                         setRequestBody(sid, undefined);
+                        setRequestFiles(sid, undefined);
                     }
 
                     // Create mock IncomingMessage and ServerResponse for compatibility
@@ -1278,7 +1844,14 @@ export class App {
                     // If dispatch wrote to response (e.g., JSON for page POST), use that
                     if (chunks.length > 0) {
                         const responseBody = Buffer.concat(chunks).toString();
-                        return new Response(responseBody, {
+                        const contentType = String(headers["Content-Type"] || "application/json; charset=utf-8");
+                        const acceptEncoding = String(req.headers.get("accept-encoding") || "");
+                        const maybeCompressed = maybeGzipBody(acceptEncoding, contentType, responseBody);
+                        if (typeof maybeCompressed !== "string") {
+                            headers["Content-Encoding"] = "gzip";
+                            headers["Vary"] = "Accept-Encoding";
+                        }
+                        return new Response(maybeCompressed as BodyInit, {
                             status: mockRes.statusCode || 200,
                             headers: headers,
                         });
@@ -1292,8 +1865,8 @@ export class App {
                         headers["Content-Security-Policy"] = [
                             "default-src 'self'",
                             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-                            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com ",
-                            "font-src 'self' https://cdnjs.cloudflare.com ",
+                            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                            "font-src 'self' https://fonts.gstatic.com",
                             "img-src 'self' data: https:",
                             "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",
                             "object-src 'none'",
@@ -1306,13 +1879,24 @@ export class App {
                         headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
                     }
 
-                    return new Response(html, {
+                    const contentType = String(headers["Content-Type"] || "text/html; charset=utf-8");
+                    const acceptEncoding = String(req.headers.get("accept-encoding") || "");
+                    const maybeCompressed = maybeGzipBody(acceptEncoding, contentType, html);
+                    if (typeof maybeCompressed !== "string") {
+                        headers["Content-Encoding"] = "gzip";
+                        headers["Vary"] = "Accept-Encoding";
+                    }
+
+                    return new Response(maybeCompressed as BodyInit, {
                         status: mockRes.statusCode || 200,
                         headers: headers,
                     });
                 } catch (err) {
                     console.error("Request handler error:", err);
-                    return new Response("Internal Server Error", { status: 500 });
+                    return new Response(devErrorPage(), {
+                        status: 500,
+                        headers: { "Content-Type": "text/html; charset=utf-8" },
+                    });
                 }
             }
         });
@@ -1334,6 +1918,8 @@ export class App {
             this._rateLimiterIntervalHandle = null;
         }
         this._sessions.clear();
+        REQ_BODY.clear();
+        REQ_FILES.clear();
         try {
             for (const client of this._wsClients) {
                 try {
@@ -1469,12 +2055,70 @@ export class Context {
         if (!Array.isArray(data)) return;
         for (let i = 0; i < data.length; i++) {
             const item = data[i];
+            if (item.type === "file") {
+                continue;
+            }
             setPath(
                 output as unknown as Record<string, unknown>,
                 item.name,
                 coerce(item.type, item.value),
             );
         }
+    }
+
+    File(name: string): FileUpload | undefined {
+        const files = this.Files(name);
+        if (files.length === 0) {
+            return undefined;
+        }
+        return files[0];
+    }
+
+    Files(name: string): FileUpload[] {
+        const byName = REQ_FILES.get(this.sessionID);
+        if (!byName) {
+            return [];
+        }
+        const found = byName.get(String(name || ""));
+        if (!found || found.length === 0) {
+            return [];
+        }
+        return found.slice();
+    }
+
+    Session(db: SessionDB, name: string): TSession {
+        const self = this;
+        const keyName = String(name || "default");
+        return {
+            async Load<T extends object>(data: T): Promise<boolean> {
+                if (!db || typeof db.get !== "function") {
+                    return false;
+                }
+                const raw = await Promise.resolve(db.get(keyName, self.sessionID));
+                if (!raw) {
+                    return false;
+                }
+                const parsed = safeJsonParse<Record<string, unknown>>(String(raw), 5_000_000);
+                if (!parsed || typeof parsed !== "object") {
+                    return false;
+                }
+                const entries = Object.entries(parsed);
+                for (let i = 0; i < entries.length; i++) {
+                    const k = entries[i][0];
+                    const v = entries[i][1];
+                    setPath(data as unknown as Record<string, unknown>, String(k), v);
+                }
+                return true;
+            },
+            async Save<T extends object>(data: T): Promise<void> {
+                if (!db || typeof db.set !== "function") {
+                    return;
+                }
+                const payload = JSON.stringify(data || {});
+                const expiresAt = Date.now() + self.app._sessionTTLms;
+                await Promise.resolve(db.set(keyName, self.sessionID, payload, expiresAt));
+            },
+        };
     }
 
     Callable(method: Callable): Callable {
@@ -1726,13 +2370,30 @@ export class Context {
     }
     Reload(): void {
         this.ops.push({ op: "reload" });
-        this.app._sendOps(this.ops);
-        this.ops = [];
     }
     Redirect(href: string): void {
         this.ops.push({ op: "redirect", href });
-        this.app._sendOps(this.ops);
-        this.ops = [];
+    }
+    DownloadAs(content: string | Buffer, contentType: string, filename: string): void {
+        let b64 = "";
+        try {
+            if (typeof content === "string") {
+                b64 = Buffer.from(content, "utf8").toString("base64");
+            } else {
+                b64 = Buffer.from(content).toString("base64");
+            }
+        } catch (_) {
+            b64 = "";
+        }
+        const href = "data:" + String(contentType || "application/octet-stream") + ";base64," + b64;
+        this.ops.push({ op: "download", href: href, title: String(filename || "download.bin") });
+    }
+    Translate(format: string, ...args: (string | number | boolean)[]): string {
+        let out = String(format || "");
+        for (let i = 0; i < args.length; i++) {
+            out = out.split("{" + String(i) + "}").join(String(args[i]));
+        }
+        return out;
     }
     Title(title: string): void {
         this.ops.push({ op: "title", title });
@@ -2281,6 +2942,18 @@ export const __jselement = ui.Trim(`
             case 'reload':
                 window.location.reload();
                 break;
+            case 'download':
+                if (op.href) {
+                    try {
+                        var a = document.createElement('a');
+                        a.href = op.href;
+                        if (op.title) { a.download = op.title; }
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    } catch (_) { }
+                }
+                break;
         }
     }
 
@@ -2597,7 +3270,7 @@ export const __error = ui.Trim(`
 `);
 
 export const __submit = ui.Trim(`
-    function __submit(event, swap, target_id, path, values) {
+    async function __submit(event, swap, target_id, path, values) {
                 event.preventDefault();
                 const el = event.target;
                 const tag = el.tagName.toLowerCase();
@@ -2607,11 +3280,53 @@ export const __submit = ui.Trim(`
                 let body = values;
                 let found = Array.prototype.slice.call(document.querySelectorAll('[form="' + id + '"][name]'));
                 if (found.length === 0) { found = Array.prototype.slice.call(form.querySelectorAll('[name]')); }
+                function readAsBase64(file) {
+                    return new Promise(function(resolve) {
+                        try {
+                            var reader = new FileReader();
+                            reader.onload = function() {
+                                var result = String(reader.result || '');
+                                var comma = result.indexOf(',');
+                                resolve(comma >= 0 ? result.slice(comma + 1) : result);
+                            };
+                            reader.onerror = function() { resolve(''); };
+                            reader.readAsDataURL(file);
+                        } catch (_) {
+                            resolve('');
+                        }
+                    });
+                }
                 for (var i = 0; i < found.length; i++) {
                     var item = found[i];
                     var name = item.getAttribute('name');
                     var typeAttr = item.getAttribute('type');
                     var coerceType = item.getAttribute('data-coerce');
+                    if (typeAttr === 'file') {
+                        if (name != null) {
+                            var cleaned = [];
+                            for (var c = 0; c < body.length; c++) {
+                                if (body[c].name !== name) { cleaned.push(body[c]); }
+                            }
+                            body = cleaned;
+                            var files = item.files ? Array.prototype.slice.call(item.files) : [];
+                            for (var fi = 0; fi < files.length; fi++) {
+                                var f = files[fi];
+                                var b64 = await readAsBase64(f);
+                                if (!b64) { continue; }
+                                body.push({
+                                    name: name,
+                                    type: 'file',
+                                    value: JSON.stringify({
+                                        Name: String(f.name || ''),
+                                        Data: String(b64 || ''),
+                                        ContentType: String(f.type || 'application/octet-stream'),
+                                        Size: Number(f.size || 0)
+                                    })
+                                });
+                            }
+                        }
+                        continue;
+                    }
                     var value = item.value;
                     if (typeAttr === 'checkbox') {
                         value = String(item.checked);
@@ -3074,6 +3789,61 @@ function script(parts: string[]) {
     return out;
 }
 
+function devErrorPage(): string {
+    return "<!DOCTYPE html>\n" +
+        '<html lang="en">\n' +
+        "<head>\n" +
+        '  <meta charset="UTF-8">\n' +
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+        "  <title>Something went wrong…</title>\n" +
+        "  <style>\n" +
+        "    html,body{height:100%}\n" +
+        "    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n" +
+        "    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n" +
+        "    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n" +
+        "    .sub{font-size:14px;color:#6b7280}\n" +
+        "  </style>\n" +
+        "</head>\n" +
+        "<body>\n" +
+        '  <div class="card">\n' +
+        '    <div class="title">Something went wrong…</div>\n' +
+        '    <div class="sub">Waiting for server changes. Page will refresh when ready.</div>\n' +
+        "  </div>\n" +
+        "  <script>\n" +
+        "    (function(){\n" +
+        "      try {\n" +
+        '        var KEY="__tsui_last_error_reload";\n' +
+        "        function shouldReload() {\n" +
+        "          try {\n" +
+        "            var v=sessionStorage.getItem(KEY);\n" +
+        "            var last=v?parseInt(v,10):0;\n" +
+        "            var now=Date.now();\n" +
+        "            if(!last||now-last>2500){\n" +
+        "              sessionStorage.setItem(KEY,String(now));\n" +
+        "              return true;\n" +
+        "            }\n" +
+        "            return false;\n" +
+        "          } catch(_){\n" +
+        "            return true;\n" +
+        "          }\n" +
+        "        }\n" +
+        "        function connect() {\n" +
+        '          var p=(location.protocol==="https:")?"wss://":"ws://";\n' +
+        '          var ws=new WebSocket(p+location.host+"/__ws");\n' +
+        "          ws.onopen=function(){\n" +
+        "            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n" +
+        "          };\n" +
+        "          ws.onclose=function(){ setTimeout(connect,1000); };\n" +
+        "          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n" +
+        "        }\n" +
+        "        connect();\n" +
+        "      } catch(_){ }\n" +
+        "    })();\n" +
+        "  </script>\n" +
+        "</body>\n" +
+        "</html>\n";
+}
+
 function isSecure(req: IncomingMessage): boolean {
     try {
         const enc = (req.socket as any) && (req.socket as any).encrypted;
@@ -3119,6 +3889,56 @@ function parseCookies(header: string): { [k: string]: string } {
         out[k] = v;
     }
     return out;
+}
+
+function isCompressibleContentType(contentType: string): boolean {
+    const c = String(contentType || "").toLowerCase();
+    return c.includes("text/") ||
+        c.includes("application/json") ||
+        c.includes("application/javascript") ||
+        c.includes("application/manifest+json") ||
+        c.includes("image/svg+xml") ||
+        c.includes("application/xml");
+}
+
+function maybeGzipNode(req: IncomingMessage, res: ServerResponse, body: string): Buffer | string {
+    try {
+        const accept = String(req.headers["accept-encoding"] || "").toLowerCase();
+        const upgrade = String(req.headers["upgrade"] || "").toLowerCase();
+        const existing = String(res.getHeader("Content-Encoding") || "").toLowerCase();
+        const contentType = String(res.getHeader("Content-Type") || "text/html; charset=utf-8");
+        if (!accept.includes("gzip") || upgrade === "websocket" || existing || !isCompressibleContentType(contentType)) {
+            return body;
+        }
+        const gz = gzipSync(Buffer.from(body, "utf8"));
+        if (!gz || gz.length === 0) {
+            return body;
+        }
+        res.setHeader("Content-Encoding", "gzip");
+        res.setHeader("Vary", "Accept-Encoding");
+        res.setHeader("Content-Length", String(gz.length));
+        return gz;
+    } catch (_) {
+        return body;
+    }
+}
+
+function maybeGzipBody(acceptEncoding: string, contentType: string, body: string): Buffer | string {
+    try {
+        if (!String(acceptEncoding || "").toLowerCase().includes("gzip")) {
+            return body;
+        }
+        if (!isCompressibleContentType(contentType)) {
+            return body;
+        }
+        const gz = gzipSync(Buffer.from(body, "utf8"));
+        if (!gz || gz.length === 0) {
+            return body;
+        }
+        return gz;
+    } catch (_) {
+        return body;
+    }
 }
 
 function normalizeMethod(method: string): "GET" | "POST" {
@@ -3491,6 +4311,7 @@ function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
                         
                         // Store request body values for Context.Body()
                         setRequestBody(sid, serverBody);
+                        setRequestFiles(sid, extractRequestFiles(serverBody));
                         
                         // Create context and execute handler
                         const ctx = new Context(app, mockReq, mockRes, sid);
@@ -3706,6 +4527,7 @@ function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): vo
                 
                 // Store request body values for Context.Body()
                 setRequestBody(sid, serverBody);
+                setRequestFiles(sid, extractRequestFiles(serverBody));
                 
                 // Create context and execute handler
                 const ctx = new Context(app, mockReq, mockRes, sid);
