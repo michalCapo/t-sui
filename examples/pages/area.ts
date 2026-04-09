@@ -1,107 +1,58 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
+import ui, { type Node } from "../../ui";
+import type { Context } from "../../ui.server";
 
-export function AreaContent(_ctx: Context): string {
-    function card(title: string, body: string): string {
-        return ui.div("bg-white p-4 rounded-lg shadow flex flex-col gap-3 border border-gray-200")(
-            ui.div("text-sm font-bold text-gray-700")(title),
-            body,
+export const path = "/area";
+export const title = "Textarea";
+
+export default function page(_ctx: Context): Node {
+    const cardBox = (title: string, ...children: Node[]): Node => {
+        return ui.Div("bg-white dark:bg-gray-900 p-4 rounded-lg shadow flex flex-col gap-3").Render(
+            ui.Div("text-sm font-bold text-gray-700 dark:text-gray-300").Text(title),
+            ...children,
         );
-    }
+    };
 
-    type AreaData = { Bio: string };
-    const data: AreaData = { Bio: "Short text" };
-
-    const basics = ui.div("flex flex-col gap-2")(
-        row("Default", ui.IArea("Bio", data).Rows(3).Render("Bio")),
-        row(
-            "Placeholder",
-            ui
-                .IArea("P")
-                .Placeholder("Tell us something")
-                .Rows(3)
-                .Render("Your bio"),
-        ),
-        row("Required", ui.IArea("R").Required().Rows(3).Render("Required")),
-        row(
-            "Readonly",
-            ui
-                .IArea("RO")
-                .Readonly()
-                .Value("Read-only text")
-                .Rows(3)
-                .Render("Readonly"),
-        ),
-        row("Disabled", ui.IArea("D").Disabled().Rows(3).Render("Disabled")),
-        row(
-            "With preset value",
-            ui
-                .IArea("V")
-                .Value("Initial text value")
-                .Rows(3)
-                .Render("With value"),
-        ),
-    );
-
-    const styling = ui.div("flex flex-col gap-2")(
-        row(
-            "Wrapper .Class()",
-            ui
-                .IArea("C")
-                .Class("p-2 rounded bg-yellow-50")
-                .Rows(3)
-                .Render("Styled wrapper"),
-        ),
-        row(
-            "Label .ClassLabel()",
-            ui
-                .IArea("CL")
-                .ClassLabel("text-purple-700 font-bold")
-                .Rows(3)
-                .Render("Custom label"),
-        ),
-        row(
-            "Input .ClassInput()",
-            ui
-                .IArea("CI")
-                .ClassInput("bg-blue-50")
-                .Rows(3)
-                .Render("Custom input background"),
-        ),
-        row("Size: XL", ui.IArea("S").Size(ui.XL).Rows(3).Render("XL size")),
-    );
-
-    const behavior = ui.div("flex flex-col gap-2")(
-        row(
-            "Change handler (console.log)",
-            ui
-                .IArea("Change")
-                .Change("console.log('changed', this && this.value)")
-                .Rows(3)
-                .Render("On change, log"),
-        ),
-        row(
-            "Click handler (console.log)",
-            ui
-                .IArea("Click")
-                .Click("console.log('clicked textarea')")
-                .Rows(3)
-                .Render("On click, log"),
-        ),
-    );
-
-    function row(label: string, control: string): string {
-        return ui.div("flex items-center justify-between gap-4")(
-            ui.div("text-sm text-gray-600")(label),
-            control,
+    const row = (label: string, content: Node): Node => {
+        return ui.Div("flex items-center justify-between gap-4 w-full").Render(
+            ui.Div("text-sm text-gray-600 dark:text-gray-400").Text(label),
+            content,
         );
-    }
+    };
 
-    return ui.div("max-w-full sm:max-w-5xl mx-auto flex flex-col gap-6")(
-        ui.div("text-3xl font-bold")("Textarea"),
-        ui.div("text-gray-600")("Common features supported by textarea."),
-        card("Basics & states", basics),
-        card("Styling", styling),
-        card("Behavior & attributes", behavior),
+    const textareaCls = "w-64 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white";
+
+    const labeled = (labelText: string, ta: Node): Node => {
+        return ui.Div("flex flex-col gap-1").Render(
+            ui.Label("text-sm text-gray-700 dark:text-gray-300 font-medium").Text(labelText),
+            ta,
+        );
+    };
+
+    // Basics
+    const basics = ui.Div("flex flex-col gap-2").Render(
+        row("Default", labeled("Bio", ui.Textarea(textareaCls).Attr("rows", "3").Attr("name", "Bio").Text("Short text"))),
+        row("Placeholder", labeled("Your bio", ui.Textarea(textareaCls).Attr("rows", "3").Attr("placeholder", "Tell us something"))),
+        row("Required", labeled("Required", ui.Textarea(textareaCls).Attr("rows", "3").Attr("required", "true"))),
+        row("Readonly", labeled("Readonly", ui.Textarea(textareaCls).Attr("rows", "3").Attr("readonly", "true").Text("Read-only text"))),
+        row("Disabled", labeled("Disabled", ui.Textarea(textareaCls + " opacity-50").Attr("rows", "3").Attr("disabled", "true"))),
+        row("With preset value", labeled("With value", ui.Textarea(textareaCls).Attr("rows", "3").Text("Initial text value"))),
+    );
+
+    // Styling
+    const styling = ui.Div("flex flex-col gap-2").Render(
+        row("Styled wrapper", labeled("Styled wrapper", ui.Textarea("w-64 border border-gray-300 rounded px-3 py-2 text-sm bg-yellow-50 dark:bg-yellow-900/20").Attr("rows", "3"))),
+        row("Custom label", ui.Div("flex flex-col gap-1").Render(
+            ui.Label("text-sm text-purple-700 dark:text-purple-400 font-bold").Text("Custom label"),
+            ui.Textarea(textareaCls).Attr("rows", "3"),
+        )),
+        row("Custom input background", labeled("Custom input background", ui.Textarea("w-64 border border-gray-300 rounded px-3 py-2 text-sm bg-blue-50 dark:bg-blue-900/20").Attr("rows", "3"))),
+        row("Size: XL", labeled("XL size", ui.Textarea("w-64 border border-gray-300 rounded px-4 py-3 text-lg").Attr("rows", "3"))),
+    );
+
+    return ui.Div("max-w-5xl mx-auto flex flex-col gap-6").Render(
+        ui.Div("text-3xl font-bold text-gray-900 dark:text-white").Text("Textarea"),
+        ui.Div("text-gray-600 dark:text-gray-400").Text("Common features supported by textarea."),
+        cardBox("Basics & states", basics),
+        cardBox("Styling", styling),
     );
 }

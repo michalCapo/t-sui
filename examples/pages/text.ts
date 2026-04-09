@@ -1,127 +1,67 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
+import ui, { type Node } from "../../ui";
+import type { Context } from "../../ui.server";
+import { card, examplePage } from "./shared";
 
-export function TextContent(_ctx: Context): string {
-    function card(title: string, body: string): string {
-        return ui.div("bg-white p-4 rounded-lg shadow flex flex-col gap-3 border border-gray-200")(
-            ui.div("text-sm font-bold text-gray-700")(title),
+export const path = "/text";
+export const title = "Text";
+
+export default function page(_ctx: Context): Node {
+    const cardBox = (title: string, body: Node): Node => {
+        return ui.Div("bg-white dark:bg-gray-900 p-4 rounded-lg shadow flex flex-col gap-3").Render(
+            ui.Div("text-sm font-bold text-gray-700 dark:text-gray-300").Text(title),
             body,
         );
-    }
+    };
 
-    type TextData = { Name: string };
-    const data: TextData = { Name: "John Doe" };
-
-    // Basics and states
-    const basics = ui.div("flex flex-col gap-2")(
-        row("Default", ui.IText("Name", data).Render("Name")),
-        row(
-            "With placeholder",
-            ui.IText("X").Placeholder("Type your name").Render("Your name"),
-        ),
-        row(
-            "Required field",
-            ui.IText("Y").Required().Render("Required field"),
-        ),
-        row(
-            "Readonly",
-            ui
-                .IText("Y2")
-                .Readonly()
-                .Value("Read-only value")
-                .Render("Readonly field"),
-        ),
-        row(
-            "Disabled",
-            ui
-                .IText("Z")
-                .Disabled()
-                .Placeholder("Cannot type")
-                .Render("Disabled"),
-        ),
-        row(
-            "With preset value",
-            ui.IText("Preset").Value("Preset text").Render("Preset"),
-        ),
-    );
-
-    // Styling
-    const styling = ui.div("flex flex-col gap-2")(
-        row(
-            "Wrapper .Class()",
-            ui
-                .IText("C1")
-                .Class("p-2 rounded bg-yellow-50")
-                .Render("Styled wrapper"),
-        ),
-        row(
-            "Label .ClassLabel()",
-            ui
-                .IText("C2")
-                .ClassLabel("text-purple-700 font-bold")
-                .Render("Custom label"),
-        ),
-        row(
-            "Input .ClassInput()",
-            ui
-                .IText("C3")
-                .ClassInput("bg-blue-50")
-                .Render("Custom input background"),
-        ),
-        row("Size: XS", ui.IText("S1").Size(ui.XS).Render("XS")),
-        row("Size: MD (default)", ui.IText("S2").Size(ui.MD).Render("MD")),
-        row("Size: XL", ui.IText("S3").Size(ui.XL).Render("XL")),
-    );
-
-    // Behavior and attributes
-    const behavior = ui.div("flex flex-col gap-2")(
-        row(
-            "Autocomplete",
-            ui.IText("Auto").Autocomplete("name").Render("Name (autocomplete)"),
-        ),
-        row(
-            "Pattern (email-like)",
-            ui
-                .IText("Pattern")
-                .Type("email")
-                .Pattern("[^@]+@[^@]+\\.[^@]+")
-                .Placeholder("user@example.com")
-                .Render("Email"),
-        ),
-        row(
-            "Type switch (password)",
-            ui.IText("PassLike").Type("password").Render("Password-like"),
-        ),
-        row(
-            "Change handler (console.log)",
-            ui
-                .IText("Change")
-                .Change("console.log('changed', this && this.value)")
-                .Render("On change, log value"),
-        ),
-        row(
-            "Click handler (console.log)",
-            ui
-                .IText("Click")
-                .Click("console.log('clicked input')")
-                .Render("On click, log"),
-        ),
-    );
-
-    function row(label: string, control: string): string {
-        return ui.div("flex items-center justify-between gap-4")(
-            ui.div("text-sm text-gray-600")(label),
+    const row = (label: string, control: Node): Node => {
+        return ui.Div("flex items-center justify-between gap-4").Render(
+            ui.Div("text-sm text-gray-600 dark:text-gray-400").Text(label),
             control,
         );
-    }
+    };
 
-    return ui.div("max-w-full sm:max-w-5xl mx-auto flex flex-col gap-6")(
-        ui.div("text-3xl font-bold")("Text input"),
-        ui.div("text-gray-600")(
-            "Common features supported by text-like inputs.",
-        ),
-        card("Basics & states", basics),
-        card("Styling", styling),
-        card("Behavior & attributes", behavior),
+    const inputCls = "w-64 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white";
+
+    const labeledInput = (labelText: string, input: Node): Node => {
+        return ui.Div("flex flex-col gap-1").Render(
+            ui.Label("text-sm text-gray-700 dark:text-gray-300 font-medium").Text(labelText),
+            input,
+        );
+    };
+
+    const basics = ui.Div("flex flex-col gap-2").Render(
+        row("Default", labeledInput("Name", ui.IText(inputCls).Attr("name", "Name").Attr("value", "John Doe"))),
+        row("With placeholder", labeledInput("Your name", ui.IText(inputCls).Attr("placeholder", "Type your name"))),
+        row("Required field", labeledInput("Required field", ui.IText(inputCls).Attr("required", "true"))),
+        row("Readonly", labeledInput("Readonly field", ui.IText(inputCls).Attr("readonly", "true").Attr("value", "Read-only value"))),
+        row("Disabled", labeledInput("Disabled", ui.IText(inputCls + " opacity-50").Attr("disabled", "true").Attr("placeholder", "Cannot type"))),
+        row("With preset value", labeledInput("Preset", ui.IText(inputCls).Attr("value", "Preset text"))),
+    );
+
+    const styling = ui.Div("flex flex-col gap-2").Render(
+        row("Styled wrapper", labeledInput("Styled wrapper", ui.IText("w-64 border border-gray-300 rounded px-3 py-2 text-sm bg-yellow-50 dark:bg-yellow-900/20"))),
+        row("Custom label", ui.Div("flex flex-col gap-1").Render(
+            ui.Label("text-sm text-purple-700 dark:text-purple-400 font-bold").Text("Custom label"),
+            ui.IText(inputCls),
+        )),
+        row("Custom input background", labeledInput("Custom input background", ui.IText("w-64 border border-gray-300 rounded px-3 py-2 text-sm bg-blue-50 dark:bg-blue-900/20"))),
+        row("Size: XS", labeledInput("XS", ui.IText("w-64 border border-gray-300 rounded px-2 py-0.5 text-xs"))),
+        row("Size: MD (default)", labeledInput("MD", ui.IText(inputCls))),
+        row("Size: XL", labeledInput("XL", ui.IText("w-64 border border-gray-300 rounded px-4 py-3 text-lg"))),
+    );
+
+    const behavior = ui.Div("flex flex-col gap-2").Render(
+        row("Autocomplete", labeledInput("Name (autocomplete)", ui.IText(inputCls).Attr("autocomplete", "name"))),
+        row("Pattern (email-like)", labeledInput("Email", ui.IText(inputCls).Attr("pattern", "[^@]+@[^@]+\\.[^@]+").Attr("placeholder", "user@example.com"))),
+        row("Type switch (password)", labeledInput("Password-like", ui.IPassword(inputCls))),
+        row("Change handler", labeledInput("On change, log value", ui.IText(inputCls).On("change", { rawJS: "console.log('changed:', this.value)" }))),
+    );
+
+    return ui.Div("max-w-5xl mx-auto flex flex-col gap-6").Render(
+        ui.Div("text-3xl font-bold text-gray-900 dark:text-white").Text("Text input"),
+        ui.Div("text-gray-600 dark:text-gray-400").Text("Common features supported by text-like inputs."),
+        cardBox("Basics & states", basics),
+        cardBox("Styling", styling),
+        cardBox("Behavior & attributes", behavior),
     );
 }

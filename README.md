@@ -2,47 +2,22 @@
 
 TypeScript server-rendered UI framework with real-time WebSocket patches.
 
-t-sui renders HTML on the server, sends actions over WebSocket, and updates specific DOM targets without full page reloads.
+t-sui renders UI on the server as JavaScript strings. The browser receives raw JS that performs `document.createElement()` calls directly -- no HTML templates, no JSON intermediate, no client-side framework. SVG elements use `document.createElementNS()` with proper namespace handling. User interactions trigger server actions via WebSocket, which respond with JS strings for DOM mutations.
 
 ## Documentation
 
 - Full API docs: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md)
 - Assistant skill docs: [`docs/skills/SKILL.md`](docs/skills/SKILL.md)
 
-## Features
-
-- Server-rendered pages with composable HTML helpers (`ui.div`, `ui.form`, `ui.input`, ...)
-- Real-time UI updates via WebSocket patches (`ctx.Patch`, `Replace`, `Render`, `Append`, `Prepend`)
-- Server actions for forms and clicks (`ctx.Submit`, `ctx.Click`) with target-based DOM swaps
-- Route and URL handling (`ctx.PathParam`, `ctx.QueryParam`, `ctx.QueryParams`, `ctx.AllQueryParams`)
-- Built-in form components including form association (`ui.Form`) and validation-friendly inputs
-- Data collation (`createCollate`) with search, filter, sort, and pagination
-- Accessibility-ready output with ARIA roles/attributes across core controls
-- Cross-runtime support for Node.js and Bun
-
-## Quick Start
-
-Requirements: Node.js 18+ or Bun 1.0+.
+## Install
 
 ```bash
 npm install
-npm run dev
 ```
 
-Visit `http://localhost:1423`.
+Requires Node.js 18+ or Bun 1.0+.
 
-## Example App
-
-The repository includes a full example app with pages for forms, routing, patch modes, data collation, and smooth navigation.
-
-- App setup and route registration: [`examples/app.ts`](examples/app.ts)
-- Local dev entrypoint: [`examples/main.ts`](examples/main.ts)
-- Example pages: [`examples/pages`](examples/pages)
-- Example tests: [`examples/tests`](examples/tests)
-
-Run it with `npm run dev` (Node) or `npm run dev:bun` (Bun).
-
-## Minimal App
+## Quick Start
 
 ```typescript
 import ui from "./ui";
@@ -55,10 +30,7 @@ app.Page("/", "Home", function (ctx: Context): string {
         "Home",
         "bg-gray-100 min-h-screen",
         ui.div("max-w-2xl mx-auto p-6")(
-            ui.div("text-2xl font-bold")("Hello from t-sui"),
-            ui.p("text-gray-600 mt-2")(
-                "Server-rendered HTML with WebSocket patches.",
-            ),
+            ui.div("text-2xl font-bold")("Hello World"),
         ),
     );
 });
@@ -66,58 +38,169 @@ app.Page("/", "Home", function (ctx: Context): string {
 app.Listen(1423);
 ```
 
-## Actions and Targets
+## Architecture
 
-```typescript
-import ui from "./ui";
-import { Context, MakeApp } from "./ui.server";
-
-const app = MakeApp("en");
-
-function save(ctx: Context): string {
-    const form = { Name: "" };
-    ctx.Body(form);
-    ctx.Success("Saved " + form.Name);
-    return render(ctx, form);
-}
-save.url = "/save";
-
-function render(ctx: Context, model: { Name: string }): string {
-    const target = ui.Target();
-    return ui.form("space-y-4", target, ctx.Submit(save).Replace(target))(
-        ui.IText("Name", model).Required().Render("Name"),
-        ui.Button().Submit().Color(ui.Blue).Render("Save"),
-    );
-}
-
-app.Page("/form", "Form", function (ctx: Context): string {
-    return app.HTML("Form", "bg-gray-100 min-h-screen", render(ctx, { Name: "" }));
-});
-
-app.Listen(1423);
+```
+Server (TypeScript)                Browser
+─────────────                      ───────
+PageHandler → Node → .ToJS()  →   Minimal HTML + <script>
+ActionHandler → JS string     ←→  WebSocket (__ws)
 ```
 
-Swap modes for `ctx.Submit` / `ctx.Click`:
+- **Server-centric** -- all DOM trees built in TypeScript, compiled to JavaScript
+- **WebSocket-only interactivity** -- click/submit events call server handlers, responses are JS strings
+- **Partial updates** -- replace, append, prepend, or innerHTML specific DOM targets
+- **No client framework** -- the client is a ~120-line WS connector with offline overlay and auto-reconnect
+- **Tailwind CSS** -- loaded via browser CDN (`@tailwindcss/browser@4`)
+- **Dark mode** -- built-in theme system (System/Light/Dark) with `ThemeSwitcher` component
+- **Localization** -- per-component locale structs; English by default, override only what you need
 
-- `Render(target)` - replace inner HTML
-- `Replace(target)` - replace element (outer HTML)
-- `Append(target)` - append HTML
-- `Prepend(target)` - prepend HTML
-- `None()` - no DOM swap
+## Features
 
-## Install Claude Skills
+- Server-rendered UI with TypeScript DSL (70+ element constructors, SVG namespace support)
+- WebSocket actions with data payloads and field collection (`Collect`)
+- Five DOM swap strategies: `ToJS`, `ToJSReplace`, `ToJSAppend`, `ToJSPrepend`, `ToJSInner`
+- Multi-action `ResponseBuilder` for complex updates
+- Real-time server push via `ctx.Push()` and broadcast via `ctx.Broadcast()`
+- Custom HTTP routes: `app.GET()`, `app.POST()`, `app.DELETE()`
+- Layout system via `app.Layout()` and custom `Handler()` for embedding
+- SEO metadata: `app.Title`, `app.Description`, `app.HTMLHead`
+- Conditional rendering helpers: `If`, `Or`, `Map`
+- Toast notifications: success, error, error-reload, info
+- JS helpers: `Redirect`, `SetLocation`, `SetTitle`, `RemoveEl`, `SetText`, `SetAttr`, `AddClass`, `RemoveClass`, `Show`, `Hide`, `Download`, `DragToScroll`
+
+### Components
+
+- **Alert** -- info/success/warning/error variants, dismissible, localStorage persistence
+- **Badge** -- solid/outline/soft color variants, dot indicator, icon support
+- **Button** -- color/size presets, icon, link, submit, disabled states
+- **Card** -- header/body/footer, image, 4 variants (shadowed/bordered/flat/glass), hover effect
+- **Accordion** -- bordered/ghost/separated variants, single/multiple open
+- **Tabs** -- underline/pills/boxed/vertical styles, keyboard navigation, ARIA
+- **Dropdown** -- items, headers, dividers, danger items, 4 positions, auto-close
+- **Tooltip** -- 4 positions, 6 color variants, configurable delay
+- **Progress** -- gradient, striped, animated, indeterminate, labels
+- **Step Progress** -- step X of Y with progress bar
+- **Confirm Dialog** -- overlay with confirm/cancel actions
+- **Skeleton Loaders** -- table, cards, list, component, page, form
+- **Icon** -- Material Icons Round with inline SVG support
+- **Theme Switcher** -- System/Light/Dark toggle
+- **reCAPTCHA v3** -- auto-refresh token
+
+### Forms
+
+- Declarative form builder with 17 field types
+- Client-side validation (required, regex pattern)
+- Server-side validation with `FormErrors`
+- Multiple submit buttons with action identification
+- Radio variants: inline, button-style, card-style
+- Form-scoped radio names (multiple forms on same page)
+
+### Data Tables
+
+- Generic `DataTable[T]` with search, sort, pagination, column filters, export
+- Column definitions with `*Node` content or plain text
+- Per-column filters: text, date, number, select with operators
+- Expandable row detail (accordion)
+- Debounced search, click-to-sort headers, page range with ellipsis
+- `SimpleTable` for quick non-generic tables
+
+### Collate (Data Panel)
+
+- Generic `Collate[T]` -- card/list-style data component with slide-out filter/sort panel
+- Configurable sort fields and filter types: boolean, date range, select, multi-check
+- Debounced search, load-more pagination, export action
+- Expandable row detail
+- Custom row rendering via callback
+- Server-driven filter/sort/search with `CollateFilterValue` payloads
+
+## Example App
 
 ```bash
-mkdir -p ~/.claude/skills/t-sui
-curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SKILL.md -o ~/.claude/skills/t-sui/SKILL.md
-curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/CORE.md -o ~/.claude/skills/t-sui/CORE.md
-curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/COMPONENTS.md -o ~/.claude/skills/t-sui/COMPONENTS.md
-curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/SERVER.md -o ~/.claude/skills/t-sui/SERVER.md
-curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/DATA.md -o ~/.claude/skills/t-sui/DATA.md
-curl -sL https://raw.githubusercontent.com/michalCapo/t-sui/master/docs/skills/PATTERNS.md -o ~/.claude/skills/t-sui/PATTERNS.md
+npm run dev
+# Open http://localhost:1423
 ```
 
-Restart Claude Code after installing.
+The example app includes 23+ pages demonstrating components, forms, tables, data panels, real-time updates, navigation, and more.
+
+- App setup and route registration: [`examples/app.ts`](examples/app.ts)
+- Local dev entrypoint: [`examples/main.ts`](examples/main.ts)
+- Example pages: [`examples/pages`](examples/pages)
+- Example tests: [`examples/tests`](examples/tests)
+
+## Server Actions
+
+```typescript
+// Register action
+app.Action("counter.inc", function (ctx: Context): string {
+    count++;
+    return ui.Span().ID("count").Text(String(count)).ToJSReplace("count");
+});
+
+// Attach to element
+ui.Button("...").Text("+1").OnClick({ Name: "counter.inc" });
+```
+
+### Multi-Action Response
+
+```typescript
+return ui.NewResponse()
+    .Replace("row-" + id, updatedRow)
+    .Toast("success", "Updated")
+    .Navigate("/items")
+    .Build();
+```
+
+### Real-Time Push
+
+```typescript
+setInterval(() => {
+    ctx.Push(ui.SetText("clock", new Date().toLocaleTimeString()));
+}, 1000);
+```
+
+## Theme & Dark Mode
+
+```typescript
+ui.ThemeSwitcher()  // System -> Light -> Dark toggle
+```
+
+Uses Tailwind `dark:` variants. Theme is persisted in localStorage and applied before render to prevent FOUC.
+
+## Localization
+
+Components use English text by default. Pass a locale struct only when you need non-English:
+
+```typescript
+// DataTable
+table.Locale({ Search: "Hledat...", Apply: "Pouzit", NoData: "Zadna data" });
+
+// Collate
+collate.Locale({ Filter: "Filtr", Reset: "Obnovit", SortBy: "Radit dle" });
+
+// Confirm dialog
+ui.ConfirmDialog("Smazat?", "Opravdu?", action, {
+    Locale: { Cancel: "Zrusit", Confirm: "Potvrdit" },
+});
+```
+
+Each component has its own locale type with only the fields it uses. See [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) for all fields and defaults.
+
+## Security
+
+- **JS string escaping** -- all embedded strings escaped via `escJS()`
+- **textContent** -- `Text()` uses `textContent`, not `innerHTML`, preventing XSS
+- **Panic recovery** -- server panics surface as error toasts
+- **WebSocket-only** -- no form submissions or XHR
+- **Auto-reconnect** -- offline overlay with automatic retry
+
+## Deploy
+
+Use the deploy script to create annotated git tags:
+
+```bash
+./deploy
+```
 
 ## License
 

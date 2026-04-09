@@ -1,109 +1,119 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
+import ui, { type Node } from "../../ui";
+import type { Context } from "../../ui.server";
 
-export function SelectContent(ctx: Context): string {
-    function row(title: string, content: string): string {
-        return ui.div(
-            "bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col gap-3",
-        )(ui.div("text-sm font-bold text-gray-700")(title), content);
-    }
+export const path = "/select";
+export const title = "Select";
 
-    function ex(label: string, control: string, extra = ""): string {
-        return ui.div("flex items-center justify-between gap-4 w-full")(
-            ui.div("text-sm text-gray-600")(label),
-            ui.div("flex items-center gap-3")(ui.div("w-64")(control), extra),
+export const SELECT_DISPLAY_ID = "select-display";
+
+export default function page(_ctx: Context): Node {
+    const cardBox = (title: string, ...children: Node[]): Node => {
+        return ui.Div("bg-white dark:bg-gray-900 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-800 flex flex-col gap-3").Render(
+            ui.Div("text-sm font-bold text-gray-700 dark:text-gray-300").Text(title),
+            ...children,
         );
-    }
+    };
 
-    const opts = [
-        { id: "", value: "Select..." },
-        { id: "one", value: "One" },
-        { id: "two", value: "Two" },
-        { id: "three", value: "Three" },
-    ];
-    type SelectData = { Country: string };
-    const data: SelectData = { Country: "" };
-    const optsNoPlaceholder = [
-        { id: "one", value: "One" },
-        { id: "two", value: "Two" },
-        { id: "three", value: "Three" },
-    ];
+    const row = (label: string, content: Node): Node => {
+        return ui.Div("flex items-center justify-between gap-4 w-full").Render(
+            ui.Div("text-sm text-gray-600 dark:text-gray-400").Text(label),
+            content,
+        );
+    };
 
-    const basics = ui.div("flex flex-col gap-2")(
-        ex(
-            "Default",
-            ui.ISelect("Country", data).Options(opts).Render("Country"),
-        ),
-        ex(
-            "Placeholder",
-            ui
-                .ISelect("Country", data)
-                .Options(opts)
-                .Placeholder("Pick one")
-                .Render("Choose"),
+    const selectCls = "w-full border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white";
+
+    const labeled = (labelText: string, sel: Node): Node => {
+        return ui.Div("flex flex-col gap-1").Render(
+            ui.Label("text-sm text-gray-700 dark:text-gray-300 font-medium").Text(labelText),
+            sel,
+        );
+    };
+
+    const opts = ["One", "Two", "Three"];
+
+    const makeSelect = (name: string, options: string[], placeholder: string): Node => {
+        const s = ui.Select(selectCls).Attr("name", name).ID(name);
+        if (placeholder) {
+            s.Render(ui.Option().Attr("value", "").Text(placeholder));
+        }
+        for (const opt of options) {
+            s.Render(ui.Option().Attr("value", opt).Text(opt));
+        }
+        return s;
+    };
+
+    // Basics
+    const basics = ui.Div("flex flex-col gap-2").Render(
+        row("Default", ui.Div("w-64").Render(labeled("Country", makeSelect("Country", opts, "Select...")))),
+        row("Placeholder + change handler",
+            ui.Div("flex items-center gap-4").Render(
+                ui.Div("w-64").Render(
+                    labeled("Choose",
+                        ui.Select(selectCls).Attr("name", "ChooseField").ID("select-choose").On("change", { Name: "select.change", Collect: ["select-choose"] }).Render(
+                            ui.Option().Attr("value", "").Text("Pick one"),
+                            ui.Option().Attr("value", "One").Text("One"),
+                            ui.Option().Attr("value", "Two").Text("Two"),
+                            ui.Option().Attr("value", "Three").Text("Three"),
+                        ),
+                    ),
+                ),
+                ui.Div("text-sm text-gray-700 dark:text-gray-300").ID(SELECT_DISPLAY_ID).Text("Selected: (none)"),
+            ),
         ),
     );
 
-    const validation = ui.div("flex flex-col gap-2")(
-        ex(
-            "Error state",
-            ui
-                .ISelect("Err")
-                .Options(opts)
-                .Placeholder("Please select")
-                .Error()
-                .Render("Invalid"),
-        ),
-        ex(
-            "Required + empty",
-            ui.ISelect("Z").Options(opts).Empty().Required().Render("Required"),
-        ),
-        ex(
-            "Disabled",
-            ui.ISelect("Y").Options(opts).Disabled().Render("Disabled"),
-        ),
+    // Validation
+    const validation = ui.Div("flex flex-col gap-2").Render(
+        row("Required", ui.Div("w-64").Render(labeled("Required",
+            ui.Select(selectCls).Attr("name", "Req").Attr("required", "true").Render(
+                ui.Option().Attr("value", "").Text("Please select"),
+                ui.Option().Attr("value", "one").Text("One"),
+                ui.Option().Attr("value", "two").Text("Two"),
+            ),
+        ))),
+        row("Disabled", ui.Div("w-64").Render(labeled("Disabled",
+            ui.Select(selectCls + " opacity-50").Attr("disabled", "true").Render(
+                ui.Option().Text("One"),
+                ui.Option().Text("Two"),
+            ),
+        ))),
+        row("Error state", ui.Div("w-64").Render(labeled("Invalid",
+            ui.Select(selectCls + " border-red-400").Attr("name", "Err").Attr("required", "true").Render(
+                ui.Option().Attr("value", "").Text("Please select"),
+                ui.Option().Attr("value", "one").Text("One"),
+            ),
+        ))),
     );
 
-    const variants = ui.div("flex flex-col gap-2")(
-        ex(
-            "No placeholder + <empty>",
-            ui
-                .ISelect("Country", data)
-                .Options(optsNoPlaceholder)
-                .EmptyText("<empty>")
-                .Render("Choose"),
-        ),
+    // Variants
+    const variants = ui.Div("flex flex-col gap-2").Render(
+        row("No placeholder", ui.Div("w-64").Render(labeled("Choose",
+            ui.Select(selectCls).Attr("name", "NoPH").Render(
+                ui.Option().Attr("value", "One").Text("One"),
+                ui.Option().Attr("value", "Two").Text("Two"),
+                ui.Option().Attr("value", "Three").Text("Three"),
+            ),
+        ))),
+        row("With optgroup", ui.Div("w-64").Render(labeled("Grouped",
+            ui.Select(selectCls).Attr("name", "Grouped").Render(
+                ui.El("optgroup").Attr("label", "Group 1").Render(
+                    ui.Option().Attr("value", "1.1").Text("Option 1.1"),
+                    ui.Option().Attr("value", "1.2").Text("Option 1.2"),
+                ),
+                ui.El("optgroup").Attr("label", "Group 2").Render(
+                    ui.Option().Attr("value", "2.1").Text("Option 2.1"),
+                    ui.Option().Attr("value", "2.2").Text("Option 2.2"),
+                ),
+            ),
+        ))),
     );
 
-    const sizes = ui.div("flex flex-col gap-2")(
-        ex(
-            "Small (SM)",
-            ui
-                .ISelect("Country", data)
-                .Options(opts)
-                .Size(ui.SM)
-                .ClassLabel("text-sm")
-                .Render("Country"),
-        ),
-        ex(
-            "Extra small (XS)",
-            ui
-                .ISelect("Country", data)
-                .Options(opts)
-                .Size(ui.XS)
-                .ClassLabel("text-sm")
-                .Render("Country"),
-        ),
-    );
-
-    return ui.div("max-w-full sm:max-w-5xl mx-auto flex flex-col gap-6")(
-        ui.div("text-3xl font-bold")("Select"),
-        ui.div("text-gray-600")(
-            "Select input variations, validation, and sizing.",
-        ),
-        row("Basics", basics),
-        row("Validation", validation),
-        row("Variants", variants),
-        row("Sizes", sizes),
+    return ui.Div("max-w-5xl mx-auto flex flex-col gap-6").Render(
+        ui.Div("text-3xl font-bold text-gray-900 dark:text-white").Text("Select"),
+        ui.Div("text-gray-600 dark:text-gray-400").Text("Select input variations, validation, and sizing."),
+        cardBox("Basics", basics),
+        cardBox("Validation", validation),
+        cardBox("Variants", variants),
     );
 }

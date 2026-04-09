@@ -1,15 +1,10 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
-import { Clock } from "./clock";
+import type { Context } from "../../ui.server";
+import type { Node } from "../../ui";
+import { examplePage } from "./shared";
 
-export function ClockContent(ctx: Context): string {
-    return ui.div("max-w-full sm:max-w-6xl mx-auto flex flex-col gap-6 w-full")(
-        ui.div("text-3xl font-bold")("Clock"),
-        ui.div("text-gray-600")(
-            "Live server time updated every second via WebSocket patches.",
-        ),
-        ui.div("bg-white p-6 rounded-lg shadow w-full border border-gray-200")(
-            Clock(ctx),
-        ),
-    );
+export const path = "/clock-page";
+export const title = "Clock Page";
+
+export default function page(_ctx: Context): Node {
+    return examplePage(title, 'Clock page example in the rewritten node-tree runtime.');
 }

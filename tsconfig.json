@@ -1,15 +1,30 @@
 {
-	"compilerOptions": {
-		"target": "ES2020",
-		"module": "NodeNext",
-		"moduleResolution": "NodeNext",
-		"strict": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"lib": ["es2020", "dom"],
-		"rootDir": ".",
-		"outDir": "../dist"
-	},
-	"include": ["./**/*.ts"],
-	"exclude": ["./main.ts", "./login.ts", "./showcase.ts"]
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["es2020", "dom"],
+    "rootDir": ".",
+    "outDir": "../dist"
+  },
+  "include": [
+    "ui.ts",
+    "ui.server.ts",
+    "ui.components.ts",
+    "ui.form.ts",
+    "ui.table.ts",
+    "ui.data.ts",
+    "ui.captcha.ts",
+    "ui.protocol.ts",
+    "ui.proxy.ts",
+    "examples/**/*.ts",
+    "test/tests.ts",
+    "test/server.ts"
+  ],
+  "exclude": [
+    "examples/tests/**/*.ts"
+  ]
 }

@@ -1,409 +1,327 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
+import ui, { type Node } from "../../ui";
+import { Blue, Green, Red, Yellow, Purple } from "../../ui.components";
+import type { Context } from "../../ui.server";
 
-class DemoForm {
-    Name = "";
-    Email = "";
-    Phone = "";
-    Password = "";
-    Age = 0;
-    Price = 0;
-    Bio = "";
-    Gender = "";
-    Country = "";
-    Agree = false;
-    BirthDate = new Date();
-    AlarmTime = new Date();
-    Meeting = new Date();
-}
+export const path = "/";
+export const title = "Showcase";
 
-const demoTarget = ui.Target();
+export default function page(_ctx: Context): Node {
+    return ui.Div("max-w-6xl mx-auto flex flex-col gap-8 w-full").Render(
+        ui.Div("text-3xl font-bold text-gray-900 dark:text-white").Text("Component Showcase"),
+        ui.Div("text-gray-600 dark:text-gray-400").Text("A collection of reusable UI components built with the rework framework."),
 
-function materialIcon(name: string, cls = "text-base leading-none align-middle"): string {
-    return ui.span("material-icons " + cls)(name);
-}
-
-export function ShowcaseContent(ctx: Context): string {
-    const form = new DemoForm();
-    return ui.div("max-w-full sm:max-w-6xl mx-auto flex flex-col gap-8 w-full")(
-        ui.div("text-3xl font-bold")("Component Showcase"),
-        ui.div("text-gray-600")("A collection of reusable UI components."),
-
-        // Alerts Section
-        renderAlerts(),
-
-        // Badges Section
-        renderBadges(),
-
-        // Cards Section
-        renderCards(),
-
-        // Progress Bars Section
-        renderProgress(),
-
-        // Step Progress Section
-        renderStepProgress(),
-
-        // Buttons with Tooltips
-        renderTooltips(),
-
-        // Tabs Section
-        renderTabs(),
-
-        // Accordion Section
-        renderAccordion(),
-
-        // Dropdown Section
-        renderDropdowns(),
-
-        // Form inputs
-        renderForm(ctx, form, undefined),
+        renderAlertSection(),
+        renderBadgeSection(),
+        renderCardSection(),
+        renderProgressSection(),
+        renderStepProgressSection(),
+        renderTooltipSection(),
+        renderTabsSection(),
+        renderAccordionSection(),
+        renderDropdownSection(),
+        renderConfirmDialogSection(),
     );
 }
 
-function renderAlerts(): string {
-    return ui.div("flex flex-col gap-4")(
-        ui.div("text-2xl font-bold")("Alerts"),
-        ui.div("grid grid-cols-1 md:grid-cols-2 gap-4")(
-            ui.div("flex flex-col gap-2")(
-                ui.div("text-sm font-bold text-gray-500 uppercase mb-1")("With Titles"),
-                ui.Alert().Variant("info").Title("Heads up!").Message("This is an info alert with important information.").Dismissible(true).Render(),
-                ui.Alert().Variant("success").Title("Great success!").Message("Your changes have been saved successfully.").Dismissible(true).Render(),
-            ),
-            ui.div("flex flex-col gap-2")(
-                ui.div("text-sm font-bold text-gray-500 uppercase mb-1")("Outline Variants"),
-                ui.Alert().Variant("warning-outline").Title("Warning").Message("Please review your input before proceeding.").Dismissible(true).Render(),
-                ui.Alert().Variant("error-outline").Title("Error occurred").Message("Something went wrong while saving your data.").Dismissible(true).Render(),
-            ),
-        ),
+function section(title: string, ...children: Node[]): Node {
+    return ui.Div("flex flex-col gap-4").Render(
+        ui.Div("text-2xl font-bold text-gray-900 dark:text-white").Text(title),
+        ...children,
     );
 }
 
-function renderBadges(): string {
-    const icon = materialIcon("check_circle", "text-sm leading-none align-middle");
+// ---------------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------------
 
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Badges"),
-        ui.div("flex flex-col gap-6")(
-            ui.div("flex flex-wrap items-center gap-4")(
-                ui.div("text-sm font-bold text-gray-500 uppercase w-full mb-1")("Variants & Icons"),
-                ui.Badge().Color("green-soft").Text("Verified").Icon(icon).Render(),
-                ui.Badge().Color("blue").Text("New").Size("lg").Render(),
-                ui.Badge().Color("red").Text("Urgent").Square().Render(),
-                ui.Badge().Color("yellow-soft").Text("Warning").Size("sm").Render(),
-            ),
-            ui.div("flex flex-wrap items-center gap-4")(
-                ui.div("text-sm font-bold text-gray-500 uppercase w-full mb-1")("Dots & Sizes"),
-                ui.Badge().Color("green").Dot().Size("sm").Render(),
-                ui.Badge().Color("blue").Dot().Size("md").Render(),
-                ui.Badge().Color("red").Dot().Size("lg").Render(),
-                ui.Badge().Color("purple-soft").Text("Large Badge").Size("lg").Render(),
-            ),
-        ),
-    );
-}
-
-function renderCards(): string {
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Cards"),
-        ui.div("grid grid-cols-1 md:grid-cols-3 gap-6")(
-            ui.Card().Header("<h3 class='font-bold'>Standard Card</h3>")
-                .Body("<p class='text-gray-600 dark:text-gray-400'>This is a standard shadowed card with default padding.</p>")
-                .Footer("<div class='text-xs text-gray-500'>Card Footer</div>")
-                .Render(),
-            ui.Card().Image("https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop", "Landscape")
-                .Header("<h3 class='font-bold'>Card with Image</h3>")
-                .Body("<p class='text-gray-600 dark:text-gray-400'>Cards can now display images at the top.</p>")
-                .Hover(true)
-                .Render(),
-            ui.Card().Variant(ui.CardGlass)
-                .Header("<h3 class='font-bold'>Glass Variant</h3>")
-                .Body("<p class='text-gray-600 dark:text-gray-400'>This card uses a glassmorphism effect with backdrop blur.</p>")
-                .Hover(true)
-                .Render(),
-        ),
-    );
-}
-
-function renderProgress(): string {
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Progress Bars"),
-        ui.div("grid grid-cols-1 md:grid-cols-2 gap-8")(
-            ui.div("flex flex-col gap-4")(
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Gradient Style (75%)"),
-                    ui.ProgressBar().Value(75).Gradient("#3b82f6", "#8b5cf6").Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Outside Label"),
-                    ui.ProgressBar().Value(45).Label("System Update").LabelPosition("outside").Color("bg-indigo-600").Render(),
-                ),
-            ),
-            ui.div("flex flex-col gap-4")(
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Animated Stripes"),
-                    ui.ProgressBar().Value(65).Color("bg-green-500").Striped(true).Animated(true).Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Indeterminate"),
-                    ui.ProgressBar().Indeterminate(true).Color("bg-blue-600").Render(),
-                ),
-            ),
-        ),
-    );
-}
-
-function renderStepProgress(): string {
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Step Progress"),
-        ui.div("grid grid-cols-1 md:grid-cols-2 gap-8")(
-            ui.div("flex flex-col gap-4")(
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Step 1 of 4"),
-                    ui.StepProgress(1, 4).Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Step 2 of 4"),
-                    ui.StepProgress(2, 4).Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Step 3 of 4"),
-                    ui.StepProgress(3, 4).Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Step 4 of 4 (Complete)"),
-                    ui.StepProgress(4, 4).Color("bg-green-500").Render(),
-                ),
-            ),
-            ui.div("flex flex-col gap-4")(
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Small Size - Step 1 of 5"),
-                    ui.StepProgress(1, 5).Size("sm").Color("bg-purple-500").Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Large Size - Step 2 of 5"),
-                    ui.StepProgress(2, 5).Size("lg").Color("bg-yellow-500").Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Extra Large - Step 3 of 5"),
-                    ui.StepProgress(3, 5).Size("xl").Color("bg-red-500").Render(),
-                ),
-                ui.div("")(
-                    ui.div("mb-1 text-sm font-medium")("Custom Step Progress"),
-                    ui.StepProgress(7, 10).Color("bg-indigo-500").Size("md").Render(),
-                ),
-            ),
-        ),
-    );
-}
-
-function renderTooltips(): string {
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Tooltips"),
-        ui.div("flex flex-wrap gap-4")(
-            ui.Tooltip().Content("Delayed tooltip").Delay(500).Render(
-                ui.Button().Color(ui.Blue).Class("rounded-lg").Render("500ms Delay")
-            ),
-            ui.Tooltip().Content("Bottom position").Position("bottom").Render(
-                ui.Button().Color(ui.Green).Class("rounded-lg").Render("Bottom")
-            ),
-            ui.Tooltip().Content("Success variant").Variant("green").Render(
-                ui.Button().Color(ui.GreenOutline).Class("rounded-lg").Render("Success")
-            ),
-            ui.Tooltip().Content("Danger variant").Variant("red").Render(
-                ui.Button().Color(ui.RedOutline).Class("rounded-lg").Render("Danger")
-            ),
-            ui.Tooltip().Content("Light variant").Variant("light").Render(
-                ui.Button().Color(ui.GrayOutline).Class("rounded-lg").Render("Light")
-            ),
-        ),
-    );
-}
-
-function renderTabs(): string {
-    const iconHome = materialIcon("home", "text-sm leading-none align-middle");
-    const iconUser = materialIcon("person", "text-sm leading-none align-middle");
-    const iconSettings = materialIcon("settings", "text-sm leading-none align-middle");
-
-    const contentClass = "p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800";
-
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Tabs"),
-        ui.div("grid grid-cols-1 gap-8")(
-            ui.div("")(
-                ui.div("text-sm font-bold text-gray-500 uppercase mb-3")("Boxed Style with Icons"),
-                ui.Tabs()
-                    .Tab("Home", ui.div(contentClass)(
-                        ui.div("text-lg font-bold mb-2")("Dashboard Home"),
-                        ui.div("text-gray-600 dark:text-gray-400")("Welcome to your central dashboard. This panel demonstrates how tabs can wrap complex HTML content with a clean white background."),
-                    ), iconHome)
-                    .Tab("Profile", ui.div(contentClass)(
-                        ui.div("text-lg font-bold mb-2")("User Profile"),
-                        ui.div("text-gray-600 dark:text-gray-400")("Manage your personal information, display name, and avatar settings here."),
-                    ), iconUser)
-                    .Tab("Settings", ui.div(contentClass)(
-                        ui.div("text-lg font-bold mb-2")("System Settings"),
-                        ui.div("text-gray-600 dark:text-gray-400")("Fine-tune application behavior, notification preferences, and privacy controls."),
-                    ), iconSettings)
-                    .Active(0)
-                    .Style("boxed")
-                    .Render(),
-            ),
-            ui.div("grid grid-cols-1 md:grid-cols-2 gap-8")(
-                ui.div("")(
-                    ui.div("text-sm font-bold text-gray-500 uppercase mb-3")("Underline Style"),
-                    ui.Tabs()
-                        .Tab("General", ui.div(contentClass)(
-                            ui.div("font-bold")("General Info"),
-                            ui.p("mt-2")("Basic configuration for your workspace."),
-                        ))
-                        .Tab("Security", ui.div(contentClass)(
-                            ui.div("font-bold")("Privacy & Security"),
-                            ui.p("mt-2")("Manage passwords, two-factor authentication and active sessions."),
-                        ))
-                        .Active(0)
-                        .Style("underline")
-                        .Render(),
-                ),
-                ui.div("")(
-                    ui.div("text-sm font-bold text-gray-500 uppercase mb-3")("Pills Style"),
-                    ui.Tabs()
-                        .Tab("Daily", ui.div(contentClass)(
-                            ui.div("font-bold text-blue-600")("Today's Progress"),
-                            ui.p("mt-1")("Detailed activities for the last 24 hours."),
-                        ))
-                        .Tab("Weekly", ui.div(contentClass)(
-                            ui.div("font-bold text-green-600")("Weekly Trends"),
-                            ui.p("mt-1")("Summary of performance over the past 7 days."),
-                        ))
-                        .Tab("Monthly", ui.div(contentClass)(
-                            ui.div("font-bold text-purple-600")("Monthly Report"),
-                            ui.p("mt-1")("Strategic overview of goals achieved this month."),
-                        ))
-                        .Active(1)
-                        .Style("pills")
-                        .Render(),
-                ),
-            ),
-        ),
-    );
-}
-
-function renderAccordion(): string {
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Accordion"),
-        ui.div("grid grid-cols-1 md:grid-cols-2 gap-8")(
-            ui.div("")(
-                ui.div("text-sm font-bold text-gray-500 uppercase mb-3")("Bordered with Default Open"),
-                ui.Accordion().Variant(ui.AccordionBordered)
-                    .Item("What is t-sui?", "t-sui is a TypeScript-based server-rendered UI framework that provides a component-based approach to building web applications.", true)
-                    .Item("How do I get started?", "Simply import the ui module and start composing components.")
-                    .Item("Is it responsive?", "All components are built with responsive design in mind, using Tailwind's responsive modifiers.")
-                    .Render(),
-            ),
-            ui.div("")(
-                ui.div("text-sm font-bold text-gray-500 uppercase mb-3")("Separated Variant (Multiple)"),
-                ui.Accordion().Variant(ui.AccordionSeparated).Multiple(true)
-                    .Item("Separated Section 1", "In the separated variant, each item is its own card.")
-                    .Item("Separated Section 2", "Multiple sections can be open at once when Multiple(true) is used.")
-                    .Render(),
-            ),
-        ),
-    );
-}
-
-function renderDropdowns(): string {
-    const iconEdit = materialIcon("edit", "text-sm leading-none align-middle");
-    const iconDelete = materialIcon("delete", "text-sm leading-none align-middle");
-
-    return ui.div("")(
-        ui.div("text-2xl font-bold mb-4")("Dropdown Menus"),
-        ui.div("flex flex-wrap gap-4")(
-            ui.Dropdown()
-                .Trigger(ui.Button().Color(ui.Blue).Class("rounded-lg").Render("Actions ▼"))
-                .Header("General")
-                .Item("Edit Profile", "alert('Edit')", iconEdit)
-                .Item("Account Settings", "alert('Settings')")
-                .Divider()
-                .Header("Danger Zone")
-                .Danger("Delete Account", "alert('Delete')", iconDelete)
-                .Position("bottom-left")
-                .Render(),
-
-            ui.Dropdown()
-                .Trigger(ui.Button().Color(ui.GrayOutline).Class("rounded-lg").Render("Options ▼"))
-                .Item("Share", "alert('Share')")
-                .Item("Download", "alert('Download')")
-                .Position("bottom-right")
-                .Render(),
-        ),
-    );
-}
-
-function renderForm(ctx: Context, f: DemoForm, err?: Error): string {
-    actionSubmit.url = "/showcase-submit";
-    function actionSubmit(ctx: Context): string {
-        ctx.Body(f);
-        ctx.Success("Form submitted successfully");
-        return renderForm(ctx, f, undefined);
-    }
-
-    const rawCountries = ["", "USA", "Slovakia", "Germany", "Japan"];
-    const countries: { id: string; value: string }[] = [];
-    for (let i = 0; i < rawCountries.length; i++) {
-        const x = rawCountries[i];
-        let val = "Select...";
-        if (x !== "") {
-            val = x;
-        }
-        countries.push({ id: x, value: val });
-    }
-    const genders = [
-        { id: "male", value: "Male" },
-        { id: "female", value: "Female" },
-        { id: "other", value: "Other" },
+function alertBox(title: string, message: string, accent: string, bg: string, dismissible = false): Node {
+    const nodes: Node[] = [
+        ui.Div("font-semibold").Text(title),
+        ui.Div("text-sm").Text(message),
     ];
-
-    let errorMessage = "";
-    if (err) {
-        errorMessage = ui.div("text-red-600 p-4 rounded text-center border-4 border-red-600 bg-white")(err.message);
+    if (dismissible) {
+        nodes.push(ui.Button("mt-2 self-start text-xs underline opacity-80 hover:opacity-100 cursor-pointer").Text("Dismiss").OnClick(ui.JS("this.parentElement.remove()")));
     }
+    return ui.Div(`rounded-xl border ${accent} ${bg} p-4 flex flex-col gap-1`).Render(...nodes);
+}
 
-    return ui.div("w-full", demoTarget)(
-        ui.form("flex flex-col gap-4 bg-white p-6 rounded-lg shadow w-full", demoTarget, ctx.Submit(actionSubmit).Replace(demoTarget))(
-            errorMessage,
-
-            ui.IText("Name", f).Required().Render("Name"),
-            ui.IText("Email", f).Required().Render("Email"),
-            ui.IText("Phone", f).Render("Phone"),
-            ui.IPassword("Password").Required().Render("Password"),
-
-            ui.INumber("Age", f).Numbers(0, 120, 1).Render("Age"),
-            ui.INumber("Price", f).Format("%.2f").Render("Price (USD)"),
-            ui.IArea("Bio", f).Rows(4).Render("Short Bio"),
-
-            ui.div("block sm:hidden")(
-                ui.div("text-sm font-bold")("Gender"),
-                ui.IRadio("Gender", f).Value("male").Render("Male"),
-                ui.IRadio("Gender", f).Value("female").Render("Female"),
-                ui.IRadio("Gender", f).Value("other").Render("Other"),
+function renderAlertSection(): Node {
+    return section(
+        "Alerts",
+        ui.Div("grid grid-cols-1 md:grid-cols-2 gap-4").Render(
+            ui.Div("flex flex-col gap-2").Render(
+                ui.Div("text-sm font-bold text-gray-500 uppercase mb-1").Text("With Titles (Dismissible)"),
+                alertBox("Heads up!", "This is an info alert with important information.", "border-blue-200 text-blue-900 dark:text-blue-200", "bg-blue-50 dark:bg-blue-950/30", true),
+                alertBox("Great success!", "Your changes have been saved successfully.", "border-green-200 text-green-900 dark:text-green-200", "bg-green-50 dark:bg-green-950/30", true),
             ),
-
-            ui.div("hidden sm:block overflow-x-auto")(
-                ui.IRadioButtons("Gender", f).Options(genders).Render("Gender"),
+            ui.Div("flex flex-col gap-2").Render(
+                ui.Div("text-sm font-bold text-gray-500 uppercase mb-1").Text("Outline Variants"),
+                alertBox("Warning", "Please review your input before proceeding.", "border-yellow-400 text-yellow-900 dark:text-yellow-200", "bg-transparent"),
+                alertBox("Error occurred", "Something went wrong while saving your data.", "border-red-400 text-red-900 dark:text-red-200", "bg-transparent"),
             ),
+        ),
+    );
+}
 
-            ui.ISelect("Country", f).Options(countries).Render("Country"),
-            ui.ICheckbox("Agree", f).Required().Render("I agree to the terms"),
+// ---------------------------------------------------------------------------
+// Badges
+// ---------------------------------------------------------------------------
 
-            ui.IDate("BirthDate", f).Render("Birth Date"),
-            ui.ITime("AlarmTime", f).Render("Alarm Time"),
-            ui.IDateTime("Meeting", f).Render("Meeting (Local)"),
+function badge(text: string, cls: string, icon?: string, dot = false, square = false): Node {
+    const base = "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium";
+    const squareCls = square ? "rounded-md" : "";
+    const content: Node[] = [];
+    if (dot) {
+        content.push(ui.Span(`inline-block w-2 h-2 rounded-full mr-2 ${cls.includes("green") ? "bg-green-500" : cls.includes("blue") ? "bg-blue-500" : "bg-red-500"}`));
+    }
+    if (icon) {
+        content.push(ui.I(`material-icons-round text-xs mr-1`).Text(icon));
+    }
+    content.push(ui.Span().Text(text));
+    return ui.Span(`${base} ${squareCls} ${cls}`).Render(...content);
+}
 
-            ui.div("flex gap-2 mt-2")(
-                ui.Button().Submit().Color(ui.Blue).Class("rounded").Render("Submit"),
-                ui.Button().Reset().Color(ui.Gray).Class("rounded").Render("Reset"),
+function renderBadgeSection(): Node {
+    return section(
+        "Badges",
+        ui.Div("flex flex-col gap-6").Render(
+            ui.Div("flex flex-wrap items-center gap-4").Render(
+                ui.Div("text-sm font-bold text-gray-500 uppercase w-full mb-1").Text("Variants & Icons"),
+                badge("Verified", "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300", "check_circle"),
+                badge("New", "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"),
+                badge("Urgent", "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300", "priority_high", true),
+                badge("Warning", "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"),
             ),
+            ui.Div("flex flex-wrap items-center gap-4").Render(
+                ui.Div("text-sm font-bold text-gray-500 uppercase w-full mb-1").Text("Soft Variants"),
+                badge("Soft Green", "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300"),
+                badge("Soft Blue", "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"),
+                badge("Soft Purple", "bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300"),
+                badge("Soft Yellow", "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300"),
+            ),
+            ui.Div("flex flex-wrap items-center gap-4").Render(
+                ui.Div("text-sm font-bold text-gray-500 uppercase w-full mb-1").Text("Sizes"),
+                badge("Small", "text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"),
+                badge("Default", "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"),
+                badge("Large", "text-base bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"),
+            ),
+            ui.Div("flex flex-wrap items-center gap-4").Render(
+                ui.Div("text-sm font-bold text-gray-500 uppercase w-full mb-1").Text("Dots"),
+                badge("", "bg-green-100 text-green-700", undefined, true),
+                badge("", "bg-blue-100 text-blue-700", undefined, true),
+                badge("", "bg-red-100 text-red-700", undefined, true),
+            ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Cards
+// ---------------------------------------------------------------------------
+
+function renderCardSection(): Node {
+    return section(
+        "Cards",
+        ui.Div("grid grid-cols-1 md:grid-cols-3 gap-6").Render(
+            ui.Div("rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow border border-gray-200 dark:border-gray-800").Render(
+                ui.Div("p-4").Render(
+                    ui.Div("font-bold mb-2 text-gray-900 dark:text-white").Text("Standard Card"),
+                    ui.P("text-gray-600 dark:text-gray-400 text-sm").Text("A standard shadowed card with default padding and footer."),
+                ),
+                ui.Div("px-4 py-3 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500").Text("Card Footer"),
+            ),
+            ui.Div("rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow border border-gray-200 dark:border-gray-800 hover:shadow-lg transition-shadow").Render(
+                ui.Img("w-full h-48 object-cover").Attr("src", "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=640&auto=format&fit=crop&q=75").Attr("alt", "Landscape"),
+                ui.Div("p-4").Render(
+                    ui.Div("font-bold mb-2 text-gray-900 dark:text-white").Text("Card with Image"),
+                    ui.P("text-gray-600 dark:text-gray-400 text-sm").Text("Cards can display images at the top with hover effects."),
+                ),
+            ),
+            ui.Div("rounded-xl overflow-hidden bg-white/80 dark:bg-gray-900/80 backdrop-blur shadow-lg border border-gray-200/50 dark:border-gray-800/50").Render(
+                ui.Div("p-4").Render(
+                    ui.Div("font-bold mb-2 text-gray-900 dark:text-white").Text("Glass Variant"),
+                    ui.P("text-gray-600 dark:text-gray-400 text-sm").Text("This card uses a glassmorphism effect with backdrop blur."),
+                ),
+            ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Progress Bars
+// ---------------------------------------------------------------------------
+
+function progressBar(value: number, label: string, colorCls: string, striped = false, animated = false, indeterminate = false, size = "h-4"): Node {
+    const barCls = `${colorCls} ${striped ? "bg-[linear-gradient(45deg,rgba(255,255,255,.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,.15)_50%,rgba(255,255,255,.15)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem]" : ""} ${animated ? "animate-[progress-bar-stripes_1s_linear_infinite]" : ""} ${indeterminate ? "animate-[progress-bar-indeterminate_1.5s_linear_infinite]" : ""} ${size} rounded transition-all duration-300`;
+    return ui.Div("flex flex-col gap-1").Render(
+        ui.Div("flex justify-between text-sm").Render(
+            ui.Span("text-gray-700 dark:text-gray-300 font-medium").Text(label),
+            ui.Span("text-gray-500").Text(indeterminate ? "" : `${value}%`),
+        ),
+        ui.Div("w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden h-4").Render(
+            indeterminate ? ui.Div(barCls).Style("width", "30%") : ui.Div(barCls).Style("width", `${value}%`),
+        ),
+    );
+}
+
+function renderProgressSection(): Node {
+    return section(
+        "Progress Bars",
+        ui.Div("grid grid-cols-1 md:grid-cols-2 gap-8").Render(
+            ui.Div("flex flex-col gap-4").Render(
+                progressBar(75, "Gradient Style (75%)", "bg-gradient-to-r from-blue-500 to-purple-500"),
+                progressBar(45, "Outside Label (45%)", "bg-indigo-600"),
+            ),
+            ui.Div("flex flex-col gap-4").Render(
+                progressBar(65, "Animated Stripes (65%)", "bg-green-500", true, true, false, "h-3"),
+                progressBar(0, "Indeterminate", Blue, false, false, true),
+            ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Step Progress
+// ---------------------------------------------------------------------------
+
+function stepProgress(current: number, total: number, colorCls = "bg-blue-500", size = "md"): Node {
+    const sizeMap: Record<string, string> = { sm: "w-6 h-6 text-xs", md: "w-8 h-8 text-sm", lg: "w-10 h-10 text-base", xl: "w-12 h-12 text-lg" };
+    const stepSize = sizeMap[size] || sizeMap.md;
+    const steps: Node[] = [];
+    for (let i = 1; i <= total; i++) {
+        const isComplete = i <= current;
+        const isCurrent = i === current;
+        steps.push(
+            ui.Div("flex items-center").Render(
+                ui.Div(`${stepSize} rounded-full flex items-center justify-center font-bold ${isComplete ? colorCls + " text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-500"}`).Text(String(i)),
+                i < total ? ui.Div(`flex-1 h-1 mx-2 ${isComplete ? colorCls : "bg-gray-200 dark:bg-gray-700"}`) : null,
+            ),
+        );
+    }
+    return ui.Div("flex items-center").Render(...steps);
+}
+
+function renderStepProgressSection(): Node {
+    return section(
+        "Step Progress",
+        ui.Div("grid grid-cols-1 md:grid-cols-2 gap-8").Render(
+            ui.Div("flex flex-col gap-4").Render(
+                stepProgress(1, 4),
+                stepProgress(2, 4),
+                stepProgress(3, 4),
+                stepProgress(4, 4, "bg-green-500"),
+            ),
+        ui.Div("flex flex-col gap-4").Render(
+            stepProgress(1, 5, Purple, "sm"),
+            stepProgress(2, 5, Yellow, "lg"),
+            stepProgress(3, 5, Red, "xl"),
+            stepProgress(7, 10, "bg-indigo-500"),
+        ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tooltips
+// ---------------------------------------------------------------------------
+
+function tooltipDemo(text: string, position: string): Node {
+    const posMap: Record<string, string> = {
+        top: "group hover:before:opacity-100 before:opacity-0 before:absolute before:bottom-full before:left-1/2 before:-translate-x-1/2 before:mb-2 before:px-2 before:py-1 before:bg-gray-900 before:text-white before:text-xs before:rounded before:transition-opacity",
+        bottom: "group hover:after:opacity-100 after:opacity-0 after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:mt-2 after:px-2 after:py-1 after:bg-gray-900 after:text-white after:text-xs after:rounded after:transition-opacity",
+    };
+    return ui.Div("relative inline-block").Render(
+        ui.Button(`px-4 py-2 ${Blue} rounded cursor-pointer`).Text(text),
+    );
+}
+
+function renderTooltipSection(): Node {
+    return section(
+        "Tooltips",
+        ui.Div("flex flex-wrap gap-4").Render(
+            ui.Div("relative inline-block group").Render(
+                ui.Button(`px-4 py-2 ${Blue} rounded cursor-pointer`).Text("Hover for top tooltip"),
+                ui.Div("absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap").Text("Top tooltip"),
+            ),
+            ui.Div("relative inline-block group").Render(
+                ui.Button(`px-4 py-2 ${Green} rounded cursor-pointer`).Text("Hover for bottom tooltip"),
+                ui.Div("absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap").Text("Bottom tooltip"),
+            ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------------
+
+function renderTabsSection(): Node {
+    return section(
+        "Tabs",
+        ui.Div("flex flex-col gap-4").Render(
+            ui.Div("border-b border-gray-200 dark:border-gray-700").Render(
+                ui.Div("flex gap-4").Render(
+                    ui.Button("px-4 py-2 text-blue-600 border-b-2 border-blue-600 font-medium cursor-pointer").Text("Tab 1"),
+                    ui.Button("px-4 py-2 text-gray-500 hover:text-gray-700 cursor-pointer").Text("Tab 2"),
+                    ui.Button("px-4 py-2 text-gray-500 hover:text-gray-700 cursor-pointer").Text("Tab 3"),
+                ),
+            ),
+            ui.Div("p-4 bg-white dark:bg-gray-900 rounded-b-lg").Text("Tab 1 content"),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Accordion
+// ---------------------------------------------------------------------------
+
+function renderAccordionSection(): Node {
+    return section(
+        "Accordion",
+        ui.Div("flex flex-col gap-2").Render(
+            ui.Details("border border-gray-200 dark:border-gray-700 rounded-lg").Render(
+                ui.Summary("px-4 py-3 font-medium cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700").Text("Accordion Item 1"),
+                ui.Div("p-4 text-gray-600 dark:text-gray-400").Text("Content for accordion item 1. This can contain any content."),
+            ),
+            ui.Details("border border-gray-200 dark:border-gray-700 rounded-lg").Render(
+                ui.Summary("px-4 py-3 font-medium cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700").Text("Accordion Item 2"),
+                ui.Div("p-4 text-gray-600 dark:text-gray-400").Text("Content for accordion item 2."),
+            ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Dropdown
+// ---------------------------------------------------------------------------
+
+function renderDropdownSection(): Node {
+    return section(
+        "Dropdown",
+        ui.Div("relative inline-block").Render(
+            ui.Button(`px-4 py-2 ${Blue} rounded cursor-pointer`).Text("Dropdown"),
+            ui.Div("absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-10").Render(
+                ui.Div("px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700").Text("Menu"),
+                ui.A("block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800").Attr("href", "#").Text("Option 1"),
+                ui.A("block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800").Attr("href", "#").Text("Option 2"),
+                ui.Div("border-t border-gray-200 dark:border-gray-700"),
+                ui.A("block px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20").Attr("href", "#").Text("Delete"),
+            ),
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Confirm Dialog
+// ---------------------------------------------------------------------------
+
+function renderConfirmDialogSection(): Node {
+    return section(
+        "Confirm Dialog",
+        ui.Div("flex gap-4").Render(
+            ui.Button(`px-4 py-2 ${Red} rounded cursor-pointer`)
+                .Text("Delete Item")
+                .OnClick(ui.JS("if(confirm('Are you sure you want to delete this item?')){alert('Deleted!')}else{alert('Cancelled')}")),
         ),
     );
 }

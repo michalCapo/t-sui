@@ -1,4635 +1,721 @@
-// Typpescript server for server-side rendering using the combined UI library
+import http, { IncomingMessage, ServerResponse } from 'node:http';
+import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { Duplex } from 'node:stream';
 
-import http, { IncomingMessage, Server, ServerResponse } from "node:http";
-import crypto from "node:crypto";
-import { gzipSync } from "node:zlib";
+import { Node, Notify, SetTitle } from './ui';
 
-import type { Socket } from "node:net";
-import { readFile } from "node:fs/promises";
-import nodePath from "node:path";
+// --- Minimal WebSocket server (RFC 6455) ---
 
-import ui, { Attr, Target, Swap } from "./ui";
-import { htmlToJSElement, JSElement, JSPatchOp, JSHTTPResponse, JSResponseMessage, JSCallMessage } from "./ui.protocol";
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
-// Runtime detection
-const IS_BUN = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
-
-// Type definitions for WebSocket sockets (works for both Bun and Node.js)
-interface WebSocketLike {
-    send?(data: string | Buffer): void | Promise<void>;
-    write?(data: string | Buffer): boolean;
-    ping?(data?: string | Buffer): void;
-    close?(code?: number, reason?: string | Buffer): void;
-    writable?: boolean;
-    destroy?(): void;
-    data?: unknown;
-    on?(event: string, listener: (...args: unknown[]) => void): void;
-    removeListener?(event: string, listener: (...args: unknown[]) => void): void;
+function acceptKey(key: string): string {
+    return crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
 }
 
-interface WebSocketClient {
-    socket: WebSocketLike;
-    sid: string;
-    lastPong: number;
-}
-
-interface BunLikeServer {
-    upgrade?(req: IncomingMessage, options?: { data?: { sid: string; setCookie: string } }): boolean;
-}
-
-// Type for action values (recursive definition)
-type ActionValue = string | number | boolean | Date | null | undefined | ActionValue[] | { [key: string]: ActionValue };
-
-interface PostAction {
-    method: Callable;
-    target?: Attr;
-    values?: ActionValue[];
-}
-
-// Enhanced input validation and sanitization functions
-function validateAndSanitizeInput(input: string, maxLength = 1000000): string {
-    if (!input || typeof input !== 'string') {
-        return '';
-    }
-    if (input.length > maxLength) {
-        throw new Error(`Input too large: ${input.length} > ${maxLength}`);
-    }
-    // Basic sanitization - remove potential dangerous characters
-    return input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
-}
-
-function safeJsonParse<T>(jsonString: string, maxLength = 1000000): T | undefined {
-    try {
-        if (!jsonString || typeof jsonString !== 'string') {
-            return undefined;
-        }
-        if (jsonString.length > maxLength) {
-            throw new Error(`JSON string too large: ${jsonString.length} > ${maxLength}`);
-        }
-        // Basic JSON structure validation
-        if (!jsonString.trim().startsWith('{') && !jsonString.trim().startsWith('[')) {
-            throw new Error('Invalid JSON structure');
-        }
-        return JSON.parse(jsonString) as T;
-    } catch (error) {
-        console.warn('JSON parsing failed:', error);
-        return undefined;
-    }
-}
-
-function headerValue(req: IncomingMessage | { headers?: { [k: string]: string | undefined } }, name: string): string {
-    try {
-        const h = req.headers || {};
-        const v = (h as Record<string, string | string[] | undefined>)[name.toLowerCase()];
-        if (Array.isArray(v)) {
-            return String(v[0] || "");
-        }
-        return String(v || "");
-    } catch (_) {
-        return "";
-    }
-}
-
-function parseMultipartBoundary(contentType: string): string {
-    const m = String(contentType || "").match(/boundary=([^;]+)/i);
-    if (!m || !m[1]) {
-        return "";
-    }
-    let b = m[1].trim();
-    if ((b.startsWith('"') && b.endsWith('"')) || (b.startsWith("'") && b.endsWith("'"))) {
-        b = b.slice(1, -1);
-    }
-    return b;
-}
-
-function parseMultipartBody(raw: Buffer, boundary: string): BodyItem[] {
-    const out: BodyItem[] = [];
-    if (!raw || raw.length === 0 || !boundary) {
-        return out;
-    }
-    const delimiter = "--" + boundary;
-    const full = raw.toString("latin1");
-    const parts = full.split(delimiter);
-    for (let i = 0; i < parts.length; i++) {
-        let part = parts[i];
-        if (!part || part === "--" || part === "--\r\n") {
-            continue;
-        }
-        if (part.startsWith("\r\n")) {
-            part = part.slice(2);
-        }
-        if (part.endsWith("\r\n")) {
-            part = part.slice(0, -2);
-        }
-        if (part.endsWith("--")) {
-            part = part.slice(0, -2);
-        }
-
-        const sep = part.indexOf("\r\n\r\n");
-        if (sep < 0) {
-            continue;
-        }
-        const headerBlock = part.slice(0, sep);
-        const bodyBlock = part.slice(sep + 4);
-        const headers = headerBlock.split("\r\n");
-
-        let fieldName = "";
-        let filename = "";
-        let contentType = "application/octet-stream";
-
-        for (let h = 0; h < headers.length; h++) {
-            const line = headers[h];
-            const lower = line.toLowerCase();
-            if (lower.startsWith("content-disposition:")) {
-                const nameMatch = line.match(/name="([^"]+)"/i);
-                const fileMatch = line.match(/filename="([^"]*)"/i);
-                if (nameMatch && nameMatch[1]) {
-                    fieldName = nameMatch[1];
-                }
-                if (fileMatch && typeof fileMatch[1] === "string") {
-                    filename = fileMatch[1];
-                }
-            } else if (lower.startsWith("content-type:")) {
-                const idx = line.indexOf(":");
-                if (idx >= 0) {
-                    contentType = line.slice(idx + 1).trim() || "application/octet-stream";
-                }
-            }
-        }
-
-        if (!fieldName) {
-            continue;
-        }
-
-        const bodyBuf = Buffer.from(bodyBlock, "latin1");
-        if (filename) {
-            const payload: FileUpload = {
-                Name: filename,
-                Data: bodyBuf.toString("base64"),
-                ContentType: contentType,
-                Size: bodyBuf.length,
-            };
-            out.push({
-                name: fieldName,
-                type: "file",
-                value: JSON.stringify(payload),
-            });
-        } else {
-            out.push({
-                name: fieldName,
-                type: "string",
-                value: bodyBuf.toString("utf8"),
-            });
-        }
-    }
-    return out;
-}
-
-function parseRequestBodyItems(raw: Buffer, contentType: string): BodyItem[] | undefined {
-    if (!raw || raw.length === 0) {
-        return undefined;
-    }
-
-    const ct = String(contentType || "").toLowerCase();
-    if (ct.includes("application/json")) {
-        const asText = validateAndSanitizeInput(raw.toString("utf8"), 20_000_000);
-        const parsed = safeJsonParse<BodyItem[]>(asText, 20_000_000);
-        if (parsed && Array.isArray(parsed)) {
-            for (let i = 0; i < parsed.length; i++) {
-                const item = parsed[i];
-                if (!item || typeof item.name !== "string" || typeof item.value !== "string") {
-                    return undefined;
-                }
-                item.name = validateAndSanitizeInput(item.name, 1000);
-                item.type = validateAndSanitizeInput(String(item.type || "string"), 100);
-                item.value = validateAndSanitizeInput(item.value, 20_000_000);
-            }
-            return parsed;
-        }
-        return undefined;
-    }
-
-    if (ct.includes("application/x-www-form-urlencoded")) {
-        const params = new URLSearchParams(raw.toString("utf8"));
-        const out: BodyItem[] = [];
-        for (const [k, v] of params.entries()) {
-            out.push({ name: k, type: "string", value: v });
-        }
-        return out;
-    }
-
-    if (ct.includes("multipart/form-data")) {
-        const boundary = parseMultipartBoundary(contentType);
-        const parsed = parseMultipartBody(raw, boundary);
-        return parsed.length > 0 ? parsed : undefined;
-    }
-
-    return undefined;
-}
-
-// Security headers configuration
-function setSecurityHeaders(res: ServerResponse, isSecure = false): void {
-    // Content Security Policy - updated to allow external stylesheets
-    const csp = [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",  // Allow inline scripts for framework functionality
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",   // Allow external stylesheets from Google Fonts
-        "font-src 'self' https://fonts.gstatic.com",  // Allow fonts from Google Fonts
-        "img-src 'self' data: https:",
-        "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",        // Allow WebSocket connections
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'"
-    ].join('; ');
-
-    res.setHeader('Content-Security-Policy', csp);
-
-    // Additional security headers
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-    // HSTS for HTTPS connections
-    if (isSecure) {
-        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    }
-
-    // Remove server information
-    res.removeHeader('X-Powered-By');
-}
-
-// Rate limiting implementation (simple in-memory)
-class RateLimiter {
-    private requests = new Map<string, { count: number; resetTime: number }>();
-    private maxRequests: number;
-    private windowMs: number;
-
-    constructor(maxRequests = 100, windowMs = 60000) { // 100 requests per minute
-        this.maxRequests = maxRequests;
-        this.windowMs = windowMs;
-    }
-
-    isAllowed(identifier: string): boolean {
-        const now = Date.now();
-        const record = this.requests.get(identifier);
-
-        if (!record || now > record.resetTime) {
-            // Reset or create new record
-            this.requests.set(identifier, { count: 1, resetTime: now + this.windowMs });
-            return true;
-        }
-
-        if (record.count >= this.maxRequests) {
-            return false;
-        }
-
-        record.count++;
-        return true;
-    }
-
-    cleanup(): void {
-        const now = Date.now();
-        for (const [key, record] of this.requests.entries()) {
-            if (now > record.resetTime) {
-                this.requests.delete(key);
-            }
-        }
-    }
-}
-
-// Helper function to get client IP address
-function getClientIP(req: IncomingMessage): string {
-    const forwarded = req.headers['x-forwarded-for'] as string;
-    if (forwarded) {
-        return forwarded.split(',')[0].trim();
-    }
-    try {
-        const socket = (req as any).socket;
-        if (socket && socket.remoteAddress) {
-            return socket.remoteAddress;
-        }
-    } catch (_) { }
-    return 'unknown';
-}
-
-// Internal: associate parsed request bodies without mutating IncomingMessage
-
-const REQ_BODY = new Map<string, BodyItem[] | undefined>();
-const REQ_FILES = new Map<string, Map<string, FileUpload[]> | undefined>();
-
-function setRequestBody(sessionId: string, body: BodyItem[] | undefined): void {
-    if (sessionId) {
-        REQ_BODY.set(sessionId, body);
-    }
-}
-
-function setRequestFiles(sessionId: string, files: Map<string, FileUpload[]> | undefined): void {
-    if (sessionId) {
-        REQ_FILES.set(sessionId, files);
-    }
-}
-
-export type ActionType = "POST" | "FORM";
-
-export const GET = "GET";
-export const POST = "POST";
-
-export interface BodyItem {
-    name: string;
-    type: string;
-    value: string;
-}
-
-export interface FileUpload {
-    Name: string;
-    Data: string;
-    ContentType: string;
-    Size: number;
-}
-
-export interface SessionDB {
-    get(name: string, sessionID: string): Promise<string | undefined> | string | undefined;
-    set(name: string, sessionID: string, value: string, expiresAt: number): Promise<void> | void;
-}
-
-export interface TSession {
-    Load<T extends object>(data: T): Promise<boolean>;
-    Save<T extends object>(data: T): Promise<void>;
-}
-
-function mimeByExt(filePath: string): string {
-    const ext = nodePath.extname(String(filePath || "")).toLowerCase();
-    const map: Record<string, string> = {
-        ".js": "application/javascript; charset=utf-8",
-        ".mjs": "application/javascript; charset=utf-8",
-        ".cjs": "application/javascript; charset=utf-8",
-        ".ts": "application/typescript; charset=utf-8",
-        ".tsx": "text/plain; charset=utf-8",
-        ".css": "text/css; charset=utf-8",
-        ".html": "text/html; charset=utf-8",
-        ".htm": "text/html; charset=utf-8",
-        ".json": "application/json; charset=utf-8",
-        ".xml": "application/xml; charset=utf-8",
-        ".txt": "text/plain; charset=utf-8",
-        ".md": "text/markdown; charset=utf-8",
-        ".csv": "text/csv; charset=utf-8",
-        ".svg": "image/svg+xml",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".ico": "image/x-icon",
-        ".bmp": "image/bmp",
-        ".avif": "image/avif",
-        ".woff": "font/woff",
-        ".woff2": "font/woff2",
-        ".ttf": "font/ttf",
-        ".otf": "font/otf",
-        ".eot": "application/vnd.ms-fontobject",
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-        ".ogg": "audio/ogg",
-        ".mp4": "video/mp4",
-        ".webm": "video/webm",
-        ".mov": "video/quicktime",
-        ".wasm": "application/wasm",
-        ".pdf": "application/pdf",
-        ".zip": "application/zip",
-        ".gz": "application/gzip",
-    };
-    return map[ext] || "application/octet-stream";
-}
-
-export interface PWAIcon {
-    src: string;
-    sizes: string;
-    type: string;
-    purpose?: string;
-}
-
-export interface PWAConfig {
-    Name: string;
-    ShortName?: string;
-    ID?: string;
-    Description?: string;
-    ThemeColor?: string;
-    BackgroundColor?: string;
-    Display?: string;
-    StartURL?: string;
-    Icons?: PWAIcon[];
-    GenerateServiceWorker?: boolean;
-    CacheAssets?: string[];
-    OfflinePage?: string;
-}
-
-function parseFileUpload(raw: string): FileUpload | undefined {
-    const parsed = safeJsonParse<Record<string, unknown>>(raw, 20_000_000);
-    if (!parsed || typeof parsed !== "object") {
-        return undefined;
-    }
-    const name = validateAndSanitizeInput(String(parsed.Name || ""), 1024);
-    const data = validateAndSanitizeInput(String(parsed.Data || ""), 20_000_000);
-    const contentType = validateAndSanitizeInput(String(parsed.ContentType || "application/octet-stream"), 512);
-    const sizeNum = Number(parsed.Size);
-    const size = Number.isFinite(sizeNum) && sizeNum >= 0 ? sizeNum : 0;
-    if (!name || !data) {
-        return undefined;
-    }
-    return {
-        Name: name,
-        Data: data,
-        ContentType: contentType || "application/octet-stream",
-        Size: size,
-    };
-}
-
-function extractRequestFiles(body: BodyItem[] | undefined): Map<string, FileUpload[]> | undefined {
-    if (!Array.isArray(body) || body.length === 0) {
-        return undefined;
-    }
-    const out = new Map<string, FileUpload[]>();
-    for (let i = 0; i < body.length; i++) {
-        const item = body[i];
-        if (!item || item.type !== "file") {
-            continue;
-        }
-        const file = parseFileUpload(item.value);
-        if (!file) {
-            continue;
-        }
-        const key = String(item.name || "");
-        if (!key) {
-            continue;
-        }
-        const existing = out.get(key);
-        if (existing) {
-            existing.push(file);
-        } else {
-            out.set(key, [file]);
-        }
-    }
-    if (out.size === 0) {
-        return undefined;
-    }
-    return out;
-}
-
-// add url field to callable
-export type Callable = ((ctx: Context) => string | Promise<string>) & { url?: string }
-export type Deferred = (ctx: Context) => Promise<string>;
-
-export interface Route {
-    path: string;
-    uuid: string;
-    title: string;
-    handler: Callable;
-    pattern: string;      // original pattern like "/users/{id}"
-    segments: string[];   // split segments for matching
-    paramNames: string[]; // names of parameters in order
-    hasParams: boolean;   // whether this route has path parameters
-}
-
-type CustomMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-type CustomHandler = (ctx: Context) => string | Promise<string> | void | Promise<void>;
-
-function generateUUID(): string {
-    return crypto.randomBytes(16).toString('hex');
-}
-
-// parseRoutePattern parses a route path pattern and extracts segment information.
-// Returns segments, parameter names, and whether the route has parameters.
-// Example: "/users/{id}/posts/{postId}" => segments: ["users", "{id}", "posts", "{postId}"], paramNames: ["id", "postId"], hasParams: true
-function parseRoutePattern(pattern: string): { segments: string[]; paramNames: string[]; hasParams: boolean } {
-    const normalized = pattern.replace(/^\/+|\/+$/g, '');
-    const segments = normalized ? normalized.split('/') : [];
-    const paramNames: string[] = [];
-    let hasParams = false;
-
-    for (const seg of segments) {
-        if (seg.startsWith('{') && seg.endsWith('}')) {
-            const paramName = seg.slice(1, -1);
-            paramNames.push(paramName);
-            hasParams = true;
-        }
-    }
-
-    return { segments, paramNames, hasParams };
-}
-
-// matchRoutePattern matches an actual path against a route pattern and extracts parameters.
-// Returns the extracted parameters map if match succeeds, null otherwise.
-function matchRoutePattern(actualPath: string, route: Route): Record<string, string> | null {
-    if (!route.hasParams) {
-        // Exact match only - no params to extract
-        return null;
-    }
-
-    const normalized = actualPath.replace(/^\/+|\/+$/g, '').toLowerCase();
-    const actualSegments = normalized ? normalized.split('/') : [];
-
-    if (actualSegments.length !== route.segments.length) {
-        return null;
-    }
-
-    const params: Record<string, string> = {};
-    let paramIndex = 0;
-    
-    for (let i = 0; i < route.segments.length; i++) {
-        const patternSeg = route.segments[i];
-        const actualSeg = actualSegments[i];
-
-        if (patternSeg.startsWith('{') && patternSeg.endsWith('}')) {
-            // This is a parameter segment - use the original param name from route.paramNames
-            const paramName = route.paramNames[paramIndex++];
-            // Get the actual value from the original path (before lowercasing) for proper casing
-            const originalNormalized = actualPath.replace(/^\/+|\/+$/g, '');
-            const originalSegments = originalNormalized ? originalNormalized.split('/') : [];
-            params[paramName] = decodeURIComponent(originalSegments[i] || actualSeg);
-        } else if (patternSeg !== actualSeg) {
-            // Literal segment doesn't match (case-insensitive since both are normalized)
-            return null;
-        }
-    }
-
-    return params;
-}
-
-export class App {
-    contentId: Target;
-    Language: string;
-    HTMLHead: string[];
-    _wsClients: Set<WebSocketClient> = new Set();
-    _debugEnabled: boolean = false;
-    routes: Map<string, Route> = new Map();
-    _sessions: Map<
-        string,
-        {
-            id: string;
-            lastSeen: number;
-            timers: Map<string, number>;
-            targets: Map<string, (() => void) | undefined>;
-        }
-    > = new Map();
-    _sessionTTLms: number = 60000;
-    _rateLimiter: RateLimiter = new RateLimiter(100, 60000); // 100 requests per minute
-    _securityEnabled: boolean = true;
-    _server: Server | null = null;
-    _sessionSweepHandle: ReturnType<typeof setInterval> | null = null;
-    _rateLimiterIntervalHandle: ReturnType<typeof setInterval> | null = null;
-    layout: Callable | null = null;
-    _smoothNav: boolean = false;
-    _pwaConfig: PWAConfig | null = null;
-    _customHandlers: Map<string, CustomHandler> = new Map();
-    _assetsDir: string = "";
-    _assetsMaxAge: number = 0;
-    _faviconPath: string = "";
-    _faviconMaxAge: number = 0;
-    _staticCacheMaxAge: number = 0;
-
-    // Security configuration methods
-    configureRateLimit(maxRequests: number, windowMs: number): void {
-        this._rateLimiter = new RateLimiter(maxRequests, windowMs);
-    }
-
-    disableSecurity(): void {
-        this._securityEnabled = false;
-        console.warn('Security features disabled - not recommended for production');
-    }
-
-    enableSecurity(): void {
-        this._securityEnabled = true;
-    }
-
-    _cleanupExpiredSessions(): void {
-        const now = Date.now();
-        const expiredSessions: string[] = [];
-
-        for (const [id, session] of this._sessions.entries()) {
-            if (now - session.lastSeen > this._sessionTTLms) {
-                expiredSessions.push(id);
-            }
-        }
-
-        for (const id of expiredSessions) {
-            this._sessions.delete(id);
-            REQ_BODY.delete(id);
-            REQ_FILES.delete(id);
-            this._log("Expired session cleaned up:", id);
-        }
-    }
-
-    _touchSession(id: string): void {
-        if (!id) {
-            return;
-        }
-        const now = Date.now();
-        const prev = this._sessions.get(id);
-        if (prev) {
-            prev.lastSeen = now;
-        } else {
-            this._log("Setting session", id);
-            this._sessions.set(id, {
-                id: id,
-                lastSeen: now,
-                timers: new Map(),
-                targets: new Map(),
-            });
-        }
-    }
-
-    _sweepSessions(): void {
-        const now = Date.now();
-        const ttl = this._sessionTTLms;
-        const entries = this._sessions.entries();
-        while (true) {
-            const n = entries.next();
-            if (n.done) {
-                break;
-            }
-            const sid = n.value[0];
-            const rec = n.value[1];
-            if (!rec) {
-                continue;
-            }
-            const age = now - rec.lastSeen;
-            if (age > ttl) {
-                const timers = rec.timers;
-                if (timers) {
-                    const vals = timers.values();
-                    while (true) {
-                        const t = vals.next();
-                        if (t.done) {
-                            break;
-                        }
-                        clearInterval(t.value as unknown as number);
-                    }
-                }
-                try {
-                    if (rec.targets) {
-                        rec.targets.clear();
-                    }
-                } catch (_) { }
-
-                this._log("Deleting session", sid);
-                this._sessions.delete(sid);
-                REQ_BODY.delete(sid);
-                REQ_FILES.delete(sid);
-            }
-        }
-    }
-
-    // Dev: when enabled, injects client-side autoreload script
-    HTMLBody(cls: string): string {
-        if (!cls) cls = "bg-gray-200";
-
-        return [
-            "<!DOCTYPE html>",
-            '<html lang="' + this.Language + '" class="' + cls + '">',
-            "  <head>__head__</head>",
-            '  <body id="' +
-            this.contentId.id +
-            '" class="relative">__body__</body>',
-            "</html>",
-        ].join(" ");
-    }
-
-    // private stored = new Map<Callable, { path: string, method: "GET" | "POST" }>();
-    private stored = new Map<
-        string,
-        { path: string; callable: Callable }
-    >();
-
-    constructor(defaultLanguage: string) {
-        this.contentId = ui.Target();
-        this.Language = defaultLanguage;
-        this.HTMLHead = [
-            '<meta charset=\"UTF-8\">',
-            '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',
-            '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" crossorigin="anonymous" referrerpolicy="no-referrer" />',
-            '<style>\n        html { scroll-behavior: smooth; }\n        .invalid, select:invalid, textarea:invalid, input:invalid {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* For wrappers that should reflect inner input validity (e.g., radio groups) */\n        .invalid-if:has(input:invalid) {\n          border-bottom-width: 2px; border-bottom-color: red; border-bottom-style: dashed;\n        }\n        /* Hide scrollbars while allowing scroll */\n        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }\n        .no-scrollbar::-webkit-scrollbar { display: none; }\n        @media (max-width: 768px) {\n          input[type=\"date\"] { max-width: 100% !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: hidden !important; }\n          input[type=\"date\"]::-webkit-datetime-edit { max-width: 100% !important; overflow: hidden !important; }\n        }\n      </style>',
-            '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>',
-            // Configure Tailwind CSS 4 to use class-based dark mode (selector strategy)
-            '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>',
-            script([
-                __stringify,
-                __jselement,
-                __buildElement,
-                __loader,
-                __offline,
-                __error,
-                __post,
-                __submit,
-                __load,
-                __ws,
-                __theme,
-            ]),
-        ];
-        // Dark mode CSS overrides (after Tailwind link to take precedence)
-        this.HTMLHead.push(
-            '<style id=\"tsui-dark-overrides\">\n' +
-            "  html.dark{ color-scheme: dark; }\n" +
-            "  /* Override backgrounds commonly used by components and examples.\n" +
-            "     Do not override bg-gray-200 so skeleton placeholders remain visible. */\n" +
-            "  html.dark.bg-white, html.dark.bg-gray-100 { background-color:#111827 !important; }\n" +
-            "  .dark .bg-white, .dark .bg-gray-100, .dark .bg-gray-50 { background-color:#111827 !important; }\n" +
-            "  /* Text color overrides */\n" +
-            "  .dark .text-black, .dark .text-gray-800, .dark .text-gray-700 { color:#e5e7eb !important; }\n" +
-            "  /* Borders and placeholders for form controls */\n" +
-            "  .dark .border-gray-300 { border-color:#374151 !important; }\n" +
-            "  .dark input, .dark select, .dark textarea { color:#e5e7eb !important; background-color:#1f2937 !important; }\n" +
-            "  .dark input::placeholder, .dark textarea::placeholder { color:#9ca3af !important; }\n" +
-            "  /* Common hover bg used in nav/examples */\n" +
-            "  .dark .hover\\:bg-gray-200:hover { background-color:#374151 !important; }\n" +
-            "</style>",
-        );
-
-        try {
-            this._sessionSweepHandle = setInterval(() => {
-                this._sweepSessions();
-            }, 30000);
-            // Unref the interval so it doesn't prevent process exit
-            if (this._sessionSweepHandle && typeof this._sessionSweepHandle.unref === 'function') {
-                this._sessionSweepHandle.unref();
-            }
-        } catch {
-            this._sessionSweepHandle = null;
-        }
-    }
-
-    // Enable or disable server debug logging.
-    // When enabled, messages are printed with a 'tsui:' prefix.
-    debug(enable: boolean): void {
-        this._debugEnabled = !!enable;
-    }
-
-    // Back-compat with examples using PascalCase.
-    Debug(enable: boolean): void {
-        this.debug(enable);
-    }
-
-    // Internal: conditional logger with consistent prefix and no spread usage.
-    private _log(
-        a?: unknown,
-        b?: unknown,
-        c?: unknown,
-        d?: unknown,
-        e?: unknown,
-    ): void {
-        if (!this._debugEnabled) {
-            return;
-        }
-        let out = "tsui -";
-        function add(part: unknown): void {
-            if (typeof part === "undefined") {
-                return;
-            }
-            try {
-                out += " " + String(part);
-            } catch (_) {
-                out += " [object]";
-            }
-        }
-        add(a);
-        add(b);
-        add(c);
-        add(d);
-        add(e);
-        try {
-            console.log(out);
-        } catch (_) { }
-    }
-
-    // Internal: send JSON DOM protocol operations to all WS clients
-    _sendOps(ops: JSPatchOp[]): void {
-        if (ops.length === 0) return;
-        const msg: { type: "patch"; ops: JSPatchOp[] } = { type: "patch", ops: ops };
-        const data = JSON.stringify(msg);
-        const it = this._wsClients.values();
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            try {
-                wsSend(c.socket, data);
-            } catch (err) {
-                console.error("Failed to send to WebSocket client:", err);
-            }
-        }
-    }
-
-    // Internal: broadcast a reload message to all WS clients
-    _sendReload(): void {
-        const msg = { type: "reload" };
-        const data = JSON.stringify(msg);
-        this._log("Broadcasting reload to", this._wsClients.size, "clients");
-        const it = this._wsClients.values();
-        let sent = 0;
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            try {
-                wsSend(c.socket, data);
-                sent++;
-            } catch (err) {
-                console.error(
-                    "Failed to send reload to WebSocket client:",
-                    err,
-                );
-            }
-        }
-        this._log("Sent reload to", sent, "clients");
-    }
-
-    HTML(title: string, bodyClass: string, body: string): string {
-        // Build route manifest with pattern info for parameterized routes
-        const routesObj: Record<string, string | { path: string; pattern: boolean }> = {};
-        for (const [path, route] of this.routes.entries()) {
-            if (route.hasParams) {
-                // Parameterized route: include pattern info for client-side matching
-                routesObj[path] = { path: path, pattern: true };
-            } else {
-                // Exact match route: map path to itself (matching g-sui behavior)
-                routesObj[path] = path;
-            }
-        }
-        const routesScript = `<script>window.__routes = ${JSON.stringify(routesObj)};</script>`;
-        const head = "<title>" + title + "</title>" + routesScript + this.HTMLHead.join("");
-        // Use function replacement to avoid $ being interpreted as special replacement pattern
-        const html = this.HTMLBody(ui.Classes(bodyClass))
-            .replace("__head__", () => head)
-            .replace("__body__", () => body);
-        return ui.Trim(html);
-    }
-
-    // Enable development autoreload (WebSocket-based).
-    AutoReload(enable: boolean): void {
-        if (!enable) {
-            return;
-        }
-        const client = ui.Trim(`
-            (function(){
-                try { (window).__tsuiReloadEnabled = true; } catch(_){ }
-            })();
-        `);
-        this.HTMLHead.push("<script>" + client + "</script>");
-    }
-
-    CacheControl(maxAge: number): void {
-        if (Number.isFinite(maxAge) && maxAge >= 0) {
-            this._staticCacheMaxAge = Math.floor(maxAge);
-        }
-    }
-
-    Assets(dirPath: string, maxAge?: number): void {
-        this._assetsDir = String(dirPath || "");
-        if (typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0) {
-            this._assetsMaxAge = Math.floor(maxAge);
-        } else {
-            this._assetsMaxAge = this._staticCacheMaxAge;
-        }
-    }
-
-    Favicon(filePath: string, maxAge?: number): void {
-        this._faviconPath = String(filePath || "");
-        if (typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0) {
-            this._faviconMaxAge = Math.floor(maxAge);
-        } else {
-            this._faviconMaxAge = this._staticCacheMaxAge;
-        }
-    }
-
-    PWA(config: PWAConfig): void {
-        const resolved: PWAConfig = {
-            Name: String(config.Name || "App"),
-            ShortName: String(config.ShortName || config.Name || "App"),
-            ID: String(config.ID || "/"),
-            Description: String(config.Description || ""),
-            ThemeColor: String(config.ThemeColor || "#1f2937"),
-            BackgroundColor: String(config.BackgroundColor || "#ffffff"),
-            Display: String(config.Display || "standalone"),
-            StartURL: String(config.StartURL || "/"),
-            Icons: Array.isArray(config.Icons) ? config.Icons : [],
-            GenerateServiceWorker: config.GenerateServiceWorker !== false,
-            CacheAssets: Array.isArray(config.CacheAssets) ? config.CacheAssets : [],
-            OfflinePage: String(config.OfflinePage || ""),
-        };
-
-        this._pwaConfig = resolved;
-
-        this.HTMLHead.push('<link rel="manifest" href="/manifest.webmanifest">');
-        this.HTMLHead.push('<meta name="theme-color" content="' + resolved.ThemeColor + '">');
-        this.HTMLHead.push('<meta name="apple-mobile-web-app-capable" content="yes">');
-        this.HTMLHead.push('<meta name="apple-mobile-web-app-status-bar-style" content="default">');
-        this.HTMLHead.push('<meta name="apple-mobile-web-app-title" content="' + (resolved.ShortName || resolved.Name) + '">');
-
-        if (resolved.GenerateServiceWorker) {
-            this.HTMLHead.push('<script>if(typeof navigator!=="undefined" && "serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/sw.js").catch(function(){});});}</script>');
-        }
-    }
-
-    Description(text: string): void {
-        const safe = String(text || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        this.HTMLHead.push('<meta name="description" content="' + safe + '">');
-    }
-
-    private _manifestJSON(): string {
-        const cfg = this._pwaConfig;
-        if (!cfg) {
-            return "{}";
-        }
-        return JSON.stringify({
-            name: cfg.Name,
-            short_name: cfg.ShortName || cfg.Name,
-            id: cfg.ID || "/",
-            description: cfg.Description || "",
-            theme_color: cfg.ThemeColor || "#1f2937",
-            background_color: cfg.BackgroundColor || "#ffffff",
-            display: cfg.Display || "standalone",
-            start_url: cfg.StartURL || "/",
-            icons: cfg.Icons || [],
-        });
-    }
-
-    private _serviceWorkerJS(): string {
-        const cfg = this._pwaConfig;
-        if (!cfg) {
-            return "self.addEventListener('install', function(){ self.skipWaiting(); });";
-        }
-        const offline = String(cfg.OfflinePage || "");
-        const assets = Array.isArray(cfg.CacheAssets) ? cfg.CacheAssets.slice() : [];
-        if (offline && assets.indexOf(offline) < 0) {
-            assets.push(offline);
-        }
-        if (assets.indexOf("/") < 0) {
-            assets.push("/");
-        }
-        const cacheName = "tsui-pwa-v1-" + crypto.randomBytes(4).toString("hex");
-        const serializedAssets = JSON.stringify(assets);
-        return ui.Trim(`
-            const CACHE_NAME = '${cacheName}';
-            const PRECACHE = ${serializedAssets};
-            const OFFLINE_PAGE = ${JSON.stringify(offline)};
-
-            self.addEventListener('install', function(event) {
-                event.waitUntil(caches.open(CACHE_NAME).then(function(cache){ return cache.addAll(PRECACHE); }).catch(function(){}));
-                self.skipWaiting();
-            });
-
-            self.addEventListener('activate', function(event) {
-                event.waitUntil(
-                    caches.keys().then(function(keys){
-                        return Promise.all(keys.map(function(k){
-                            if (k !== CACHE_NAME) { return caches.delete(k); }
-                        }));
-                    })
-                );
-                self.clients.claim();
-            });
-
-            self.addEventListener('fetch', function(event) {
-                const req = event.request;
-                if (req.method !== 'GET') { return; }
-
-                if (req.mode === 'navigate') {
-                    event.respondWith(
-                        fetch(req)
-                            .then(function(res){
-                                const copy = res.clone();
-                                caches.open(CACHE_NAME).then(function(c){ c.put(req, copy); });
-                                return res;
-                            })
-                            .catch(function(){
-                                return caches.match(req)
-                                    .then(function(hit){ return hit || (OFFLINE_PAGE ? caches.match(OFFLINE_PAGE) : undefined); });
-                            })
-                    );
-                    return;
-                }
-
-                event.respondWith(
-                    caches.match(req).then(function(hit){
-                        if (hit) { return hit; }
-                        return fetch(req).then(function(res){
-                            const copy = res.clone();
-                            caches.open(CACHE_NAME).then(function(c){ c.put(req, copy); });
-                            return res;
-                        });
-                    })
-                );
-            });
-        `);
-    }
-
-    private register(method: "GET" | "POST", path: string, callable: Callable): void {
-        if (!path)
-            throw new Error("Path cannot be empty");
-
-        const p = normalizePath(path);
-        const key = routeKey(method, p, callable);
-
-        if (this.stored.has(key))
-            throw new Error("Path already registered: " + key);
-
-        this._log("Registering path:", key);
-        this.stored.set(key, { path: key, callable: callable });
-        callable.url = key;
-    }
-
-    // matchRoute finds a route that matches the given path, trying exact match first, then pattern matching.
-    // Returns the matched route and extracted parameters.
-    matchRoute(path: string): { route: Route | null; params: Record<string, string> | null } {
-        const p = normalizePath(path);
-
-        // First try exact match
-        const exactRoute = this.routes.get(p);
-        if (exactRoute) {
-            return { route: exactRoute, params: null };
-        }
-
-        // Then try pattern matching for parameterized routes
-        for (const [, route] of this.routes) {
-            if (route.hasParams) {
-                const params = matchRoutePattern(p, route);
-                if (params) {
-                    return { route, params };
-                }
-            }
-        }
-
-        return { route: null, params: null };
-    }
-
-    // Page registers a route with a title and handler.
-    // Usage: Page("/", "Page Title", handler)
-    // Supports path parameters: Page("/users/{id}", "User Profile", handler)
-    Page(path: string, title: string, handler: Callable): Callable {
-        const p = normalizePath(path);
-
-        if (this.routes.has(p)) {
-            throw new Error("Path already registered: " + p);
-        }
-
-        // Parse original path to preserve parameter name casing (e.g., postId not postid)
-        // Use normalized path for segments to ensure case-insensitive URL matching
-        const originalParsed = parseRoutePattern(path);
-        const normalizedParsed = parseRoutePattern(p);
-        
-        // Use normalized segments for matching, but original param names for extraction
-        const { segments, hasParams } = normalizedParsed;
-        const { paramNames } = originalParsed;
-
-        const uuid = generateUUID();
-        const route: Route = {
-            path: p,
-            uuid,
-            title,
-            handler,
-            pattern: p,
-            segments,
-            paramNames,
-            hasParams,
-        };
-
-        this.routes.set(p, route);
-
-        // Only register exact path for non-parameterized routes
-        // Parameterized routes are matched dynamically via matchRoute()
-        if (!hasParams) {
-            this.register(GET, path, handler);
-        }
-
-        return handler;
-    }
-
-    Layout(handler: Callable): void {
-        this.layout = handler;
-    }
-
-    SmoothNav(enable: boolean): void {
-        this._smoothNav = !!enable;
-        if (enable) {
-            this.HTMLHead.push("<script>" + __router + "</script>");
-        }
-    }
-
-    SmoothNavigation(enable: boolean): void {
-        this.SmoothNav(enable);
-    }
-
-    Action(uid: string, action: Callable): Callable {
-        if (!uid.startsWith("/")) uid = "/" + uid;
-
-        uid = normalizePath(uid);
-
-        const key = routeKey(POST, uid, action);
-        const found = this.stored.get(key);
-        if (found) {
-            return found.callable;
-        }
-        this.register(POST, uid, action);
-        return action;
-    }
-
-    Custom(method: CustomMethod, path: string, handler: CustomHandler): CustomHandler {
-        const m = String(method || "GET").toUpperCase() as CustomMethod;
-        const p = normalizePath(path);
-        const key = m + " " + p;
-        this._customHandlers.set(key, handler);
-        return handler;
-    }
-
-    GET(path: string, handler: CustomHandler): CustomHandler {
-        return this.Custom("GET", path, handler);
-    }
-
-    POST(path: string, handler: CustomHandler): CustomHandler {
-        return this.Custom("POST", path, handler);
-    }
-
-    PUT(path: string, handler: CustomHandler): CustomHandler {
-        return this.Custom("PUT", path, handler);
-    }
-
-    DELETE(path: string, handler: CustomHandler): CustomHandler {
-        return this.Custom("DELETE", path, handler);
-    }
-
-    PATCH(path: string, handler: CustomHandler): CustomHandler {
-        return this.Custom("PATCH", path, handler);
-    }
-
-    Handler(): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
-        const self = this;
-        return async function(req: IncomingMessage, res: ServerResponse): Promise<void> {
-            try {
-                const url = req.url as string;
-                const path = url.split("?")[0];
-
-                let sid = "";
-                try {
-                    const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
-                    const cookies = parseCookies(cookieHeader);
-                    sid = String(cookies["tsui__sid"] || "");
-                } catch (_) { }
-                if (!sid) {
-                    sid = self._getOrCreateSessionId(req, res);
-                    try {
-                        const prev = String((req.headers && (req.headers["cookie"] as string)) || "");
-                        req.headers["cookie"] = (prev ? prev + "; " : "") + "tsui__sid=" + encodeURIComponent(sid);
-                    } catch (_) { }
-                }
-
-                const chunks: Buffer[] = [];
-                let bodySize = 0;
-                await new Promise(function(resolve) {
-                    let done = false;
-                    function finish() {
-                        if (done) return;
-                        done = true;
-                        resolve(undefined);
-                    }
-                    req.on("data", function(chunk: unknown) {
-                        const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-                        chunks.push(b);
-                        bodySize += b.length;
-                        if (bodySize > 20_000_000) {
-                            req.destroy();
-                            finish();
-                        }
-                    });
-                    req.on("end", finish);
-                    req.on("aborted", finish);
-                    req.on("close", finish);
-                    setTimeout(finish, 10000);
-                });
-
-                try {
-                    const raw = Buffer.concat(chunks);
-                    const parsed = parseRequestBodyItems(raw, headerValue(req, "content-type"));
-                    setRequestBody(sid, parsed);
-                    setRequestFiles(sid, extractRequestFiles(parsed));
-                } catch (_) {
-                    setRequestBody(sid, undefined);
-                    setRequestFiles(sid, undefined);
-                }
-
-                const rawTextBody = Buffer.concat(chunks).toString("utf8");
-                const html = await self._dispatch(path, req, res, rawTextBody);
-                if (html !== "") {
-                    const out = maybeGzipNode(req, res, html);
-                    res.write(out);
-                    res.end();
-                }
-            } catch (err) {
-                console.error("Handler error:", err);
-                if (!res.headersSent) {
-                    res.statusCode = 500;
-                    res.setHeader("Content-Type", "text/html; charset=utf-8");
-                }
-                if (!res.writableEnded) {
-                    res.end(devErrorPage());
-                }
-            }
-        };
-    }
-
-    Callable(callable: Callable): Callable {
-        if (callable == null) throw new Error("Callable cannot be null");
-
-        const uid = "/" + (callable.name || "anonymous")
-            .replace(/[.*()\[\]]/g, "")
-            .replace(/[./:-\s]/g, "-");
-
-        return this.Action(uid, callable);
-    }
-
-    pathOf(callable: Callable): string | undefined {
-        if (callable == null) return undefined;
-
-        const found = Array.from(this.stored.values()).find(function (item: {
-            path: string;
-            callable: Callable;
-        }) {
-            return item.callable === callable;
-        });
-        if (found) return found.path;
-
-        return undefined;
-    }
-
-    getCallable(path: string): Callable | undefined {
-        const stored = this.stored.get(path);
-        return stored?.callable;
-    }
-
-    // Handle SPA page navigation via POST (matching g-sui behavior)
-    // Client POSTs to route pattern path with {path: "/actual/path?query=value"} in body
-    private async _handlePagePost(patternPath: string, actualPath: string, req: IncomingMessage, res: ServerResponse): Promise<JSHTTPResponse | null> {
-        const route = this.routes.get(patternPath);
-        if (!route) {
-            res.statusCode = 404;
-            return null;
-        }
-
-        // Parse actual path to extract path params and query params
-        let pathname = actualPath;
-        let queryParams: URLSearchParams | null = null;
-
-        const queryIndex = actualPath.indexOf('?');
-        if (queryIndex >= 0) {
-            pathname = actualPath.substring(0, queryIndex);
-            try {
-                queryParams = new URLSearchParams(actualPath.substring(queryIndex + 1));
-            } catch { /* ignore parse errors */ }
-        }
-
-        // Extract path parameters if this is a parameterized route
-        let pathParams: Record<string, string> | null = null;
-        if (route.hasParams) {
-            pathParams = matchRoutePattern(pathname, route);
-            if (!pathParams) {
-                res.statusCode = 404;
-                return null;
-            }
-        }
-
-        const sid = this._getOrCreateSessionId(req, res);
-        const ctx = new Context(this, req, res, sid, pathParams, queryParams);
-
-        let html = await route.handler(ctx);
-        if (ctx.append.length) html += ctx.append.join("");
-
-        if (this.layout) {
-            ctx._pageContent = html;
-            html = await this.layout(ctx);
-            var contentHtml = ctx._pageContent || '';
-            if (this._smoothNav) {
-                contentHtml = '<div id="__content__">' + contentHtml + '</div>';
-            }
-            html = html.replace('__CONTENT__', contentHtml);
-        }
-
-        // Extract body content if handler returned full HTML document
-        let contentToParse = html;
-        if (!this.layout && html.includes('<body')) {
-            const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-            if (bodyMatch) {
-                contentToParse = bodyMatch[1];
-            }
-        }
-
-        const jsElement = htmlToJSElement(this.layout ? ctx._pageContent || html : contentToParse);
-        if (!jsElement) {
-            return null;
-        }
-
-        const ops: JSPatchOp[] = [];
-        if (route.title) {
-            ops.push({ op: "title", title: route.title });
-        }
-
-        return {
-            el: jsElement,
-            ops: ops.length > 0 ? ops : undefined,
-            title: route.title
-        };
-    }
-
-    private _getOrCreateSessionId(req: IncomingMessage, res: ServerResponse): string {
-        let sid = "";
-        try {
-            const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
-            const cookies = parseCookies(cookieHeader);
-            sid = String(cookies["tsui__sid"] || "");
-        } catch (_) { }
-
-        let shouldSetCookie = false;
-        if (!sid) {
-            sid = "sess-" + crypto.randomBytes(8).toString('hex');
-            shouldSetCookie = true;
-        }
-
-        this._touchSession(sid);
-        if (shouldSetCookie) {
-            try {
-                let v =
-                    "tsui__sid=" +
-                    encodeURIComponent(sid) +
-                    "; Path=/; HttpOnly; SameSite=Lax";
-                if (isSecure(req)) {
-                    v += "; Secure";
-                }
-                const prev = res.getHeader("Set-Cookie");
-                if (Array.isArray(prev)) {
-                    res.setHeader("Set-Cookie", prev.concat([v]));
-                } else if (typeof prev === "string" && prev) {
-                    res.setHeader("Set-Cookie", [prev, v]);
-                } else {
-                    res.setHeader("Set-Cookie", v);
-                }
-            } catch (_) { }
-        }
-
-        return sid;
-    }
-
-    // Route dispatch used by server integration
-    // body parameter is the pre-read request body (since HTTP handler already consumed the stream)
-    async _dispatch(path: string, req: IncomingMessage, res: ServerResponse, body?: string): Promise<string> {
-        const p = normalizePath(path);
-        const method = req.method || "GET";
-
-        if (method === "GET" && p === "/favicon.ico" && this._faviconPath) {
-            try {
-                const data = await readFile(this._faviconPath);
-                res.setHeader("Content-Type", mimeByExt(this._faviconPath));
-                const maxAge = this._faviconMaxAge;
-                if (maxAge > 0) {
-                    res.setHeader("Cache-Control", "public, max-age=" + String(maxAge));
-                }
-                res.write(data);
-                res.end();
-                return "";
-            } catch (_) {
-                res.statusCode = 404;
-                return "Not found";
-            }
-        }
-
-        if (method === "GET" && this._assetsDir && p.startsWith("/assets/")) {
-            const rel = p.slice("/assets/".length);
-            const base = nodePath.resolve(this._assetsDir);
-            const file = nodePath.resolve(base, rel);
-            if (!file.startsWith(base)) {
-                res.statusCode = 403;
-                return "Forbidden";
-            }
-            try {
-                const data = await readFile(file);
-                res.setHeader("Content-Type", mimeByExt(file));
-                const maxAge = this._assetsMaxAge;
-                if (maxAge > 0) {
-                    res.setHeader("Cache-Control", "public, max-age=" + String(maxAge));
-                }
-                res.write(data);
-                res.end();
-                return "";
-            } catch (_) {
-                res.statusCode = 404;
-                return "Not found";
-            }
-        }
-
-        const custom = this._customHandlers.get(String(method).toUpperCase() + " " + p);
-        if (custom) {
-            const sid = this._getOrCreateSessionId(req, res);
-            const ctx = new Context(this, req, res, sid);
-            const out = await custom(ctx);
-            if (res.writableEnded) {
-                return "";
-            }
-            if (typeof out === "string") {
-                if (!res.getHeader("Content-Type")) {
-                    res.setHeader("Content-Type", "text/html; charset=utf-8");
-                }
-                return out;
-            }
-            res.end();
-            return "";
-        }
-
-        if (method === "GET" && this._pwaConfig && p === "/manifest.webmanifest") {
-            res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
-            res.write(this._manifestJSON());
-            res.end();
-            return "";
-        }
-
-        if (method === "GET" && this._pwaConfig && this._pwaConfig.GenerateServiceWorker !== false && p === "/sw.js") {
-            res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-            res.write(this._serviceWorkerJS());
-            res.end();
-            return "";
-        }
-
-        // Parse query parameters from URL
-        let queryParams: URLSearchParams | null = null;
-        try {
-            const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
-            queryParams = url.searchParams;
-        } catch { /* ignore parse errors */ }
-
-        // Handle SPA navigation via POST (matching g-sui behavior)
-        // Client POSTs to route path with {path: "/actual/path?query=value"} in body
-        if (method === "POST") {
-            // Check if this is a registered page route
-            const route = this.routes.get(p);
-            if (route) {
-                // Parse path from body if present
-                let actualPath = p;
-                if (body) {
-                    try {
-                        const parsed = JSON.parse(body) as { path?: string };
-                        if (parsed.path) {
-                            actualPath = parsed.path;
-                        }
-                    } catch { /* ignore parse errors */ }
-                }
-
-                const jsonResponse = await this._handlePagePost(p, actualPath, req, res);
-                if (jsonResponse) {
-                    res.setHeader("Content-Type", "application/json; charset=utf-8");
-                    res.write(JSON.stringify(jsonResponse));
-                    res.end();
-                } else {
-                    res.statusCode = 404;
-                    res.write(JSON.stringify({ error: "Not found" }));
-                    res.end();
-                }
-                return "";
-            }
-        }
-
-        // Try exact match first via stored paths
-        let callable = this.stored.get(p)?.callable;
-        let pathParams: Record<string, string> | null = null;
-
-        // If not found, try route pattern matching for parameterized routes
-        if (!callable) {
-            const { route, params } = this.matchRoute(p);
-            if (route) {
-                callable = route.handler;
-                pathParams = params;
-            }
-        }
-
-        if (!callable) {
-            res.statusCode = 404;
-            return "Not found";
-        }
-
-        // Apply security headers if enabled
-        if (this._securityEnabled) {
-            setSecurityHeaders(res, isSecure(req));
-        }
-
-        // Rate limiting check if enabled
-        if (this._securityEnabled) {
-            const clientIp = getClientIP(req);
-            if (!this._rateLimiter.isAllowed(clientIp)) {
-                res.statusCode = 429;
-                res.setHeader('Retry-After', '60');
-                return "Too Many Requests";
-            }
-        }
-
-        const sid = this._getOrCreateSessionId(req, res);
-        const ctx = new Context(this, req, res, sid, pathParams, queryParams);
-
-        let html = await callable(ctx);
-        if (ctx.append.length) html += ctx.append.join("");
-
-        // Only GET requests are handled via HTTP; actions use WebSocket
-        if (method === "POST") {
-            // POST to action paths no longer supported - actions must use WebSocket
-            res.statusCode = 405;
-            res.setHeader("Allow", "GET");
-            return "Method Not Allowed: Actions must use WebSocket";
-        }
-
-        // For GET requests, return HTML as before
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-
-        if (this.layout) {
-            ctx._pageContent = html;
-            html = await this.layout(ctx);
-            var contentHtml = ctx._pageContent || '';
-            if (this._smoothNav) {
-                contentHtml = '<div id="__content__">' + contentHtml + '</div>';
-            }
-            html = html.replace('__CONTENT__', contentHtml);
-        }
-
-        // Send any pending operations via WebSocket
-        if (ctx.ops.length > 0) {
-            this._sendOps(ctx.ops);
-            ctx.ops = [];
-        }
-
-        return html;
-    }
-
-    async Listen(port = 1422): Promise<ServerListenResult> {
-        // const self = this;
-
-        // Start periodic cleanup for rate limiter and sessions
-        if (this._securityEnabled && !this._rateLimiterIntervalHandle) {
-            this._rateLimiterIntervalHandle = setInterval(() => {
-                this._rateLimiter.cleanup();
-                this._cleanupExpiredSessions();
-            }, 60000); // Cleanup every minute
-            // Unref the interval so it doesn't prevent process exit
-            if (this._rateLimiterIntervalHandle && typeof this._rateLimiterIntervalHandle.unref === 'function') {
-                this._rateLimiterIntervalHandle.unref();
-            }
-        }
-
-        if (IS_BUN) {
-            return this._listenBun(port);
-        }
-        return this._listenNode(port);
-    }
-
-    private async _listenNode(port: number): Promise<ServerListenResult> {
-        if (this._server) {
-            throw new Error("Server already listening");
-        }
-        const self = this;
-
-        const server = http.createServer(async function (
-            req: IncomingMessage,
-            res: ServerResponse,
-        ) {
-            try {
-                const url = req.url as string;
-                const path = url.split("?")[0];
-
-                // Extract session ID early for body storage
-                let sid = "";
-                try {
-                    const cookieHeader = String((req.headers && (req.headers["cookie"] as string)) || "");
-                    const cookies = parseCookies(cookieHeader);
-                    sid = String(cookies["tsui__sid"] || "");
-                } catch (_) { }
-                if (!sid) {
-                    sid = self._getOrCreateSessionId(req, res);
-                    try {
-                        const prev = String((req.headers && (req.headers["cookie"] as string)) || "");
-                        req.headers["cookie"] = (prev ? prev + "; " : "") + "tsui__sid=" + encodeURIComponent(sid);
-                    } catch (_) { }
-                }
-
-                const chunks: Buffer[] = [];
-                let bodySize = 0;
-                await new Promise(function (resolve) {
-                    let done = false;
-                    function finish() {
-                        if (done) return;
-                        done = true;
-                        resolve(undefined);
-                    }
-                    req.on("data", function (chunk: unknown) {
-                        const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-                        chunks.push(b);
-                        bodySize += b.length;
-                        if (bodySize > 20_000_000) {
-                            req.destroy();
-                            finish();
-                        }
-                    });
-                    req.on("end", finish);
-                    req.on("aborted", finish);
-                    req.on("close", finish);
-                    setTimeout(finish, 10000);
-                });
-                try {
-                    const raw = Buffer.concat(chunks);
-                    const parsed = parseRequestBodyItems(raw, headerValue(req, "content-type"));
-                    setRequestBody(sid, parsed);
-                    setRequestFiles(sid, extractRequestFiles(parsed));
-                } catch (error) {
-                    console.warn('Request body parsing failed:', error);
-                    setRequestBody(sid, undefined);
-                    setRequestFiles(sid, undefined);
-                }
-
-                const rawTextBody = Buffer.concat(chunks).toString("utf8");
-                const html = await self._dispatch(path, req, res, rawTextBody);
-                if (html !== "") {
-                    const out = maybeGzipNode(req, res, html);
-                    res.write(out);
-                    res.end();
-                }
-            } catch (err) {
-                console.error("Request handler error:", err);
-                res.statusCode = 500;
-
-                // Apply security headers even for error pages
-                if (self._securityEnabled) {
-                    setSecurityHeaders(res, isSecure(req));
-                }
-
-                res.setHeader("Content-Type", "text/html; charset=utf-8");
-                const page = devErrorPage();
-                res.end(page);
-            }
-        });
-        server.headersTimeout = 15000;
-        server.requestTimeout = 30000;
-        server.keepAliveTimeout = 5000;
-        server.on("error", function (err: unknown) {
-            console.error("Server error:", err);
-        });
-        server.on("upgrade", function (req: IncomingMessage, socket: Socket) {
-            handleUpgrade(self, req, socket);
-        });
-        // Wait for the server to start listening to get the actual port
-        await new Promise<void>((resolve) => {
-            server.once('listening', resolve);
-            server.listen(port, "0.0.0.0");
-        });
-        // Get the actual port (useful when port is 0 for random port assignment)
-        const addr = server.address() as { port: number } | null;
-        const actualPort = addr?.port ?? port;
-        console.log("Listening on http://0.0.0.0:" + String(actualPort));
-        this._server = server;
-        return { server, port: actualPort, app: this } as ServerListenResult;
-    }
-
-
-
-
-    private _listenBun(port: number): Promise<ServerListenResult> {
-        const self = this;
-        const Bun = (globalThis as any).Bun;
-
-        if (this._server) {
-            throw new Error("Server already listening");
-        }
-
-        const server = Bun.serve({
-            port: port,
-            hostname: "0.0.0.0",
-            websocket: {
-                open: function (ws: WebSocketLike) {
-                    handleUpgradeBun(self, ws);
-                },
-                message: function (ws: WebSocketLike, msg: string | Buffer) {
-                    handleBunMessage(self, ws, msg);
-                },
-                close: function (ws: WebSocketLike) {
-                    handleBunClose(self, ws);
-                },
-                error: function (ws: WebSocketLike, err: Error) {
-                    try {
-                        if (ws && ws.close) {
-                            ws.close();
-                        }
-                    } catch (_) { }
-                },
-            },
-            async fetch(req: { url: string | URL; headers: { get(name: string): string | null }; method?: string; text?: () => Promise<string> }, server: BunLikeServer) {
-                try {
-                    // Extract session ID early for all requests
-                    let sid = "";
-                    try {
-                        const cookieHeader = String(req.headers.get("cookie") || "");
-                        const cookies = parseCookies(cookieHeader);
-                        sid = String(cookies["tsui__sid"] || "");
-                    } catch (_) { }
-
-                    const url = new URL(req.url);
-                    const path = url.pathname;
-
-                    // Handle WebSocket upgrade
-                    if (path === "/__ws") {
-                        let setCookieValue = "";
-                        if (!sid) {
-                            sid = "sess-" + crypto.randomBytes(8).toString('hex');
-                            setCookieValue =
-                                "tsui__sid=" +
-                                encodeURIComponent(sid) +
-                                "; Path=/; HttpOnly; SameSite=Lax";
-                        }
-
-                        // Use server.upgrade() with data attachment
-                        if (server.upgrade?.(req as unknown as IncomingMessage, {
-                            data: {
-                                sid: sid,
-                                setCookie: setCookieValue,
-                            },
-                        })) {
-                            return;
-                        }
-                        return new Response("WebSocket upgrade failed", { status: 400 });
-                    }
-
-                    let body = "";
-                    let rawBody = Buffer.alloc(0);
-                    if (req.method === "POST" || req.method === "PUT") {
-                        try {
-                            if (typeof (req as any).arrayBuffer === "function") {
-                                const ab = await (req as any).arrayBuffer();
-                                rawBody = Buffer.from(ab);
-                                body = rawBody.toString("utf8");
-                            } else {
-                                body = await req.text?.() || "";
-                                rawBody = Buffer.from(body, "utf8");
-                            }
-                            if (rawBody.length > 20_000_000) {
-                                return new Response("Request body too large", { status: 413 });
-                            }
-                        } catch (e) {
-                            body = "";
-                            rawBody = Buffer.alloc(0);
-                        }
-                    }
-
-                    try {
-                        const contentType = String(req.headers.get("content-type") || "");
-                        const parsed = parseRequestBodyItems(rawBody, contentType);
-                        setRequestBody(sid, parsed);
-                        setRequestFiles(sid, extractRequestFiles(parsed));
-                    } catch (error) {
-                        console.warn('Request body parsing failed:', error);
-                        setRequestBody(sid, undefined);
-                        setRequestFiles(sid, undefined);
-                    }
-
-                    // Create mock IncomingMessage and ServerResponse for compatibility
-                    // Convert Headers-like object to a plain object
-                    const reqHeadersObj: Record<string, string> = {};
-                    const headersLike = req.headers as unknown as Headers;
-                    // Try to iterate over headers if it's a proper Headers object
-                    headersLike.forEach?.((value: string, key: string) => {
-                        reqHeadersObj[key] = value;
-                    });
-
-                    const mockReq = {
-                        url: req.url,
-                        method: req.method,
-                        headers: reqHeadersObj,
-                    } as unknown as IncomingMessage;
-
-                    // Create a custom response writer to capture output
-                    const chunks: Buffer[] = [];
-                    const mockRes = new ServerResponse(mockReq);
-                    const originalWrite = mockRes.write.bind(mockRes);
-                    const originalEnd = mockRes.end.bind(mockRes);
-                    
-                    mockRes.write = function(chunk: any): boolean {
-                        if (chunk) chunks.push(Buffer.from(chunk));
-                        return originalWrite(chunk);
-                    };
-                    
-                    mockRes.end = function(chunk?: any): any {
-                        if (chunk) chunks.push(Buffer.from(chunk));
-                        return originalEnd(chunk);
-                    };
-
-                    const html = await self._dispatch(path, mockReq, mockRes, body);
-
-                    const headers: Record<string, string> = {};
-                    const headersObj = mockRes.getHeaders();
-                    if (typeof headersObj === 'object' && headersObj !== null) {
-                        for (const key in headersObj) {
-                            const val = headersObj[key];
-                            if (typeof val === 'string') {
-                                headers[key] = val;
-                            } else if (typeof val === 'number') {
-                                headers[key] = String(val);
-                            } else if (Array.isArray(val)) {
-                                headers[key] = val.join(',');
-                            }
-                        }
-                    }
-
-                    // If dispatch wrote to response (e.g., JSON for page POST), use that
-                    if (chunks.length > 0) {
-                        const responseBody = Buffer.concat(chunks).toString();
-                        const contentType = String(headers["Content-Type"] || "application/json; charset=utf-8");
-                        const acceptEncoding = String(req.headers.get("accept-encoding") || "");
-                        const maybeCompressed = maybeGzipBody(acceptEncoding, contentType, responseBody);
-                        if (typeof maybeCompressed !== "string") {
-                            headers["Content-Encoding"] = "gzip";
-                            headers["Vary"] = "Accept-Encoding";
-                        }
-                        return new Response(maybeCompressed as BodyInit, {
-                            status: mockRes.statusCode || 200,
-                            headers: headers,
-                        });
-                    }
-
-                    if (!headers["Content-Type"]) {
-                        headers["Content-Type"] = "text/html; charset=utf-8";
-                    }
-
-                    if (self._securityEnabled) {
-                        headers["Content-Security-Policy"] = [
-                            "default-src 'self'",
-                            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-                            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-                            "font-src 'self' https://fonts.gstatic.com",
-                            "img-src 'self' data: https:",
-                            "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",
-                            "object-src 'none'",
-                            "base-uri 'self'",
-                            "form-action 'self'"
-                        ].join('; ');
-                        headers["X-Content-Type-Options"] = "nosniff";
-                        headers["X-Frame-Options"] = "DENY";
-                        headers["X-XSS-Protection"] = "1; mode=block";
-                        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-                    }
-
-                    const contentType = String(headers["Content-Type"] || "text/html; charset=utf-8");
-                    const acceptEncoding = String(req.headers.get("accept-encoding") || "");
-                    const maybeCompressed = maybeGzipBody(acceptEncoding, contentType, html);
-                    if (typeof maybeCompressed !== "string") {
-                        headers["Content-Encoding"] = "gzip";
-                        headers["Vary"] = "Accept-Encoding";
-                    }
-
-                    return new Response(maybeCompressed as BodyInit, {
-                        status: mockRes.statusCode || 200,
-                        headers: headers,
-                    });
-                } catch (err) {
-                    console.error("Request handler error:", err);
-                    return new Response(devErrorPage(), {
-                        status: 500,
-                        headers: { "Content-Type": "text/html; charset=utf-8" },
-                    });
-                }
-            }
-        });
-
-        // Bun.serve returns the actual port used (useful when port is 0 for random assignment)
-        const actualPort = server.port;
-        console.log("Listening on http://0.0.0.0:" + String(actualPort));
-        this._server = server as unknown as Server;
-        return Promise.resolve({ server: this._server, port: actualPort, app: this } as ServerListenResult);
-    }
-
-    close(): void {
-        if (this._sessionSweepHandle) {
-            clearInterval(this._sessionSweepHandle);
-            this._sessionSweepHandle = null;
-        }
-        if (this._rateLimiterIntervalHandle) {
-            clearInterval(this._rateLimiterIntervalHandle);
-            this._rateLimiterIntervalHandle = null;
-        }
-        this._sessions.clear();
-        REQ_BODY.clear();
-        REQ_FILES.clear();
-        try {
-            for (const client of this._wsClients) {
-                try {
-                    client.socket.close?.();
-                } catch { }
-            }
-        } catch { }
-        this._wsClients.clear();
-        if (this._server) {
-
-            const server = this._server;
-            this._server = null;
-            try {
-                if (typeof (server as any).closeAllConnections === "function") {
-                    (server as any).closeAllConnections();
-                }
-            } catch (_) { }
-            try {
-                server.close();
-            } catch (_) { }
-        }
-    }
-}
-
-// Result type for Listen method - contains both server and actual port
-export interface ServerListenResult {
-    server: Server;
-    port: number;
-}
-
-// Debug control: enable or disable server logs. When enabled, logs are prefixed with 'tsui:'.
-export interface Debuggable {
-    debug(enable: boolean): void;
-}
-
-export class Context {
-    app: App;
-    req: IncomingMessage;
-    res: ServerResponse;
-    sessionID: string;
-    append: string[] = [];
-    _pageContent: string = "";
-    ops: JSPatchOp[] = [];
-
-    // Path parameters extracted from route pattern (e.g., /users/{id} => { id: "123" })
-    private _pathParams: Record<string, string> | null = null;
-    // Query parameters from URL (e.g., ?page=1&sort=name => URLSearchParams)
-    private _queryParams: URLSearchParams | null = null;
-
-    constructor(
-        app: App,
-        req: IncomingMessage,
-        res: ServerResponse,
-        sessionID: string,
-        pathParams?: Record<string, string> | null,
-        queryParams?: URLSearchParams | null,
-    ) {
-        this.app = app;
-        this.req = req;
-        this.res = res;
-        this.sessionID = sessionID;
-        this._pathParams = pathParams || null;
-        this._queryParams = queryParams || null;
-    }
-
-    // PathParam returns the value of a path parameter extracted from the route pattern.
-    // For example, if the route is "/users/{id}" and the URL is "/users/123", PathParam("id") returns "123".
-    // Returns empty string if the parameter doesn't exist.
-    PathParam(name: string): string {
-        if (!this._pathParams) return "";
-        return this._pathParams[name] || "";
-    }
-
-    // QueryParam returns the first value of a query parameter from the URL.
-    // For SPA navigation, this returns params from the navigated URL.
-    // For direct requests, this uses the request URL query string.
-    // Returns empty string if the parameter doesn't exist.
-    QueryParam(name: string): string {
-        if (this._queryParams) {
-            return this._queryParams.get(name) || "";
-        }
-        // Fallback to request URL query for non-SPA requests
-        try {
-            const url = new URL(this.req.url || "", `http://${this.req.headers.host || "localhost"}`);
-            return url.searchParams.get(name) || "";
-        } catch {
-            return "";
-        }
-    }
-
-    // QueryParams returns all values for a query parameter (for multi-value params).
-    // For example, ?color=red&color=blue => QueryParams("color") returns ["red", "blue"].
-    // Returns empty array if the parameter doesn't exist.
-    QueryParams(name: string): string[] {
-        if (this._queryParams) {
-            return this._queryParams.getAll(name);
-        }
-        // Fallback to request URL query for non-SPA requests
-        try {
-            const url = new URL(this.req.url || "", `http://${this.req.headers.host || "localhost"}`);
-            return url.searchParams.getAll(name);
-        } catch {
-            return [];
-        }
-    }
-
-    // AllQueryParams returns all query parameters as a map of name to values array.
-    AllQueryParams(): Record<string, string[]> {
-        const result: Record<string, string[]> = {};
-        let params: URLSearchParams;
-
-        if (this._queryParams) {
-            params = this._queryParams;
-        } else {
-            try {
-                const url = new URL(this.req.url || "", `http://${this.req.headers.host || "localhost"}`);
-                params = url.searchParams;
-            } catch {
-                return result;
-            }
-        }
-
-        for (const key of params.keys()) {
-            if (!result[key]) {
-                result[key] = params.getAll(key);
-            }
-        }
-        return result;
-    }
-
-    Body<T extends object>(output: T): void {
-        const data = REQ_BODY.get(this.sessionID);
-        if (!Array.isArray(data)) return;
-        for (let i = 0; i < data.length; i++) {
-            const item = data[i];
-            if (item.type === "file") {
-                continue;
-            }
-            setPath(
-                output as unknown as Record<string, unknown>,
-                item.name,
-                coerce(item.type, item.value),
-            );
-        }
-    }
-
-    File(name: string): FileUpload | undefined {
-        const files = this.Files(name);
-        if (files.length === 0) {
-            return undefined;
-        }
-        return files[0];
-    }
-
-    Files(name: string): FileUpload[] {
-        const byName = REQ_FILES.get(this.sessionID);
-        if (!byName) {
-            return [];
-        }
-        const found = byName.get(String(name || ""));
-        if (!found || found.length === 0) {
-            return [];
-        }
-        return found.slice();
-    }
-
-    Session(db: SessionDB, name: string): TSession {
-        const self = this;
-        const keyName = String(name || "default");
-        return {
-            async Load<T extends object>(data: T): Promise<boolean> {
-                if (!db || typeof db.get !== "function") {
-                    return false;
-                }
-                const raw = await Promise.resolve(db.get(keyName, self.sessionID));
-                if (!raw) {
-                    return false;
-                }
-                const parsed = safeJsonParse<Record<string, unknown>>(String(raw), 5_000_000);
-                if (!parsed || typeof parsed !== "object") {
-                    return false;
-                }
-                const entries = Object.entries(parsed);
-                for (let i = 0; i < entries.length; i++) {
-                    const k = entries[i][0];
-                    const v = entries[i][1];
-                    setPath(data as unknown as Record<string, unknown>, String(k), v);
-                }
-                return true;
-            },
-            async Save<T extends object>(data: T): Promise<void> {
-                if (!db || typeof db.set !== "function") {
-                    return;
-                }
-                const payload = JSON.stringify(data || {});
-                const expiresAt = Date.now() + self.app._sessionTTLms;
-                await Promise.resolve(db.set(keyName, self.sessionID, payload, expiresAt));
-            },
-        };
-    }
-
-    Callable(method: Callable): Callable {
-        return this.app.Callable(method);
-    }
-    Action(uid: string, action: Callable): Callable {
-        return this.app.Action(uid, action);
-    }
-
-    Post(
-        as: ActionType,
-        swap: Swap,
-        action: PostAction,
-    ): string {
-        const path = this.app.pathOf(action.method);
-        if (!path) throw new Error("Function not registered.");
-
-        const body: BodyItem[] = [];
-        const values = action.values || [];
-        function pushValue(prefix: string, v: ActionValue): void {
-            if (v == null) {
-                body.push({ name: prefix, type: "string", value: "" });
-                return;
-            }
-            // Dates
-            if (v instanceof Date) {
-                body.push({ name: prefix, type: typeOf(v), value: valueToString(v) });
-                return;
-            }
-            const t = typeof v;
-            if (t === "string" || t === "number" || t === "boolean") {
-                body.push({ name: prefix, type: typeOf(v), value: valueToString(v) });
-                return;
-            }
-            if (Array.isArray(v)) {
-                for (let i = 0; i < v.length; i++) {
-                    pushValue(prefix + "." + String(i), v[i]);
-                }
-                return;
-            }
-            if (t === "object") {
-                const entries = Object.entries(v);
-                for (let j = 0; j < entries.length; j++) {
-                    const kv = entries[j];
-                    pushValue(prefix + "." + String(kv[0]), kv[1]);
-                }
-                return;
-            }
-            // Fallback
-            body.push({ name: prefix, type: "string", value: String(v) });
-        }
-        for (let i = 0; i < values.length; i++) {
-            const item = values[i];
-            if (item == null) continue;
-            const entries = Object.entries(item);
-            for (let j = 0; j < entries.length; j++) {
-                const kv = entries[j];
-                pushValue(String(kv[0]), kv[1]);
-            }
-        }
-
-        let valuesStr = "[]";
-        if (body.length > 0) {
-            valuesStr = JSON.stringify(body);
-        }
-
-        if (as === "FORM") {
-            return ui.Normalize(
-                '__submit(event, \"' +
-                swap +
-                '\", \"' +
-                (action.target && action.target.id
-                    ? action.target.id
-                    : "") +
-                '\", \"' +
-                path +
-                '\", ' +
-                valuesStr +
-                ") ",
-            );
-        }
-        return ui.Normalize(
-            '__post(event, \"' +
-            swap +
-            '\", \"' +
-            (action.target && action.target.id ? action.target.id : "") +
-            '\", \"' +
-            path +
-            '\", ' +
-            valuesStr +
-            ") ",
-        );
-    }
-
-    Send<T extends object>(method: Callable, ...values: T[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        return {
-            Render: function (target: Attr) {
-                return self.Post("FORM", "inline", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
-            },
-            Replace: function (target: Attr) {
-                return self.Post("FORM", "outline", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
-            },
-            Append: function (target: Attr) {
-                return self.Post("FORM", "append", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
-            },
-            Prepend: function (target: Attr) {
-                return self.Post("FORM", "prepend", {
-                    method: callable,
-                    target: target,
-                    values: values as unknown as ActionValue[],
-                });
-            },
-            None: function () {
-                return self.Post("FORM", "none", {
-                    method: callable,
-                    values: values as unknown as ActionValue[],
-                });
-            },
-        };
-    }
-
-    Click<T extends object>(method: Callable, ...values: T[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        return {
-            Render: function (target: Attr): Attr {
-                return {
-                    onclick: self.Post("POST", "inline", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            Replace: function (target: Attr): Attr {
-                return {
-                    onclick: self.Post("POST", "outline", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            Append: function (target: Attr): Attr {
-                return {
-                    onclick: self.Post("POST", "append", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            Prepend: function (target: Attr): Attr {
-                return {
-                    onclick: self.Post("POST", "prepend", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            None: function (): Attr {
-                return {
-                    onclick: self.Post("POST", "none", {
-                        method: callable,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-        };
-    }
-
-    /**
-     * @deprecated Use ctx.Click() instead. This method will be removed in a future release.
-     */
-    Call<T extends object>(method: Callable, ...values: T[]) {
-        return this.Click(method, ...values);
-    }
-
-    Submit<T extends object>(method: Callable, ...values: T[]) {
-        const callable = this.Callable(method);
-        const self = this;
-        return {
-            Render: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "inline", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            Replace: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "outline", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            Append: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "append", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            Prepend: function (target: Attr): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "prepend", {
-                        method: callable,
-                        target: target,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-            None: function (): Attr {
-                return {
-                    onsubmit: self.Post("FORM", "none", {
-                        method: callable,
-                        values: values as unknown as ActionValue[],
-                    }),
-                };
-            },
-        };
-    }
-
-    Load(href: string): Attr {
-        return { 
-            onclick: ui.Normalize('if (window.__router) { window.__router.navigate(\"' + href + '\"); } else { __load(\"' + href + '\"); }') 
-        };
-    }
-    Reload(): void {
-        this.ops.push({ op: "reload" });
-    }
-    Redirect(href: string): void {
-        this.ops.push({ op: "redirect", href });
-    }
-    DownloadAs(content: string | Buffer, contentType: string, filename: string): void {
-        let b64 = "";
-        try {
-            if (typeof content === "string") {
-                b64 = Buffer.from(content, "utf8").toString("base64");
-            } else {
-                b64 = Buffer.from(content).toString("base64");
-            }
-        } catch (_) {
-            b64 = "";
-        }
-        const href = "data:" + String(contentType || "application/octet-stream") + ";base64," + b64;
-        this.ops.push({ op: "download", href: href, title: String(filename || "download.bin") });
-    }
-    Translate(format: string, ...args: (string | number | boolean)[]): string {
-        let out = String(format || "");
-        for (let i = 0; i < args.length; i++) {
-            out = out.split("{" + String(i) + "}").join(String(args[i]));
-        }
-        return out;
-    }
-    Title(title: string): void {
-        this.ops.push({ op: "title", title });
-    }
-
-    Success(message: string) {
-        this.ops.push({ op: "notify", msg: message, variant: "success" });
-    }
-    Error(message: string) {
-        this.ops.push({ op: "notify", msg: message, variant: "error" });
-    }
-    Info(message: string) {
-        this.ops.push({ op: "notify", msg: message, variant: "info" });
-    }
-    ErrorReload(message: string) {
-        this.ops.push({ op: "notify", msg: message, variant: "error-reload" });
-    }
-
-    Patch(target: { id: string; swap: Swap }, html: string | Promise<string>, clear?: () => void): void {
-        var self = this;
-        Promise.resolve(html)
-            .then(function (resolved: string) {
-                const jsElement = htmlToJSElement(resolved);
-                if (!jsElement) {
-                    throw new Error("Failed to parse HTML to JSElement");
-                }
-
-                let opType: "outline" | "inline" | "append" | "prepend";
-                switch (target.swap) {
-                    case "inline":
-                        opType = "inline";
-                        break;
-                    case "append":
-                        opType = "append";
-                        break;
-                    case "prepend":
-                        opType = "prepend";
-                        break;
-                    case "outline":
-                    default:
-                        opType = "outline";
-                        break;
-                }
-
-                self.ops.push({ op: opType, tgt: target.id, el: jsElement });
-
-                try {
-                    const sid = self.sessionID;
-                    if (sid) {
-                        self.app._touchSession(sid);
-                        const rec = self.app._sessions.get(sid);
-                        if (rec) {
-                            if (!rec.targets) {
-                                rec.targets = new Map();
-                            }
-                            rec.targets.set(String(target.id || ""), clear);
-                        }
-                    }
-                } catch (_) { }
-
-                self.app._sendOps(self.ops);
-                self.ops = [];
-            })
-            .catch(function (err: unknown) {
-                console.error("Patch error:", err);
-            });
-    }
-}
-
-function displayMessage(ctx: Context, message: string, color: string) {
-    const script1 = [
-        "<script>(function(){",
-        'var box=document.getElementById("__messages__");',
-        'if(box==null){box=document.createElement("div");box.id="__messages__";',
-        'box.style.position="fixed";box.style.top="0";box.style.right="0";box.style.padding="8px";box.style.zIndex="9999";box.style.pointerEvents="none";document.body.appendChild(box);}',
-        'var n=document.createElement("div");',
-        'n.style.display="flex";n.style.alignItems="center";n.style.gap="10px";',
-        'n.style.padding="12px 16px";n.style.margin="8px";n.style.borderRadius="12px";',
-        'n.style.minHeight="44px";n.style.minWidth="340px";n.style.maxWidth="340px";',
-        'n.style.boxShadow="0 6px 18px rgba(0,0,0,0.08)";n.style.border="1px solid";',
-        "var isGreen=(" +
-        JSON.stringify(color) +
-        ').indexOf("green")>=0;var isRed=(' +
-        JSON.stringify(color) +
-        ').indexOf("red")>=0;',
-        'var accent=isGreen?"#16a34a":(isRed?"#dc2626":"#4f46e5");',
-        'if(isGreen){n.style.background="#dcfce7";n.style.color="#166534";n.style.borderColor="#bbf7d0";}else if(isRed){n.style.background="#fee2e2";n.style.color="#991b1b";n.style.borderColor="#fecaca";}else{n.style.background="#eef2ff";n.style.color="#3730a3";n.style.borderColor="#e0e7ff";}',
-        'n.style.borderLeft="4px solid "+accent;',
-        'var dot=document.createElement("span");dot.style.width="10px";dot.style.height="10px";dot.style.borderRadius="9999px";dot.style.background=accent;',
-        'var t=document.createElement("span");t.textContent=',
-        JSON.stringify(ui.Normalize(message)),
-        ";",
-        "n.appendChild(dot);n.appendChild(t);",
-        "box.appendChild(n);",
-        "setTimeout(function(){try{box.removeChild(n);}catch(_){}} ,5000);",
-        "})();</script>",
-    ].join("");
-    ctx.append.push(ui.Trim(script1));
-}
-
-function typeOf(v: unknown): string {
-    if (v instanceof Date) return "Time";
-    const t = typeof v;
-    if (t === "number") {
-        if (Number.isInteger(v)) return "int";
-        return "float64";
-    }
-    if (t === "boolean") return "bool";
-    if (t === "string") return "string";
-    return "string";
-}
-
-function valueToString(v: unknown): string {
-    if (v instanceof Date) return v.toUTCString();
-    return String(v);
-}
-
-function coerce(type: string, value: string): unknown {
-    switch (type) {
-        case "date":
-        case "time":
-        case "Time":
-        case "datetime-local":
-            return new Date(value);
-        case "float64":
-            return parseFloat(value);
-        case "bool":
-        case "checkbox":
-            return value === "true";
-        case "int":
-        case "int64":
-        case "number":
-            return parseInt(value, 10);
-        default:
-            return value;
-    }
-}
-
-function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
-    const parts = path.split(".");
-    let current: Record<string, unknown> | unknown[] = obj;
-    for (let i = 0; i < parts.length - 1; i++) {
-        const part = parts[i];
-        const next = parts[i + 1];
-        const nextIsIndex = /^[0-9]+$/.test(String(next || ""));
-        if (!(part in current) || typeof (current as Record<string, unknown>)[part] !== "object") {
-            (current as Record<string, unknown>)[part] = nextIsIndex ? [] : {};
-        }
-        current = (current as Record<string, unknown>)[part] as Record<string, unknown> | unknown[];
-    }
-    const last = parts[parts.length - 1];
-    if (/^[0-9]+$/.test(String(last))) {
-        const idx = parseInt(String(last), 10);
-        if (!Array.isArray(current)) {
-            // Convert to array if needed
-            const tmp: unknown[] = [];
-            try {
-                const keys = Object.keys(current as Record<string, unknown>);
-                for (let k = 0; k < keys.length; k++) {
-                    const key = keys[k];
-                    const n = parseInt(key, 10);
-                    if (!Number.isNaN(n)) {
-                        tmp[n] = (current as Record<string, unknown>)[key];
-                    }
-                }
-            } catch (_) { }
-            current = tmp;
-        }
-        (current as unknown[])[idx] = value;
-    } else {
-        (current as Record<string, unknown>)[last] = value;
-    }
-}
-
-export const __post = ui.Trim(`
-    function __post(event, swap, target_id, path, body) {
-        event.preventDefault();
-        var L = __loader.start();
-
-        try { body = body ? body.slice() : []; } catch(_) {}
-        var rid = generateRequestId();
-        
-        // Setup response handler
-        var ws = (window).__tsuiWS;
-        var timeout = setTimeout(function() {
-            try { __error('Request timeout ...'); } catch(__){}
-            L.stop();
-        }, 30000);
-        
-        function handleResponse(msg) {
-            if (msg.type === 'response' && msg.rid === rid) {
-                clearTimeout(timeout);
-                
-                // Handle element from response
-                if (msg.el) {
-                    const html = jsElementToHTML(msg.el);
-
-                    // Extract and execute scripts
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
-                    // Process scripts first for security
-                    for (var i = 0; i < scripts.length; i++) {
-                        const newScript = document.createElement('script');
-                        newScript.textContent = scripts[i].textContent;
-                        document.body.appendChild(newScript);
-                    }
-
-                    const el = document.getElementById(target_id);
-                    if (el != null) {
-                        // Use safer DOM manipulation where possible
-                        if (swap === 'inline') {
-                            // Use DOMParser for safer HTML parsing if available
-                            try {
-                                if (typeof DOMParser !== 'undefined') {
-                                    const parser = new DOMParser();
-                                    const doc = parser.parseFromString(html, 'text/html');
-                                    // Clear element safely
-                                    while (el.firstChild) {
-                                        el.removeChild(el.firstChild);
-                                    }
-                                    // Append parsed nodes
-                                    while (doc.body.firstChild) {
-                                        el.appendChild(doc.body.firstChild);
-                                    }
-                                } else {
-                                    // Fallback to innerHTML with warning logged
-                                    console.warn('DOMParser not available, using innerHTML');
-                                    el.innerHTML = html;
-                                }
-                            } catch (e) {
-                                // Fallback to text content if parsing fails
-                                console.error('HTML parsing failed, using text content:', e);
-                                el.textContent = html;
-                            }
-                        }
-                        else if (swap === 'outline') { el.outerHTML = html; }
-                        else if (swap === 'append') { el.insertAdjacentHTML('beforeend', html); }
-                        else if (swap === 'prepend') { el.insertAdjacentHTML('afterbegin', html); }
-                    }
-                }
-
-                // Handle operations from response
-                if (msg.ops && Array.isArray(msg.ops)) {
-                    for (var i = 0; i < msg.ops.length; i++) {
-                        applyPatchOp(msg.ops[i]);
-                    }
-                }
-                
-                L.stop();
-            }
-        }
-        
-        // Add one-time listener for this response
-        ws.addEventListener('message', function onMessage(ev) {
-            try {
-                var msg = JSON.parse(String(ev.data || '{}'));
-                // Only handle and remove listener if this is our response
-                if (msg.type === 'response' && msg.rid === rid) {
-                    handleResponse(msg);
-                    ws.removeEventListener('message', onMessage);
-                }
-            } catch(_) {}
-        });
-        
-        // Send call message via WebSocket
-        try {
-            ws.send(JSON.stringify({
-                type: 'call',
-                rid: rid,
-                act: 'post',
-                path: path,
-                swap: swap,
-                tgt: target_id,
-                vals: body
-            }));
-        } catch(e) {
-            try { __error('Failed to send action ...'); } catch(__){}
-            clearTimeout(timeout);
-            L.stop();
-        }
-    }
-`);
-
-export const __ws = ui.Trim(`
-    (function(){
-        try {
-            if ((window).__tsuiWSInit) { return; }
-            (window).__tsuiWSInit = true;
-            var first = true;
-            var DEBUG = false; try { DEBUG = !!(window).__tsuiReloadEnabled; } catch(_){ }
-            var appPing = 0;
-            function showOffline(){ try { __offline.show(); } catch(_){ } }
-            function hideOffline(){ try { __offline.hide(); } catch(_){ } }
-            function handlePatch(msg){
-                try {
-                    // JSON DOM protocol format only
-                    if (msg.ops && Array.isArray(msg.ops)) {
-                        // Handle each operation
-                        for (var i = 0; i < msg.ops.length; i++) {
-                            var op = msg.ops[i];
-                            applyPatchOp(op);
-                        }
-                        return;
-                    }
-                } catch(_){ }
-            }
-            function connect(){
-                try { var old = (window).__tsuiWS; if (old) { try { old.close(); } catch(_){ } } } catch(_){ }
-                var p = (location.protocol === 'https:') ? 'wss://' : 'ws://';
-                var url = p + location.host + '/__ws';
-                var ws = new WebSocket(url);
-                try { (window).__tsuiWS = ws; } catch(_){ }
-                ws.onopen = function(){
-                    hideOffline();
-                    if (DEBUG) { try { console.log('[tsui][ws] open'); } catch(_){ } }
-                    if (first) {
-                        first = false;
-                    } else {
-                        try { location.reload(); } catch(_){ }
-                    }
-                    try { if (appPing) { clearInterval(appPing); appPing = 0; } } catch(_){ }
-                    try {
-                        var now0 = Date.now();
-                        if (DEBUG) { try { console.log('[tsui][ws] ping(immediate)', now0); } catch(_){ } }
-                        ws.send(JSON.stringify({ type: 'ping', t: now0 }));
-                    } catch(_){ }
-                    try {
-                        appPing = setInterval(function(){
-                            try {
-                                var now = Date.now();
-                                if (DEBUG) { try { console.log('[tsui][ws] ping', now); } catch(_){ } }
-                                ws.send(JSON.stringify({ type: 'ping', t: now }));
-                            } catch(_){ }
-                        }, 10000);
-                    } catch(_){ }
-                };
-                ws.onmessage = function(ev){
-                    try {
-                        var msg = {};
-                        try { msg = JSON.parse(String(ev.data || '{}')); } catch(_){ msg = {}; }
-                        var t = String(msg.type || '');
-                        if (t === 'patch') { handlePatch(msg); }
-                        else if (t === 'reload') { try { location.reload(); } catch(_){ } }
-                        else if (t === 'pong') { /* ignore */ }
-                        else if (t === 'response') { /* handled by individual action handlers */ }
-                    } catch(_){ }
-                };
-                ws.onerror = function(){ try{ ws.close(); } catch(_){ } };
-                ws.onclose = function(){
-                    if (DEBUG) { try { console.log('[tsui][ws] close'); } catch(_){ } }
-                    try { if (appPing) { clearInterval(appPing); appPing = 0; } } catch(_){ }
-                    showOffline();
-                    setTimeout(connect, 2000);
-                };
-                window.addEventListener('beforeunload', function(){ try{ ws.close(); } catch(_){ } });
-            }
-            connect();
-        } catch(_){ }
-    })();
-`);
-
-export const __stringify = ui.Trim(`
-    function generateRequestId() {
-        return 'rid-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
-    }
-
-    function __stringify(values) {
-            const result = {};
-            for (var i = 0; i < values.length; i++) {
-                var item = values[i];
-                var nameParts = item.name.split('.');
-                var currentObj = result;
-                for (var j = 0; j < nameParts.length - 1; j++) {
-                    var part = nameParts[j];
-                    if (!currentObj[part]) { currentObj[part] = {}; }
-                    currentObj = currentObj[part];
-                }
-                var lastPart = nameParts[nameParts.length - 1];
-                if (item.type === 'date' || item.type === 'time' || item.type === 'Time' || item.type === 'datetime-local') {
-                    currentObj[lastPart] = new Date(item.value);
-                } else if (item.type === 'float64') {
-                    currentObj[lastPart] = parseFloat(item.value);
-                } else if (item.type === 'bool' || item.type === 'checkbox') {
-                    currentObj[lastPart] = item.value === 'true';
-                } else {
-                    currentObj[lastPart] = item.value;
-                }
-            }
-            return JSON.stringify(result);
-        }
-`);
-
-export const __jselement = ui.Trim(`
-    function jsElementToHTML(el) {
-        if (!el) return '';
-        var tag = el.t;
-        if (!tag) return '';
-
-        var attrs = '';
-        var events = '';
-
-        if (el.a) {
-            for (var key in el.a) {
-                if (el.a.hasOwnProperty(key)) {
-                    var value = el.a[key];
-                    if (typeof value === 'string') {
-                        attrs += ' ' + key + '="' + value.replace(/"/g, '&quot;') + '"';
-                    } else {
-                        attrs += ' ' + key;
-                    }
-                }
-            }
-        }
-
-        if (el.e) {
-            for (var key in el.e) {
-                if (el.e.hasOwnProperty(key)) {
-                    var ev = el.e[key];
-                    if (ev.act === 'post') {
-                        var vals = ev.vals ? JSON.stringify(ev.vals).replace(/"/g, '&quot;') : '[]';
-                        events += ' ' + key + '="__post(event, &quot;' + (ev.swap || 'none') + '&quot;, &quot;' + (ev.tgt || '') + '&quot;, &quot;' + (ev.path || '') + '&quot;, ' + vals + ')"';
-                    } else if (ev.act === 'form') {
-                        var vals = ev.vals ? JSON.stringify(ev.vals).replace(/"/g, '&quot;') : '[]';
-                        events += ' ' + key + '="__submit(event, &quot;' + (ev.swap || 'none') + '&quot;, &quot;' + (ev.tgt || '') + '&quot;, &quot;' + (ev.path || '') + '&quot;, ' + vals + ')"';
-                    } else if (ev.act === 'raw' && ev.js) {
-                        events += ' ' + key + '="' + ev.js.replace(/"/g, '&quot;') + '"';
-                    }
-                }
-            }
-        }
-
-        var children = '';
-        if (el.c && Array.isArray(el.c)) {
-            for (var i = 0; i < el.c.length; i++) {
-                var child = el.c[i];
-                if (typeof child === 'string') {
-                    children += child;
-                } else {
-                    children += jsElementToHTML(child);
-                }
-            }
-        }
-
-        // Self-closing tags
-        var selfClosing = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr|script)$/i;
-        if (selfClosing.test(tag)) {
-            return '<' + tag + attrs + events + (children ? '>' + children + '</' + tag + '>' : ' />');
-        }
-
-        return '<' + tag + attrs + events + '>' + children + '</' + tag + '>';
-    }
-
-    function applyPatchOp(op) {
-        if (!op || !op.op) return;
-        switch (op.op) {
-            case 'inline':
-                if (op.tgt && op.el) {
-                    var el = document.getElementById(op.tgt);
-                    if (el) {
-                        var html = jsElementToHTML(op.el);
-                        try {
-                            if (typeof DOMParser !== 'undefined') {
-                                var parser = new DOMParser();
-                                var doc = parser.parseFromString(html, 'text/html');
-                                while (el.firstChild) {
-                                    el.removeChild(el.firstChild);
-                                }
-                                while (doc.body.firstChild) {
-                                    el.appendChild(doc.body.firstChild);
-                                }
-                            } else {
-                                el.innerHTML = html;
-                            }
-                        } catch (e) {
-                            console.error('Failed to apply inline patch:', e);
-                        }
-                    }
-                }
-                break;
-            case 'outline':
-                if (op.tgt && op.el) {
-                    var el = document.getElementById(op.tgt);
-                    if (el) {
-                        var html = jsElementToHTML(op.el);
-                        try {
-                            el.outerHTML = html;
-                        } catch (e) {
-                            console.error('Failed to apply outline patch:', e);
-                        }
-                    }
-                }
-                break;
-            case 'append':
-                if (op.tgt && op.el) {
-                    var el = document.getElementById(op.tgt);
-                    if (el) {
-                        var html = jsElementToHTML(op.el);
-                        try {
-                            el.insertAdjacentHTML('beforeend', html);
-                        } catch (e) {
-                            console.error('Failed to apply append patch:', e);
-                        }
-                    }
-                }
-                break;
-            case 'prepend':
-                if (op.tgt && op.el) {
-                    var el = document.getElementById(op.tgt);
-                    if (el) {
-                        var html = jsElementToHTML(op.el);
-                        try {
-                            el.insertAdjacentHTML('afterbegin', html);
-                        } catch (e) {
-                            console.error('Failed to apply prepend patch:', e);
-                        }
-                    }
-                }
-                break;
-            case 'notify':
-                if (op.msg) {
-                    var variant = op.variant || 'info';
-                    if (variant === 'error-reload') {
-                        try { __error(op.msg); } catch(_) { displayMessage(op.msg, 'bg-red-700 text-white'); }
-                        break;
-                    }
-                    var colorClass = '';
-                    if (variant === 'success') colorClass = 'bg-green-700 text-white';
-                    else if (variant === 'error') colorClass = 'bg-red-700 text-white';
-                    else if (variant === 'info') colorClass = 'bg-blue-700 text-white';
-                    else colorClass = 'bg-blue-700 text-white';
-
-                    displayMessage(op.msg, colorClass);
-                }
-                break;
-            case 'title':
-                if (op.title) {
-                    document.title = op.title;
-                }
-                break;
-            case 'redirect':
-                if (op.href) {
-                    window.location.href = op.href;
-                }
-                break;
-            case 'reload':
-                window.location.reload();
-                break;
-            case 'download':
-                if (op.href) {
-                    try {
-                        var a = document.createElement('a');
-                        a.href = op.href;
-                        if (op.title) { a.download = op.title; }
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                    } catch (_) { }
-                }
-                break;
-        }
-    }
-
-    function displayMessage(message, color) {
-        var box = document.getElementById('__messages__');
-        if (!box) {
-            box = document.createElement('div');
-            box.id = '__messages__';
-            box.style.position = 'fixed';
-            box.style.top = '0';
-            box.style.right = '0';
-            box.style.padding = '8px';
-            box.style.zIndex = '9999';
-            box.style.pointerEvents = 'none';
-            document.body.appendChild(box);
-        }
-        var n = document.createElement('div');
-        n.style.display = 'flex';
-        n.style.alignItems = 'center';
-        n.style.gap = '10px';
-        n.style.padding = '12px 16px';
-        n.style.margin = '8px';
-        n.style.borderRadius = '12px';
-        n.style.minHeight = '44px';
-        n.style.minWidth = '340px';
-        n.style.maxWidth = '340px';
-        n.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
-        n.style.border = '1px solid';
-
-        var isGreen = color.indexOf('green') >= 0;
-        var isRed = color.indexOf('red') >= 0;
-        var accent = isGreen ? '#16a34a' : (isRed ? '#dc2626' : '#4f46e5');
-
-        if (isGreen) {
-            n.style.background = '#dcfce7';
-            n.style.color = '#166534';
-            n.style.borderColor = '#bbf7d0';
-        } else if (isRed) {
-            n.style.background = '#fee2e2';
-            n.style.color = '#991b1b';
-            n.style.borderColor = '#fecaca';
-        } else {
-            n.style.background = '#eef2ff';
-            n.style.color = '#3730a3';
-            n.style.borderColor = '#e0e7ff';
-        }
-        n.style.borderLeft = '4px solid ' + accent;
-
-        var dot = document.createElement('span');
-        dot.style.width = '10px';
-        dot.style.height = '10px';
-        dot.style.borderRadius = '9999px';
-        dot.style.background = accent;
-
-        var t = document.createElement('span');
-        t.textContent = message;
-
-        n.appendChild(dot);
-        n.appendChild(t);
-        box.appendChild(n);
-
-        setTimeout(function() {
-            try { box.removeChild(n); } catch (_) {}
-        }, 5000);
-    }
-`);
-
-export const __buildElement = ui.Trim(`
-    function buildElement(jsEl) {
-        if (!jsEl || !jsEl.t) return null;
-
-        var tag = jsEl.t;
-        var el = document.createElement(tag);
-
-        if (jsEl.a) {
-            for (var key in jsEl.a) {
-                if (jsEl.a.hasOwnProperty(key)) {
-                    var value = jsEl.a[key];
-
-                    if (key === 'value' && (tag === 'textarea')) {
-                        el.value = value;
-                    } else if (typeof value === 'boolean' || value === '') {
-                        el.setAttribute(key, '');
-                    } else {
-                        el.setAttribute(key, value);
-                    }
-                }
-            }
-        }
-
-        if (jsEl.e) {
-            for (var eventType in jsEl.e) {
-                if (jsEl.e.hasOwnProperty(eventType)) {
-                    var ev = jsEl.e[eventType];
-
-                    (function(evt) {
-                        el.addEventListener(eventType, function(event) {
-                            if (evt.act === 'post') {
-                                var vals = evt.vals ? JSON.stringify(evt.vals) : '[]';
-                                __post(event, evt.swap || 'none', evt.tgt || '', evt.path || '', JSON.parse(vals));
-                            } else if (evt.act === 'form') {
-                                var vals = evt.vals ? JSON.stringify(evt.vals) : '[]';
-                                __submit(event, evt.swap || 'none', evt.tgt || '', evt.path || '', JSON.parse(vals));
-                            } else if (evt.act === 'raw' && evt.js) {
-                                try {
-                                    var fn = new Function(evt.js);
-                                    fn.call(el, event);
-                                } catch(e) {
-                                    console.error('Failed to execute raw event handler:', e);
-                                }
-                            }
-                        });
-                    })(ev);
-                }
-            }
-        }
-
-        if (jsEl.c && Array.isArray(jsEl.c)) {
-            for (var i = 0; i < jsEl.c.length; i++) {
-                var child = jsEl.c[i];
-
-                if (typeof child === 'string') {
-                    if (tag !== 'textarea') {
-                        el.appendChild(document.createTextNode(child));
-                    }
-                } else if (child && typeof child === 'object' && child.t) {
-                    var childEl = buildElement(child);
-                    if (childEl) {
-                        el.appendChild(childEl);
-                    }
-                }
-            }
-        }
-
-        return el;
-    }
-`);
-
-export const __loader = ui.Trim(`
-    var __loader = (function(){
-        var S = { count: 0, t: 0, el: null };
-        function build() {
-            var overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 z-50 flex items-center justify-center transition-opacity opacity-0';
-            try { overlay.style.backdropFilter = 'blur(3px)'; } catch(_){}
-            try { overlay.style.webkitBackdropFilter = 'blur(3px)'; } catch(_){}
-            try { overlay.style.background = 'rgba(255,255,255,0.28)'; } catch(_){}
-
-            try { overlay.style.pointerEvents = 'auto'; } catch(_){}
-
-            var badge = document.createElement('div');
-            badge.className = 'absolute top-3 left-3 flex items-center gap-2 rounded-full px-3 py-1 text-white shadow-lg ring-1 ring-white/30';
-            badge.style.background = 'linear-gradient(135deg, #6366f1, #22d3ee)';
-            badge.style.pointerEvents = 'auto';
-
-            var dot = document.createElement('span');
-            dot.className = 'inline-block h-2.5 w-2.5 rounded-full bg-white/95 animate-pulse';
-
-            var label = document.createElement('span');
-            label.className = 'font-semibold tracking-wide';
-            label.textContent = 'Loading…';
-
-            var sub = document.createElement('span');
-            sub.className = 'ml-1 text-white/85 text-xs';
-            sub.textContent = 'Please wait';
-            sub.style.color = 'rgba(255,255,255,0.9)';
-
-            badge.appendChild(dot);
-            badge.appendChild(label);
-            badge.appendChild(sub);
-
-            overlay.appendChild(badge);
-            document.body.appendChild(overlay);
-
-            /* fade-in */
-            try { requestAnimationFrame(function(){ overlay.style.opacity = '1'; }); } catch(_){}
-            return overlay;
-        }
-        function start() {
-            S.count = S.count + 1;
-            if (S.el != null) { return { stop: stop }; }
-            if (S.t) { return { stop: stop }; }
-            S.t = setTimeout(function(){ S.t = 0; if (S.el == null) { S.el = build(); } }, 120);
-            return { stop: stop };
-        }
-        function stop() {
-            if (S.count > 0) { S.count = S.count - 1; }
-            if (S.count !== 0) { return; }
-            if (S.t) { try { clearTimeout(S.t); } catch(_) {} S.t = 0; }
-            if (S.el) {
-                var el = S.el; S.el = null;
-                try { el.style.opacity = '0'; } catch(_){}
-                setTimeout(function(){ try { if (el && el.parentNode) { el.parentNode.removeChild(el); } } catch(_){} }, 160);
-            }
-        }
-        return { start: start };
-    })();
-`);
-
-export const __offline = ui.Trim(`
-    var __offline = (function(){
-        var el = null;
-        function show(){
-            if (document.getElementById('__offline__')) { el = document.getElementById('__offline__'); return; }
-            try { document.body.classList.add('pointer-events-none'); } catch(_){ }
-            var overlay = document.createElement('div');
-            overlay.id = '__offline__';
-            overlay.style.position = 'fixed';
-            overlay.style.inset = '0';
-            overlay.style.zIndex = '60';
-            overlay.style.pointerEvents = 'none';
-            overlay.style.opacity = '0';
-            overlay.style.transition = 'opacity 160ms ease-out';
-            try { overlay.style.backdropFilter = 'blur(2px)'; } catch(_){ }
-            try { overlay.style.webkitBackdropFilter = 'blur(2px)'; } catch(_){ }
-            try { overlay.style.background = 'rgba(255,255,255,0.18)'; } catch(_){ }
-
-            var badge = document.createElement('div');
-            badge.className = 'absolute top-3 left-3 flex items-center gap-2 rounded-full px-3 py-1 text-white shadow-lg ring-1 ring-white/30';
-            badge.style.background = 'linear-gradient(135deg, #ef4444, #ec4899)';
-            badge.style.pointerEvents = 'auto';
-
-            var dot = document.createElement('span');
-            dot.className = 'inline-block h-2.5 w-2.5 rounded-full bg-white/95 animate-pulse';
-            var label = document.createElement('span');
-            label.className = 'font-semibold tracking-wide';
-            label.textContent = 'Offline';
-            label.style.color = '#fff';
-            var sub = document.createElement('span');
-            sub.className = 'ml-1 text-white/85 text-xs';
-            sub.textContent = 'Trying to reconnect…';
-            sub.style.color = 'rgba(255,255,255,0.9)';
-
-            badge.appendChild(dot);
-            badge.appendChild(label);
-            badge.appendChild(sub);
-            overlay.appendChild(badge);
-            document.body.appendChild(overlay);
-            try { requestAnimationFrame(function(){ overlay.style.opacity = '1'; }); } catch(_){ }
-            el = overlay;
-        }
-        function hide(){
-            try { document.body.classList.remove('pointer-events-none'); } catch(_){ }
-            var o = document.getElementById('__offline__');
-            if (!o) { el = null; return; }
-            try { o.style.opacity = '0'; } catch(_){ }
-            setTimeout(function(){ try { if (o && o.parentNode) { o.parentNode.removeChild(o); } } catch(_){} }, 150);
-            el = null;
-        }
-        return { show: show, hide: hide };
-    })();
-`);
-
-export const __error = ui.Trim(`
-    function __error(message) {
-        (function(){
-            try {
-                var box = document.getElementById('__messages__');
-                if (box == null) {
-                    box = document.createElement('div');
-                    box.id = '__messages__';
-                    box.style.position = 'fixed';
-                    box.style.top = '0';
-                    box.style.right = '0';
-                    box.style.padding = '8px';
-                    box.style.zIndex = '9999';
-                    box.style.pointerEvents = 'none';
-                    document.body.appendChild(box);
-                }
-                var n = document.getElementById('__error_toast__');
-                if (!n) {
-                    n = document.createElement('div');
-                    n.id = '__error_toast__';
-                    n.style.display = 'flex';
-                    n.style.alignItems = 'center';
-                    n.style.gap = '10px';
-                    n.style.padding = '12px 16px';
-                    n.style.margin = '8px';
-                    n.style.borderRadius = '12px';
-                    n.style.minHeight = '44px';
-                    n.style.minWidth = '340px';
-                    n.style.maxWidth = '340px';
-                    n.style.background = '#fee2e2';
-                    n.style.color = '#991b1b';
-                    n.style.border = '1px solid #fecaca';
-                    n.style.borderLeft = '4px solid #dc2626';
-                    n.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
-                    n.style.fontWeight = '600';
-                    n.style.pointerEvents = 'auto';
-                    var dot = document.createElement('span');
-                    dot.style.width = '10px'; dot.style.height = '10px'; dot.style.borderRadius = '9999px'; dot.style.background = '#dc2626';
-                    n.appendChild(dot);
-                    var span = document.createElement('span');
-                    span.id = '__error_text__';
-                    n.appendChild(span);
-                    var btn = document.createElement('button');
-                    btn.textContent = 'Reload';
-                    btn.style.background = '#991b1b';
-                    btn.style.color = '#fff';
-                    btn.style.border = 'none';
-                    btn.style.padding = '6px 10px';
-                    btn.style.borderRadius = '8px';
-                    btn.style.cursor = 'pointer';
-                    btn.style.fontWeight = '700';
-                    btn.onclick = function(){ try { window.location.reload(); } catch(_){} };
-                    n.appendChild(btn);
-                    box.appendChild(n);
-                }
-                var spanText = document.getElementById('__error_text__');
-                if (spanText) { spanText.textContent = message || 'Something went wrong ...'; }
-            } catch (_) { try { alert(message || 'Something went wrong ...'); } catch(__){} }
-        })();
-    }
-`);
-
-export const __submit = ui.Trim(`
-    async function __submit(event, swap, target_id, path, values) {
-                event.preventDefault();
-                const el = event.target;
-                const tag = el.tagName.toLowerCase();
-                let form;
-                if (tag === 'form') { form = el; } else { form = el.closest('form'); }
-                const id = form.getAttribute('id');
-                let body = values;
-                let found = Array.prototype.slice.call(document.querySelectorAll('[form="' + id + '"][name]'));
-                if (found.length === 0) { found = Array.prototype.slice.call(form.querySelectorAll('[name]')); }
-                function readAsBase64(file) {
-                    return new Promise(function(resolve) {
-                        try {
-                            var reader = new FileReader();
-                            reader.onload = function() {
-                                var result = String(reader.result || '');
-                                var comma = result.indexOf(',');
-                                resolve(comma >= 0 ? result.slice(comma + 1) : result);
-                            };
-                            reader.onerror = function() { resolve(''); };
-                            reader.readAsDataURL(file);
-                        } catch (_) {
-                            resolve('');
-                        }
-                    });
-                }
-                for (var i = 0; i < found.length; i++) {
-                    var item = found[i];
-                    var name = item.getAttribute('name');
-                    var typeAttr = item.getAttribute('type');
-                    var coerceType = item.getAttribute('data-coerce');
-                    if (typeAttr === 'file') {
-                        if (name != null) {
-                            var cleaned = [];
-                            for (var c = 0; c < body.length; c++) {
-                                if (body[c].name !== name) { cleaned.push(body[c]); }
-                            }
-                            body = cleaned;
-                            var files = item.files ? Array.prototype.slice.call(item.files) : [];
-                            for (var fi = 0; fi < files.length; fi++) {
-                                var f = files[fi];
-                                var b64 = await readAsBase64(f);
-                                if (!b64) { continue; }
-                                body.push({
-                                    name: name,
-                                    type: 'file',
-                                    value: JSON.stringify({
-                                        Name: String(f.name || ''),
-                                        Data: String(b64 || ''),
-                                        ContentType: String(f.type || 'application/octet-stream'),
-                                        Size: Number(f.size || 0)
-                                    })
-                                });
-                            }
-                        }
-                        continue;
-                    }
-                    var value = item.value;
-                    if (typeAttr === 'checkbox') {
-                        value = String(item.checked);
-                    }
-                    if (typeAttr === 'radio' && !item.checked) {
-                        continue;
-                    }
-                    var finalType = coerceType || typeAttr;
-                    if (finalType == null || finalType === '') {
-                        finalType = 'string';
-                    }
-                    if (name != null) {
-                        var newBody = [];
-                        for (var b = 0; b < body.length; b++) {
-                            if (body[b].name !== name) { newBody.push(body[b]); }
-                        }
-                        body = newBody;
-                        body.push({ name: name, type: finalType, value: value });
-                    }
-                }
-                var L = __loader.start();
-                try { body = body ? body.slice() : []; } catch(_){}
-                var rid = generateRequestId();
-                
-                // Setup response handler
-                var ws = (window).__tsuiWS;
-                var timeout = setTimeout(function() {
-                    try { __error('Request timeout ...'); } catch(__){}
-                    L.stop();
-                }, 30000);
-                
-                function handleResponse(msg) {
-                    if (msg.type === 'response' && msg.rid === rid) {
-                        clearTimeout(timeout);
-                        
-                        // Handle element from response
-                        if (msg.el) {
-                            var html = jsElementToHTML(msg.el);
-
-                            // Extract and execute scripts
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(html, 'text/html');
-                            const scripts = Array.prototype.slice.call(doc.body.querySelectorAll('script')).concat(Array.prototype.slice.call(doc.head.querySelectorAll('script')));
-                            for (var i = 0; i < scripts.length; i++) {
-                                const newScript = document.createElement('script');
-                                newScript.textContent = scripts[i].textContent;
-                                document.body.appendChild(newScript);
-                            }
-
-                            const el2 = document.getElementById(target_id);
-                            if (el2 != null) {
-                                // Use safer DOM manipulation where possible
-                                if (swap === 'inline') {
-                                    try {
-                                        if (typeof DOMParser !== 'undefined') {
-                                            const parser = new DOMParser();
-                                            const doc = parser.parseFromString(html, 'text/html');
-                                            // Clear element safely
-                                            while (el2.firstChild) {
-                                                el2.removeChild(el2.firstChild);
-                                            }
-                                            // Append parsed nodes
-                                            while (doc.body.firstChild) {
-                                                el2.appendChild(doc.body.firstChild);
-                                            }
-                                        } else {
-                                            // Fallback with warning
-                                            console.warn('DOMParser not available, using innerHTML');
-                                            el2.innerHTML = html;
-                                        }
-                                    } catch (e) {
-                                        // Fallback to text content if parsing fails
-                                        console.error('HTML parsing failed, using text content:', e);
-                                        el2.textContent = html;
-                                    }
-                                }
-                                else if (swap === 'outline') { el2.outerHTML = html; }
-                                else if (swap === 'append') { el2.insertAdjacentHTML('beforeend', html); }
-                                else if (swap === 'prepend') { el2.insertAdjacentHTML('afterbegin', html); }
-                            }
-                        }
-
-                        // Handle operations from response
-                        if (msg.ops && Array.isArray(msg.ops)) {
-                            for (var i = 0; i < msg.ops.length; i++) {
-                                applyPatchOp(msg.ops[i]);
-                            }
-                        }
-                        
-                        L.stop();
-                    }
-                }
-                
-                // Add one-time listener for this response
-                ws.addEventListener('message', function onMessage(ev) {
-                    try {
-                        var msg = JSON.parse(String(ev.data || '{}'));
-                        // Only handle and remove listener if this is our response
-                        if (msg.type === 'response' && msg.rid === rid) {
-                            handleResponse(msg);
-                            ws.removeEventListener('message', onMessage);
-                        }
-                    } catch(_) {}
-                });
-                
-                // Send call message via WebSocket
-                try {
-                    ws.send(JSON.stringify({
-                        type: 'call',
-                        rid: rid,
-                        act: 'form',
-                        path: path,
-                        swap: swap,
-                        tgt: target_id,
-                        vals: body
-                    }));
-                } catch(e) {
-                    try { __error('Failed to send action ...'); } catch(__){}
-                    clearTimeout(timeout);
-                    L.stop();
-                }
-    }
-`);
-
-export const __load = ui.Trim(`
-    function __load(href) {
-        event.preventDefault();
-        var L = __loader.start();
-        var url = href;
-        fetch(url, { method: 'GET' })
-            .then(function (resp) { if (!resp.ok) { throw new Error('HTTP ' + resp.status); } return resp.text(); })
-            .then(function (html) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                document.title = doc.title;
-
-                const collectedScripts = [];
-                if (doc.head) {
-                    const headScripts = doc.head.querySelectorAll('script');
-                    for (let i = 0; i < headScripts.length; i++) {
-                        const scriptEl = headScripts[i];
-                        collectedScripts.push({
-                            target: 'head',
-                            src: scriptEl.getAttribute('src') || '',
-                            type: scriptEl.getAttribute('type') || '',
-                            text: scriptEl.textContent || '',
-                        });
-                        if (scriptEl.parentNode) {
-                            scriptEl.parentNode.removeChild(scriptEl);
-                        }
-                    }
-                }
-                if (doc.body) {
-                    const bodyScripts = doc.body.querySelectorAll('script');
-                    for (let i = 0; i < bodyScripts.length; i++) {
-                        const scriptEl = bodyScripts[i];
-                        collectedScripts.push({
-                            target: 'body',
-                            src: scriptEl.getAttribute('src') || '',
-                            type: scriptEl.getAttribute('type') || '',
-                            text: scriptEl.textContent || '',
-                        });
-                        if (scriptEl.parentNode) {
-                            scriptEl.parentNode.removeChild(scriptEl);
-                        }
-                    }
-                }
-
-                // Safer body replacement
-                try {
-                    // Clear body safely
-                    while (document.body.firstChild) {
-                        document.body.removeChild(document.body.firstChild);
-                    }
-                    // Append new content
-                    while (doc.body.firstChild) {
-                        document.body.appendChild(doc.body.firstChild);
-                    }
-                } catch (e) {
-                    // Fallback to innerHTML if safe method fails
-                    console.warn('Safe body replacement failed, using innerHTML:', e);
-                    document.body.innerHTML = doc.body.innerHTML;
-                }
-
-                for (let i = 0; i < collectedScripts.length; i++) {
-                    const info = collectedScripts[i];
-                    const newScript = document.createElement('script');
-                    if (info.type) {
-                        newScript.type = info.type;
-                    }
-                    if (info.src) {
-                        newScript.src = info.src;
-                    } else {
-                        newScript.text = info.text;
-                    }
-                    if (info.target === 'head') {
-                        document.head.appendChild(newScript);
-                    } else {
-                        document.body.appendChild(newScript);
-                    }
-                }
-
-                window.history.pushState({}, doc.title, href);
-            })
-            .catch(function (_) { try { __error('Something went wrong ...'); } catch(__){} })
-            .finally(function () { L.stop(); });
-    }
-`);
-
-export const __router = ui.Trim(`
-    (function(){
-        try {
-            if ((window).__tsuiRouterInit) { return; }
-            (window).__tsuiRouterInit = true;
-
-            var __router = {
-                isLoading: false,
-                currentPath: window.location.pathname + window.location.search
-            };
-
-            var CONTENT_ID = '__content__';
-
-            // Match a pathname against pattern routes
-            // Converts pattern /users/{id} to regex /users/([^/]+) and tests against pathname
-            function matchPattern(pathname, routeMap) {
-                for (var pattern in routeMap) {
-                    var routeInfo = routeMap[pattern];
-                    if (typeof routeInfo === 'object' && routeInfo.pattern) {
-                        // Convert pattern to regex: /users/{id} -> ^/users/([^/]+)$
-                        var regexStr = pattern.replace(/\\{[^}]+\\}/g, '([^/]+)');
-                        var regex = new RegExp('^' + regexStr + '$');
-                        if (regex.test(pathname)) {
-                            return routeInfo;
-                        }
-                    }
-                }
-                return null;
-            }
-
-            // Update nav link active states based on current path
-            function updateNavActiveState(currentPath) {
-                var navLinks = document.querySelectorAll('nav a[href]');
-                var pathOnly = currentPath.split('?')[0].toLowerCase();
-                
-                // Class definitions matching app.ts layout
-                var baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap transition-colors';
-                var activeCls = baseCls + ' bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500';
-                var inactiveCls = baseCls + ' text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700';
-                
-                for (var i = 0; i < navLinks.length; i++) {
-                    var link = navLinks[i];
-                    var href = (link.getAttribute('href') || '').toLowerCase();
-                    var isActive = href === pathOnly;
-                    link.className = isActive ? activeCls : inactiveCls;
-                }
-            }
-
-            function navigate(path, skipPushState) {
-                if (__router.isLoading) { return; }
-                __router.isLoading = true;
-
-                // Preserve query string
-                var queryIndex = path.indexOf('?');
-                var pathname = queryIndex >= 0 ? path.substring(0, queryIndex) : path;
-                var query = queryIndex >= 0 ? path.substring(queryIndex) : '';
-
-                // Normalize pathname
-                if (!pathname) pathname = '/';
-                if (!pathname.startsWith('/')) pathname = '/' + pathname;
-
-                var routes = (window).__routes || {};
-                
-                // Try exact match first
-                var routeInfo = routes[pathname];
-                var isPatternRoute = false;
-                var patternPath = pathname;
-
-                // If not found, try pattern matching
-                if (!routeInfo) {
-                    routeInfo = matchPattern(pathname, routes);
-                    if (routeInfo && typeof routeInfo === 'object') {
-                        isPatternRoute = true;
-                        patternPath = routeInfo.path;
-                    }
-                }
-
-                if (!routeInfo) {
-                    console.error('No route found for path:', pathname);
-                    __router.isLoading = false;
-                    window.location.href = path;
-                    return;
-                }
-
-                var L = __loader.start();
-
-                // POST to route path with actual path in body (matching g-sui behavior)
-                var routePath = typeof routeInfo === 'string' ? routeInfo : routeInfo.path;
-                var fetchBody = JSON.stringify({ path: pathname + query });
-
-                fetch(routePath, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' },
-                    body: fetchBody
-                })
-                    .then(function(resp) {
-                        if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
-                        return resp.json();
-                    })
-                    .then(function(data) {
-                        if (data.title) {
-                            document.title = data.title;
-                        }
-                        if (data.ops) {
-                            for (var i = 0; i < data.ops.length; i++) {
-                                applyPatchOp(data.ops[i]);
-                            }
-                        }
-                        if (data.el) {
-                            var html = jsElementToHTML(data.el);
-                            var contentEl = document.getElementById(CONTENT_ID);
-                            if (contentEl) {
-                                try {
-                                    if (typeof DOMParser !== 'undefined') {
-                                        var parser = new DOMParser();
-                                        var doc = parser.parseFromString(html, 'text/html');
-                                        
-                                        // Extract scripts before clearing content
-                                        var scripts = [];
-                                        var scriptNodes = doc.querySelectorAll('script');
-                                        for (var i = 0; i < scriptNodes.length; i++) {
-                                            scripts.push(scriptNodes[i].textContent);
-                                        }
-                                        
-                                        // Clear and update content
-                                        while (contentEl.firstChild) {
-                                            contentEl.removeChild(contentEl.firstChild);
-                                        }
-                                        while (doc.body.firstChild) {
-                                            contentEl.appendChild(doc.body.firstChild);
-                                        }
-                                        
-                                        // Execute scripts after content is in DOM
-                                        for (var i = 0; i < scripts.length; i++) {
-                                            var newScript = document.createElement('script');
-                                            newScript.textContent = scripts[i];
-                                            document.body.appendChild(newScript);
-                                        }
-                                    } else {
-                                        contentEl.innerHTML = html;
-                                    }
-                                } catch (e) {
-                                    console.error('Failed to patch content:', e);
-                                    contentEl.innerHTML = html;
-                                }
-                            } else {
-                                console.warn('Content element not found:', CONTENT_ID);
-                            }
-                        }
-                        if (!skipPushState) {
-                            window.history.pushState({}, data.title || '', path);
-                        }
-                        __router.currentPath = path;
-                        
-                        // Update nav active states after successful navigation
-                        updateNavActiveState(pathname);
-                    })
-                    .catch(function(err) {
-                        console.error('Navigation error:', err);
-                        try { __error('Failed to load page ...'); } catch(__){}
-                        window.location.href = path;
-                    })
-                    .finally(function() {
-                        __router.isLoading = false;
-                        L.stop();
-                    });
-            }
-
-            function interceptLinkClick(event) {
-                var link = event.target.closest('a');
-                if (!link) { return; }
-
-                var href = link.getAttribute('href');
-                if (!href) { return; }
-
-                if (href.startsWith('#')) { return; }
-                if (href.startsWith('http://') || href.startsWith('https://')) {
-                    if (new URL(href).origin !== window.location.origin) { return; }
-                }
-                if (link.getAttribute('target')) { return; }
-                if (link.getAttribute('download')) { return; }
-
-                event.preventDefault();
-                navigate(href);
-            }
-
-            function handlePopState(event) {
-                var path = window.location.pathname + window.location.search;
-                if (path !== __router.currentPath) {
-                    navigate(path, true);
-                }
-            }
-
-            document.addEventListener('click', interceptLinkClick, true);
-            window.addEventListener('popstate', handlePopState);
-
-            __router.navigate = navigate;
-            try { (window).__router = __router; } catch(_){}
-        } catch(_){ }
-    })();
-`);
-
-export function MakeApp(defaultLanguage: string) {
-    return new App(defaultLanguage);
-}
-
-// Theme initializer and toggler: applies html.dark class from stored preference or system
-export const __theme = ui.Trim(`
-    (function(){
-        try {
-            if ((window).__tsuiThemeInit) { return; }
-            (window).__tsuiThemeInit = true;
-            var doc = document.documentElement;
-            function apply(mode){
-                var m = mode;
-                if (m === 'system') {
-                    try {
-                        m = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-                    } catch (_) { m = 'light'; }
-                }
-                if (m === 'dark') { try { doc.classList.add('dark'); doc.style.colorScheme = 'dark'; } catch(_){} }
-                else { try { doc.classList.remove('dark'); doc.style.colorScheme = 'light'; } catch(_){} }
-            }
-            function set(mode){ try { localStorage.setItem('theme', mode); } catch(_){} apply(mode); }
-            try { (window).setTheme = set; } catch(_){}
-            try { (window).toggleTheme = function(){ var dark = !!doc.classList.contains('dark'); set(dark ? 'light' : 'dark'); }; } catch(_){}
-            var init = 'system';
-            try { init = localStorage.getItem('theme') || 'system'; } catch(_){}
-            apply(init);
-            try {
-                if (window.matchMedia) {
-                    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
-                        var s = '';
-                        try { s = localStorage.getItem('theme') || ''; } catch(_){ }
-                        if (!s || s === 'system') { apply('system'); }
-                    });
-                }
-            } catch(_){ }
-        } catch(_){ }
-    })();
-`);
-
-// Session helper: read ID from cookie `tsui__sid`; no URL params
-// (No __sid helper; sessions are cookie-based only.)
-
-function script(parts: string[]) {
-    var out = "";
-    for (var i = 0; i < parts.length; i++) {
-        out += "<script>" + parts[i] + "</script>";
-    }
-    return out;
-}
-
-function devErrorPage(): string {
-    return "<!DOCTYPE html>\n" +
-        '<html lang="en">\n' +
-        "<head>\n" +
-        '  <meta charset="UTF-8">\n' +
-        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-        "  <title>Something went wrong…</title>\n" +
-        "  <style>\n" +
-        "    html,body{height:100%}\n" +
-        "    body{margin:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827}\n" +
-        "    .card{background:#fff;box-shadow:0 10px 25px rgba(0,0,0,.08);border-radius:14px;padding:28px 32px;border:1px solid rgba(0,0,0,.06);text-align:center}\n" +
-        "    .title{font-size:20px;font-weight:600;margin-bottom:6px}\n" +
-        "    .sub{font-size:14px;color:#6b7280}\n" +
-        "  </style>\n" +
-        "</head>\n" +
-        "<body>\n" +
-        '  <div class="card">\n' +
-        '    <div class="title">Something went wrong…</div>\n' +
-        '    <div class="sub">Waiting for server changes. Page will refresh when ready.</div>\n' +
-        "  </div>\n" +
-        "  <script>\n" +
-        "    (function(){\n" +
-        "      try {\n" +
-        '        var KEY="__tsui_last_error_reload";\n' +
-        "        function shouldReload() {\n" +
-        "          try {\n" +
-        "            var v=sessionStorage.getItem(KEY);\n" +
-        "            var last=v?parseInt(v,10):0;\n" +
-        "            var now=Date.now();\n" +
-        "            if(!last||now-last>2500){\n" +
-        "              sessionStorage.setItem(KEY,String(now));\n" +
-        "              return true;\n" +
-        "            }\n" +
-        "            return false;\n" +
-        "          } catch(_){\n" +
-        "            return true;\n" +
-        "          }\n" +
-        "        }\n" +
-        "        function connect() {\n" +
-        '          var p=(location.protocol==="https:")?"wss://":"ws://";\n' +
-        '          var ws=new WebSocket(p+location.host+"/__ws");\n' +
-        "          ws.onopen=function(){\n" +
-        "            try{ if(shouldReload()){ location.reload(); } }catch(_){}\n" +
-        "          };\n" +
-        "          ws.onclose=function(){ setTimeout(connect,1000); };\n" +
-        "          ws.onerror=function(){ try{ws.close();}catch(_){ } };\n" +
-        "        }\n" +
-        "        connect();\n" +
-        "      } catch(_){ }\n" +
-        "    })();\n" +
-        "  </script>\n" +
-        "</body>\n" +
-        "</html>\n";
-}
-
-function isSecure(req: IncomingMessage): boolean {
-    try {
-        const enc = (req.socket as any) && (req.socket as any).encrypted;
-        if (enc) {
-            return true;
-        }
-        const xf = String(
-            (req.headers && (req.headers["x-forwarded-proto"] as string)) || "",
-        );
-        if (xf) {
-            const first = xf.split(",")[0].trim().toLowerCase();
-            return first === "https";
-        }
-        return false;
-    } catch (_) {
-        return false;
-    }
-}
-
-function parseCookies(header: string): { [k: string]: string } {
-    const out: { [k: string]: string } = {};
-    if (!header) {
-        return out;
-    }
-    const parts = header.split(";");
-    for (let i = 0; i < parts.length; i++) {
-        let p = parts[i];
-        if (!p) {
-            continue;
-        }
-        try {
-            p = p.trim();
-        } catch (_) { }
-        const eq = p.indexOf("=");
-        if (eq < 0) {
-            continue;
-        }
-        const k = p.slice(0, eq).trim();
-        let v = p.slice(eq + 1);
-        try {
-            v = decodeURIComponent(v);
-        } catch (_) { }
-        out[k] = v;
-    }
-    return out;
-}
-
-function isCompressibleContentType(contentType: string): boolean {
-    const c = String(contentType || "").toLowerCase();
-    return c.includes("text/") ||
-        c.includes("application/json") ||
-        c.includes("application/javascript") ||
-        c.includes("application/manifest+json") ||
-        c.includes("image/svg+xml") ||
-        c.includes("application/xml");
-}
-
-function maybeGzipNode(req: IncomingMessage, res: ServerResponse, body: string): Buffer | string {
-    try {
-        const accept = String(req.headers["accept-encoding"] || "").toLowerCase();
-        const upgrade = String(req.headers["upgrade"] || "").toLowerCase();
-        const existing = String(res.getHeader("Content-Encoding") || "").toLowerCase();
-        const contentType = String(res.getHeader("Content-Type") || "text/html; charset=utf-8");
-        if (!accept.includes("gzip") || upgrade === "websocket" || existing || !isCompressibleContentType(contentType)) {
-            return body;
-        }
-        const gz = gzipSync(Buffer.from(body, "utf8"));
-        if (!gz || gz.length === 0) {
-            return body;
-        }
-        res.setHeader("Content-Encoding", "gzip");
-        res.setHeader("Vary", "Accept-Encoding");
-        res.setHeader("Content-Length", String(gz.length));
-        return gz;
-    } catch (_) {
-        return body;
-    }
-}
-
-function maybeGzipBody(acceptEncoding: string, contentType: string, body: string): Buffer | string {
-    try {
-        if (!String(acceptEncoding || "").toLowerCase().includes("gzip")) {
-            return body;
-        }
-        if (!isCompressibleContentType(contentType)) {
-            return body;
-        }
-        const gz = gzipSync(Buffer.from(body, "utf8"));
-        if (!gz || gz.length === 0) {
-            return body;
-        }
-        return gz;
-    } catch (_) {
-        return body;
-    }
-}
-
-function normalizeMethod(method: string): "GET" | "POST" {
-    const m = (method || "").toString().trim().toUpperCase();
-    if (m === "POST") return POST;
-    return GET;
-}
-
-function normalizePath(p: string): string {
-    let path = (p || "").toString().trim();
-    // URL-decode the path to handle encoded characters like %7B for {
-    try {
-        path = decodeURIComponent(path);
-    } catch { /* ignore decode errors */ }
-    if (path.length === 0) path = "/";
-    if (!path.startsWith("/")) path = "/" + path;
-    return path.toLowerCase();
-}
-
-function routeKey(method: "GET" | "POST", path: string, callable: Callable): string {
-    if (callable.url != null) {
-        return callable.url
-    }
-
-    if (method === 'GET') {
-        return path;
-    }
-
-    return path + '-' + crypto.randomBytes(8).toString('hex');
-}
-
-// Minimal WebSocket helpers (server-side) using native http 'upgrade'
-function sha1Base64(s: string): string {
-    try {
-        const h = crypto.createHash("sha1");
-        h.update(s);
-        return h.digest("base64");
-    } catch (_) {
-        return "";
-    }
-}
-
-function encodeLength(len: number): Buffer {
+function encodeWSFrame(data: string): Buffer {
+    const payload = Buffer.from(data, 'utf8');
+    const len = payload.length;
+    let header: Buffer;
     if (len < 126) {
-        return Buffer.from([len]);
+        header = Buffer.alloc(2);
+        header[0] = 0x81; // FIN + text
+        header[1] = len;
+    } else if (len < 65536) {
+        header = Buffer.alloc(4);
+        header[0] = 0x81;
+        header[1] = 126;
+        header.writeUInt16BE(len, 2);
+    } else {
+        header = Buffer.alloc(10);
+        header[0] = 0x81;
+        header[1] = 127;
+        header.writeBigUInt64BE(BigInt(len), 2);
     }
-    if (len < 65536) {
-        const b = Buffer.alloc(3);
-        b[0] = 126;
-        b.writeUInt16BE(len, 1);
-        return b;
-    }
-    const out = Buffer.alloc(9);
-    out[0] = 127;
-    const hi = Math.floor(len / 0x100000000);
-    const lo = len >>> 0;
-    out.writeUInt32BE(hi, 1);
-    out.writeUInt32BE(lo, 5);
-    return out;
-}
-
-function wsFrame(data: string): Buffer {
-    const payload = Buffer.from(data, "utf8");
-    const header = Buffer.concat([
-        Buffer.from([0x81]),
-        encodeLength(payload.length),
-    ]);
     return Buffer.concat([header, payload]);
 }
 
-function wsSend(socket: WebSocketLike, data: string): void {
-    if (!socket) {
-        return;
-    }
-    // Bun ServerWebSocket
-    if (typeof socket.send === 'function' && typeof socket.write !== 'function') {
-        try {
-            socket.send(data);
-        } catch (e: unknown) {
-            // Ignore send errors
-        }
-        return;
-    }
-    // Node.js Socket
-    if (!socket.writable) {
-        return;
-    }
-    try {
-        socket.write?.(wsFrame(data));
-    } catch (e: unknown) {
-        console.error(e);
-    }
+interface WSClient {
+    socket: Duplex;
+    session: Record<string, unknown>;
+    sessionId: string;
+    send(data: string): void;
+    close(): void;
 }
 
-// Send a WebSocket Ping (opcode 0x9). Browsers auto-respond with Pong.
-function wsPing(socket: WebSocketLike, payload?: string): void {
-    if (!socket) {
-        return;
+function parseWSFrames(socket: Duplex, onMessage: (msg: string) => void, onClose: () => void): void {
+    let buf = Buffer.alloc(0);
+    let closed = false;
+
+    function cleanup() {
+        if (closed) return;
+        closed = true;
+        onClose();
     }
-    // Bun ServerWebSocket has ping method
-    if (typeof socket.ping === 'function') {
-        try {
-            socket.ping();
-        } catch (_) { }
-        return;
-    }
-    // Node.js Socket ping
-    if (!socket.writable) {
-        return;
-    }
-    try {
-        let body = Buffer.alloc(0);
-        if (payload) {
-            body = Buffer.from(payload, "utf8");
-            if (body.length > 125) {
-                body = body.slice(0, 125);
+
+    socket.on('data', function (chunk: Buffer) {
+        buf = Buffer.concat([buf, chunk]);
+        while (buf.length >= 2) {
+            const fin = (buf[0] & 0x80) !== 0;
+            const opcode = buf[0] & 0x0f;
+            const masked = (buf[1] & 0x80) !== 0;
+            let payloadLen = buf[1] & 0x7f;
+            let offset = 2;
+
+            if (payloadLen === 126) {
+                if (buf.length < 4) return;
+                payloadLen = buf.readUInt16BE(2);
+                offset = 4;
+            } else if (payloadLen === 127) {
+                if (buf.length < 10) return;
+                payloadLen = Number(buf.readBigUInt64BE(2));
+                offset = 10;
+            }
+
+            const maskSize = masked ? 4 : 0;
+            const totalLen = offset + maskSize + payloadLen;
+            if (buf.length < totalLen) return;
+
+            let payload = buf.subarray(offset + maskSize, totalLen);
+            if (masked) {
+                const mask = buf.subarray(offset, offset + 4);
+                payload = Buffer.from(payload);
+                for (let i = 0; i < payload.length; i++) {
+                    payload[i] ^= mask[i % 4];
+                }
+            }
+
+            buf = buf.subarray(totalLen);
+
+            if (opcode === 0x08) { // close
+                try { socket.write(Buffer.from([0x88, 0x00])); } catch (_) {}
+                socket.end();
+                cleanup();
+                return;
+            }
+            if (opcode === 0x09) { // ping
+                const pong = Buffer.alloc(2 + payload.length);
+                pong[0] = 0x8a; // pong
+                pong[1] = payload.length;
+                payload.copy(pong, 2);
+                try { socket.write(pong); } catch (_) {}
+                continue;
+            }
+            if (opcode === 0x0a) continue; // pong - ignore
+            if (fin && (opcode === 0x01 || opcode === 0x02)) {
+                onMessage(payload.toString('utf8'));
             }
         }
-        const header = Buffer.concat([
-            Buffer.from([0x89]),
-            encodeLength(body.length),
-        ]);
-        socket.write?.(Buffer.concat([header, body]));
-    } catch (_) { }
+    });
+
+    socket.on('close', cleanup);
+    socket.on('error', cleanup);
 }
 
-function handleUpgrade(app: App, req: IncomingMessage, socket: Socket): void {
-    const url = String(req.url || "/");
-    const path = url.split("?")[0];
-    if (path !== "/__ws") {
-        socket.destroy();
-        return;
+export type PageHandler = (ctx: Context) => Node;
+export type ActionHandler = (ctx: Context) => string;
+export type LayoutHandler = (ctx: Context) => Node;
+export type HTTPHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+
+interface RouteDef {
+    method: string;
+    path: string;
+    handler: HTTPHandler;
+}
+
+function injectContent(node: Node, pageNode: Node): boolean {
+    if (node.id === '__content__') {
+        node.children.push(pageNode);
+        return true;
+    }
+    for (const child of node.children) {
+        if (injectContent(child, pageNode)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function matchRoute(pattern: string, pathname: string): Record<string, string> | null {
+    const patternParts = pattern.split('/');
+    const pathParts = pathname.split('/');
+    if (patternParts.length !== pathParts.length) return null;
+    const params: Record<string, string> = {};
+    for (let i = 0; i < patternParts.length; i++) {
+        const pp = patternParts[i];
+        if (pp.startsWith(':')) {
+            params[pp.slice(1)] = decodeURIComponent(pathParts[i]);
+        } else if (pp !== pathParts[i]) {
+            return null;
+        }
+    }
+    return params;
+}
+
+async function readBody(req: IncomingMessage): Promise<string> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString('utf8');
+}
+
+function parseJSON<T>(value: string, fallback: T): T {
+    try {
+        return JSON.parse(value) as T;
+    } catch {
+        return fallback;
+    }
+}
+
+function escapeHTML(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+export class Context {
+    req: IncomingMessage;
+    res: ServerResponse;
+    private rawBody = '';
+    private extras: string[] = [];
+    private pathParams: Record<string, string> = {};
+    private session: Record<string, unknown> = {};
+    private headCSS: string[] = [];
+    private headJS: string[] = [];
+    private wsClient?: WSClient;
+
+    constructor(req: IncomingMessage, res: ServerResponse, rawBody = '') {
+        this.req = req;
+        this.res = res;
+        this.rawBody = rawBody;
     }
 
-    // Rate limiting for WebSocket connections if security is enabled
-    if (app._securityEnabled) {
-        const clientIp = getClientIP(req);
-        if (!app._rateLimiter.isAllowed(clientIp)) {
-            socket.destroy();
-            return;
+    /** @internal */
+    _setWSClient(client: WSClient): void { this.wsClient = client; }
+
+    Push(js: string): void {
+        if (this.wsClient) {
+            this.wsClient.send(js);
         }
     }
 
-    const key = String(
-        (req.headers && (req.headers["sec-websocket-key"] as string)) || "",
-    );
-    if (!key) {
-        socket.destroy();
-        return;
+    Body<T extends object>(target: T): T {
+        const parsed = parseJSON<Record<string, unknown>>(this.rawBody, {});
+        Object.assign(target, parsed);
+        return target;
     }
 
-    // Basic validation of WebSocket key format
-    if (key.length !== 24 || !/^[A-Za-z0-9+/]+=*$/.test(key)) {
-        socket.destroy();
-        return;
+    Success(message: string): void { this.extras.push(Notify('success', message)); }
+    Error(message: string): void { this.extras.push(Notify('error', message)); }
+    Info(message: string): void { this.extras.push(Notify('info', message)); }
+    JS(code: string): void { this.extras.push(code); }
+    Build(result: string): string { return this.extras.join('') + result; }
+
+    QueryParam(name: string): string | undefined {
+        const url = new URL(this.req.url || '/', 'http://localhost');
+        return url.searchParams.get(name) || undefined;
     }
-    // Resolve sid from cookies; generate if missing
-    let sid = "";
-    try {
-        const cookieHeader = String(
-            (req.headers && (req.headers["cookie"] as string)) || "",
-        );
-        const cookies = parseCookies(cookieHeader);
-        sid = String(cookies["tsui__sid"] || "");
-    } catch (_) { }
-    let setCookieHeader = "";
-    if (!sid) {
-        sid = "sess-" + crypto.randomBytes(8).toString('hex');
-        setCookieHeader =
-            "Set-Cookie: tsui__sid=" +
-            encodeURIComponent(sid) +
-            "; Path=/; HttpOnly; SameSite=Lax" +
-            (isSecure(req) ? "; Secure" : "");
+
+    QueryParams(name: string): string[] {
+        const url = new URL(this.req.url || '/', 'http://localhost');
+        return url.searchParams.getAll(name);
     }
-    app._touchSession(sid);
-    const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    const accept = sha1Base64(key + GUID);
-    const lines = [
-        "HTTP/1.1 101 Switching Protocols",
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        "Sec-WebSocket-Accept: " + accept,
-    ];
-    if (setCookieHeader) {
-        lines.push(setCookieHeader);
+
+    AllQueryParams(): Record<string, string[]> {
+        const url = new URL(this.req.url || '/', 'http://localhost');
+        const result: Record<string, string[]> = {};
+        url.searchParams.forEach(function (value, key) {
+            if (!result[key]) {
+                result[key] = [];
+            }
+            result[key].push(value);
+        });
+        return result;
     }
-    lines.push("\r\n");
-    const headers = lines.join("\r\n");
-    socket.write(headers);
-    const record = { socket: socket, sid: sid, lastPong: Date.now() };
-    app._wsClients.add(record);
-    wsSend(socket, JSON.stringify({ type: "hello", ok: true }));
-    // Heartbeat: touch session + ping; drop if no pong within 75s
-    let heartbeat: ReturnType<typeof setInterval> | 0 = 0;
-    try {
-        heartbeat = setInterval(function () {
-            try {
-                if (sid) {
-                    app._touchSession(sid);
-                }
-                const now = Date.now();
-                const age = now - record.lastPong;
-                if (age > 75000) {
-                    try {
-                        socket.destroy();
-                    } catch (_) { }
+
+    get PathParams(): Record<string, string> {
+        return this.pathParams;
+    }
+
+    /** @internal */
+    _setPathParams(params: Record<string, string>): void {
+        this.pathParams = params;
+    }
+
+    get Session(): Record<string, unknown> {
+        return this.session;
+    }
+
+    /** @internal */
+    _setSession(session: Record<string, unknown>): void {
+        this.session = session;
+    }
+
+    HeadCSS(urls?: string[], inline?: string): void {
+        if (urls) {
+            for (const url of urls) {
+                this.headCSS.push(`<link rel="stylesheet" href="${escapeHTML(url)}">`);
+            }
+        }
+        if (inline) {
+            this.headCSS.push(`<style>${inline}</style>`);
+        }
+    }
+
+    HeadJS(urls?: string[], inline?: string): void {
+        if (urls) {
+            for (const url of urls) {
+                this.headJS.push(`<script src="${escapeHTML(url)}"></script>`);
+            }
+        }
+        if (inline) {
+            this.headJS.push(`<script>${inline}</script>`);
+        }
+    }
+
+    /** @internal */
+    _getHeadCSS(): string[] { return this.headCSS; }
+    /** @internal */
+    _getHeadJS(): string[] { return this.headJS; }
+}
+
+export class App {
+    pages = new Map<string, { title?: string; handler: PageHandler }>();
+    actions = new Map<string, ActionHandler>();
+    routes: RouteDef[] = [];
+    layout?: LayoutHandler;
+    HTMLHead: string[] = [];
+    Title = 't-sui';
+    Description = '';
+    Favicon = '';
+    private sessions = true;
+    private sessionStore = new Map<string, Record<string, unknown>>();
+    private wsClients = new Set<WSClient>();
+
+    private getSessionId(req: IncomingMessage, res: ServerResponse | null): string {
+        const cookies = req.headers.cookie || '';
+        const match = cookies.match(/(?:^|;\s*)tsui_sid=([^;]+)/);
+        if (match) return match[1];
+        const sid = crypto.randomBytes(16).toString('hex');
+        if (res) {
+            res.setHeader('set-cookie', `tsui_sid=${sid}; Path=/; HttpOnly; SameSite=Lax`);
+        }
+        return sid;
+    }
+
+    private getSessionFromReq(req: IncomingMessage, res: ServerResponse | null): Record<string, unknown> {
+        const sid = this.getSessionId(req, res);
+        let session = this.sessionStore.get(sid);
+        if (!session) {
+            session = {};
+            this.sessionStore.set(sid, session);
+        }
+        return session;
+    }
+
+    Page(pathname: string, title: string | PageHandler, handler?: PageHandler): void {
+        if (typeof title === 'function') {
+            this.pages.set(pathname, { handler: title });
+            return;
+        }
+        if (!handler) {
+            throw new Error(`Page(${pathname}) requires a handler`);
+        }
+        this.pages.set(pathname, { title, handler });
+    }
+
+    Action(name: string, handler: ActionHandler): void {
+        this.actions.set(name, handler);
+    }
+
+    GET(pathname: string, handler: HTTPHandler): void { this.routes.push({ method: 'GET', path: pathname, handler }); }
+    POST(pathname: string, handler: HTTPHandler): void { this.routes.push({ method: 'POST', path: pathname, handler }); }
+    DELETE(pathname: string, handler: HTTPHandler): void { this.routes.push({ method: 'DELETE', path: pathname, handler }); }
+    Layout(handler: LayoutHandler): void { this.layout = handler; }
+
+    CSS(urls: string[] = [], css = ''): void {
+        for (const url of urls) {
+            this.HTMLHead.push(`<link rel="stylesheet" href="${escapeHTML(url)}">`);
+        }
+        if (css) {
+            this.HTMLHead.push(`<style>${css}</style>`);
+        }
+    }
+
+    Assets(dir: string, prefix = '/assets/'): void {
+        const cleanPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+        this.routes.push({
+            method: 'GET',
+            path: cleanPrefix,
+            handler: async (req, res) => {
+                const reqPath = req.url || '/';
+                if (!reqPath.startsWith(cleanPrefix)) {
+                    res.statusCode = 404;
+                    res.end('Not found');
                     return;
                 }
-                wsPing(socket);
-            } catch (_) { }
-        }, 25000);
-    } catch (_) { }
-    socket.on("error", function () {
-        socket.destroy();
-    });
-    socket.on("close", function () {
-        try {
-            if (heartbeat) {
-                clearInterval(heartbeat);
-                heartbeat = 0;
-            }
-        } catch (_) { }
-        const it = app._wsClients.values();
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            if (c.socket === socket) {
-                app._wsClients.delete(c);
-            }
-        }
-    });
-    socket.on("data", function (buf: Buffer) {
-        if (!buf || buf.length < 2) {
-            return;
-        }
-        const firstByte = buf[0];
-        const opcode = firstByte & 0x0f;
-        const masked = (buf[1] & 0x80) === 0x80;
-        let payloadLength = buf[1] & 0x7f;
-        let offset = 2;
-
-        // Handle extended payload length
-        if (payloadLength === 126) {
-            if (buf.length < 4) {
-                return;
-            }
-            payloadLength = buf.readUInt16BE(2);
-            offset = 4;
-        } else if (payloadLength === 127) {
-            if (buf.length < 10) {
-                return;
-            }
-            // For simplicity, we don't handle 64-bit lengths > 2^32
-            payloadLength = buf.readUInt32BE(6);
-            offset = 10;
-        }
-
-        // Handle masking key
-        let maskKey: Buffer | undefined;
-        if (masked) {
-            if (buf.length < offset + 4) {
-                return;
-            }
-            maskKey = buf.slice(offset, offset + 4);
-            offset += 4;
-        }
-
-        // Extract payload
-        if (buf.length < offset + payloadLength) {
-            return;
-        }
-        let payload = buf.slice(offset, offset + payloadLength);
-
-        // Unmask payload if needed
-        if (masked && maskKey) {
-            for (let i = 0; i < payload.length; i++) {
-                payload[i] ^= maskKey[i % 4];
-            }
-        }
-
-        // Handle different frame types
-        if (opcode === 0x8) {
-            // Close frame
-            socket.end();
-            return;
-        }
-        if (opcode === 0x9) {
-            // Ping frame - respond with pong
-            const pongFrame = Buffer.concat([
-                Buffer.from([0x8a]), // Pong opcode with FIN bit
-                Buffer.from([payload.length]), // Payload length (unmasked)
-                payload, // Echo the ping payload
-            ]);
-            socket.write(pongFrame);
-            return;
-        }
-        if (opcode === 0xa) {
-            // Pong frame - update last seen
-            try {
-                record.lastPong = Date.now();
-            } catch (_) { }
-            return;
-        }
-        // Text frames: support app-level ping/pong, call messages, and invalid-target notices
-        if (opcode === 0x1) {
-            try {
-                const text = payload.toString("utf8");
-                let msg: { type?: string; id?: string; [key: string]: unknown } = {};
+                const relative = reqPath.slice(cleanPrefix.length);
                 try {
-                    // Use safer JSON parsing for WebSocket messages
-                    msg = safeJsonParse<{ type?: string; id?: string }>(text, 10000) || {};
-                } catch (_) {
-                    msg = {};
+                    const file = await readFile(path.join(dir, relative));
+                    res.statusCode = 200;
+                    res.end(file);
+                } catch {
+                    res.statusCode = 404;
+                    res.end('Not found');
                 }
-                const t = String(msg.type || "");
-                if (t === "ping") {
-                    try {
-                        wsSend(
-                            socket,
-                            JSON.stringify({ type: "pong", t: Date.now() }),
-                        );
-                    } catch (_) { }
-                } else if (t === "call") {
-                    // Handle action call via WebSocket
-                    try {
-                        const callMsg = msg as unknown as JSCallMessage;
-                        const rid = String(callMsg.rid || "");
-                        const path = String(callMsg.path || "");
-                        const sid = String(record.sid || "");
-                        
-                        // Look up handler by path from stored callables
-                        const callable = app.getCallable(path);
-                        if (!callable) {
-                            wsSend(socket, JSON.stringify({
-                                type: "response",
-                                rid: rid,
-                                ops: [{ op: "notify", msg: "Action not found", variant: "error" }]
-                            }));
-                            return;
-                        }
-                        
-                        // Create Context from WebSocket data
-                        const mockHeaders: Record<string, string> = {};
-                        const mockReq = {
-                            url: path,
-                            method: "POST",
-                            headers: mockHeaders,
-                        } as unknown as IncomingMessage;
-                        
-                        const mockResHeaders: Record<string, string | string[]> = {};
-                        const mockRes = {
-                            statusCode: 200,
-                            headers: mockResHeaders,
-                            setHeader: function(name: string, value: string | string[]) { mockResHeaders[name] = value; },
-                            getHeaders: function() { return mockResHeaders; },
-                            write: function() {},
-                            end: function() {},
-                        } as unknown as ServerResponse;
-                        
-                        // Transform BodyItem[] from protocol format to server format
-                        // Preserve the type from client (e.g., "checkbox", "bool", "number") for proper coercion
-                        const serverBody: BodyItem[] = (callMsg.vals || []).map(v => ({
-                            name: v.name,
-                            type: v.type || (typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string'),
-                            value: String(v.value ?? "")
-                        }));
-                        
-                        // Store request body values for Context.Body()
-                        setRequestBody(sid, serverBody);
-                        setRequestFiles(sid, extractRequestFiles(serverBody));
-                        
-                        // Create context and execute handler
-                        const ctx = new Context(app, mockReq, mockRes, sid);
-                        
-                        // Execute handler (may be async)
-                        Promise.resolve()
-                            .then(function() {
-                                return callable(ctx);
-                            })
-                            .then(function(html: string) {
-                                let resultHtml = html;
-                                if (ctx.append.length) resultHtml += ctx.append.join("");
-                                
-                                // Convert HTML response to JSElement
-                                let jsElement: JSElement | undefined;
-                                if (resultHtml) {
-                                    const parsed = htmlToJSElement(resultHtml);
-                                    if (parsed !== null) {
-                                        jsElement = parsed;
-                                    }
-                                }
-                                
-                                // Send JSResponseMessage back
-                                const response: JSResponseMessage = {
-                                    type: "response",
-                                    rid: rid,
-                                };
-                                
-                                if (jsElement) {
-                                    response.el = jsElement;
-                                }
-                                
-                                if (ctx.ops.length > 0) {
-                                    response.ops = ctx.ops;
-                                }
-                                
-                                wsSend(socket, JSON.stringify(response));
-                            })
-                            .catch(function(err: unknown) {
-                                console.error("Error executing action handler:", err);
-                                const message = err instanceof Error && err.message
-                                    ? "Server error: " + err.message
-                                    : "Server error while executing action";
-                                wsSend(socket, JSON.stringify({
-                                    type: "response",
-                                    rid: rid,
-                                    ops: [{ op: "notify", msg: message, variant: "error-reload" }]
-                                }));
-                            });
-                    } catch (err) {
-                        console.error("Error handling call message:", err);
-                        const message = err instanceof Error && err.message
-                            ? "Server error: " + err.message
-                            : "Server error while handling action";
-                        wsSend(socket, JSON.stringify({
-                            type: "response",
-                            rid: String((msg as unknown as JSCallMessage).rid || ""),
-                            ops: [{ op: "notify", msg: message, variant: "error-reload" }]
-                        }));
-                    }
-                } else if (t === "invalid") {
-                    try {
-                        const id = String(msg.id || "");
-                        const sid2 = String(record.sid || "");
-                        if (sid2) {
-                            app._touchSession(sid2);
-                            const rec2 = app._sessions.get(sid2);
-                            if (rec2 && rec2.targets) {
-                                const fn = rec2.targets.get(id);
-                                if (typeof fn === "function") {
-                                    try {
-                                        fn();
-                                    } catch (_) { }
-                                }
-                                try {
-                                    rec2.targets.delete(id);
-                                } catch (_) { }
-                            }
-                        }
-                    } catch (_) { }
-                }
-            } catch (_) { }
-            return;
-        }
-        // Other frames ignored
-    });
-}
-
-// Bun-specific WebSocket handlers
-function handleUpgradeBun(app: App, ws: WebSocketLike): void {
-    const wsData = ws.data as Record<string, unknown> | undefined;
-    const sid = String((wsData && wsData.sid) || "");
-    if (!sid) {
-        try {
-            ws.close?.();
-        } catch (_) { }
-        return;
+            },
+        });
     }
 
-    app._touchSession(sid);
-    const record = { socket: ws, sid: sid, lastPong: Date.now() };
-    app._wsClients.add(record);
-    wsSend(ws, JSON.stringify({ type: "hello", ok: true }));
-
-    // Heartbeat: touch session + ping; drop if no pong within 75s
-    let heartbeat: ReturnType<typeof setInterval> | 0 = 0;
-    try {
-        heartbeat = setInterval(function () {
-            try {
-                if (sid) {
-                    app._touchSession(sid);
-                }
-                const now = Date.now();
-                const age = now - record.lastPong;
-                if (age > 75000) {
-                    try {
-                        ws.close?.();
-                    } catch (_) { }
-                    return;
-                }
-                wsPing(ws);
-            } catch (_) { }
-        }, 25000);
-    } catch (_) { }
-
-    // Store heartbeat cleanup function
-    (ws as Record<string, unknown>)._heartbeat = heartbeat;
-}
-
-function handleBunMessage(app: App, ws: WebSocketLike, msg: string | Buffer): void {
-    try {
-        // Find record
-        let record: WebSocketClient | null = null;
-        const it = app._wsClients.values();
-        while (true) {
-            const n = it.next();
-            if (n.done) {
-                break;
-            }
-            const c = n.value;
-            if (c.socket === ws) {
-                record = c;
-                break;
-            }
-        }
-
-        if (!record) {
-            return;
-        }
-
-        record.lastPong = Date.now();
-
-        const text = typeof msg === 'string' ? msg : String(msg);
-        let parsedMsg: { type?: string; id?: string; [key: string]: unknown } = {};
-        try {
-            parsedMsg = safeJsonParse<{ type?: string; id?: string }>(text, 10000) || {};
-        } catch (_) {
-            parsedMsg = {};
-        }
-
-        const msgType = String(parsedMsg.type || "");
-        if (msgType === "ping") {
-            try {
-                wsSend(
-                    ws,
-                    JSON.stringify({ type: "pong", t: Date.now() }),
-                );
-            } catch (_) { }
-        } else if (msgType === "call") {
-            // Handle action call via WebSocket
-            try {
-                const callMsg = parsedMsg as unknown as JSCallMessage;
-                const rid = String(callMsg.rid || "");
-                const path = String(callMsg.path || "");
-                const sid = String(record.sid || "");
-                
-                // Look up handler by path from stored callables
-                const callable = app.getCallable(path);
-                if (!callable) {
-                    wsSend(ws, JSON.stringify({
-                        type: "response",
-                        rid: rid,
-                        ops: [{ op: "notify", msg: "Action not found", variant: "error" }]
-                    }));
-                    return;
-                }
-                
-                // Create Context from WebSocket data
-                const mockHeaders: Record<string, string> = {};
-                const mockReq = {
-                    url: path,
-                    method: "POST",
-                    headers: mockHeaders,
-                } as unknown as IncomingMessage;
-                
-                const mockResHeaders: Record<string, string | string[]> = {};
-                const mockRes = {
-                    statusCode: 200,
-                    headers: mockResHeaders,
-                    setHeader: function(name: string, value: string | string[]) { mockResHeaders[name] = value; },
-                    getHeaders: function() { return mockResHeaders; },
-                    write: function() {},
-                    end: function() {},
-                } as unknown as ServerResponse;
-                
-                // Transform BodyItem[] from protocol format to server format
-                // Preserve the type from client (e.g., "checkbox", "bool", "number") for proper coercion
-                const serverBody: BodyItem[] = (callMsg.vals || []).map(v => ({
-                    name: v.name,
-                    type: v.type || (typeof v.value === 'boolean' ? 'bool' : typeof v.value === 'number' ? 'float64' : 'string'),
-                    value: String(v.value ?? "")
-                }));
-                
-                // Store request body values for Context.Body()
-                setRequestBody(sid, serverBody);
-                setRequestFiles(sid, extractRequestFiles(serverBody));
-                
-                // Create context and execute handler
-                const ctx = new Context(app, mockReq, mockRes, sid);
-                
-                // Execute handler (may be async)
-                Promise.resolve()
-                    .then(function() {
-                        return callable(ctx);
-                    })
-                    .then(function(html: string) {
-                        let resultHtml = html;
-                        if (ctx.append.length) resultHtml += ctx.append.join("");
-                        
-                        // Convert HTML response to JSElement
-                        let jsElement: JSElement | undefined;
-                        if (resultHtml) {
-                            const parsed = htmlToJSElement(resultHtml);
-                            if (parsed !== null) {
-                                jsElement = parsed;
-                            }
-                        }
-                        
-                        // Send JSResponseMessage back
-                        const response: JSResponseMessage = {
-                            type: "response",
-                            rid: rid,
-                        };
-                        
-                        if (jsElement) {
-                            response.el = jsElement;
-                        }
-                        
-                        if (ctx.ops.length > 0) {
-                            response.ops = ctx.ops;
-                        }
-                        
-                        wsSend(ws, JSON.stringify(response));
-                    })
-                    .catch(function(err: unknown) {
-                        console.error("Error executing action handler:", err);
-                        const message = err instanceof Error && err.message
-                            ? "Server error: " + err.message
-                            : "Server error while executing action";
-                        wsSend(ws, JSON.stringify({
-                            type: "response",
-                            rid: rid,
-                            ops: [{ op: "notify", msg: message, variant: "error-reload" }]
-                        }));
-                    });
-            } catch (err) {
-                console.error("Error handling call message:", err);
-                const message = err instanceof Error && err.message
-                    ? "Server error: " + err.message
-                    : "Server error while handling action";
-                wsSend(ws, JSON.stringify({
-                    type: "response",
-                    rid: String((parsedMsg as unknown as JSCallMessage).rid || ""),
-                    ops: [{ op: "notify", msg: message, variant: "error-reload" }]
-                }));
-            }
-        } else if (msgType === "invalid") {
-            try {
-                const id = String(parsedMsg.id || "");
-                const sid = String(record.sid || "");
-                if (sid) {
-                    app._touchSession(sid);
-                    const rec = app._sessions.get(sid);
-                    if (rec && rec.targets) {
-                        const fn = rec.targets.get(id);
-                        if (typeof fn === "function") {
-                            try {
-                                fn();
-                            } catch (_) { }
-                        }
-                        try {
-                            rec.targets.delete(id);
-                        } catch (_) { }
-                    }
-                }
-            } catch (_) { }
-        }
-    } catch (_) { }
-}
-
-function handleBunClose(app: App, ws: WebSocketLike): void {
-    try {
-        const wsWithHeartbeat = ws as Record<string, unknown>;
-        if (wsWithHeartbeat._heartbeat) {
-            clearInterval(wsWithHeartbeat._heartbeat as ReturnType<typeof setInterval>);
-            wsWithHeartbeat._heartbeat = 0;
-        }
-    } catch (_) { }
-
-    const it = app._wsClients.values();
-    while (true) {
-        const n = it.next();
-        if (n.done) {
-            break;
-        }
-        const c = n.value;
-        if (c.socket === ws) {
-            app._wsClients.delete(c);
+    Broadcast(js: string): void {
+        for (const client of this.wsClients) {
+            try { client.send(js); } catch (_) {}
         }
     }
+
+    private findPage(pathname: string): { page: { title?: string; handler: PageHandler }; params: Record<string, string> } | null {
+        const exact = this.pages.get(pathname);
+        if (exact) return { page: exact, params: {} };
+        for (const [pattern, p] of this.pages) {
+            if (pattern.includes(':')) {
+                const params = matchRoute(pattern, pathname);
+                if (params) return { page: p, params };
+            }
+        }
+        return null;
+    }
+
+    private handleAction(name: string, data: Record<string, unknown>, req: IncomingMessage, res: ServerResponse | null, wsClient?: WSClient): string {
+        // Built-in __nav action: SPA navigation — replace content without full page reload
+        if (name === '__nav') {
+            const navUrl = String(data.url || '/');
+            const navParsed = new URL(navUrl, 'http://localhost');
+            const found = this.findPage(navParsed.pathname);
+            if (!found) return Notify('error', 'Page not found');
+
+            const ctx = new Context(req, null as unknown as ServerResponse);
+            ctx._setPathParams(found.params);
+            if (this.sessions) ctx._setSession(this.getSessionFromReq(req, res));
+            if (wsClient) ctx._setWSClient(wsClient);
+            const pageNode = found.page.handler(ctx);
+            const title = found.page.title || this.Title;
+            return ctx.Build(pageNode.ToJSInner('__content__') + SetTitle(title) + 'window.scrollTo(0,0);');
+        }
+
+        // Built-in __notfound action: log missing target
+        if (name === '__notfound') return '';
+
+        const handler = this.actions.get(name);
+        if (!handler) return Notify('error', 'Unknown action: ' + name);
+
+        const ctx = new Context(req, null as unknown as ServerResponse, JSON.stringify(data));
+        if (this.sessions) ctx._setSession(this.getSessionFromReq(req, res));
+        if (wsClient) ctx._setWSClient(wsClient);
+
+        // Panic recovery
+        try {
+            return ctx.Build(handler(ctx));
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return Notify('error', 'Server error: ' + msg);
+        }
+    }
+
+    private doWSUpgrade(req: IncomingMessage, socket: Duplex): void {
+        const key = req.headers['sec-websocket-key'];
+        if (!key) { socket.destroy(); return; }
+
+        const accept = acceptKey(key);
+        socket.write(
+            'HTTP/1.1 101 Switching Protocols\r\n' +
+            'Upgrade: websocket\r\n' +
+            'Connection: Upgrade\r\n' +
+            'Sec-WebSocket-Accept: ' + accept + '\r\n' +
+            '\r\n'
+        );
+
+        // Session from cookie
+        const cookies = req.headers.cookie || '';
+        const sidMatch = cookies.match(/(?:^|;\s*)tsui_sid=([^;]+)/);
+        const sid = sidMatch ? sidMatch[1] : crypto.randomBytes(16).toString('hex');
+        let session = this.sessionStore.get(sid);
+        if (!session) {
+            session = {};
+            this.sessionStore.set(sid, session);
+        }
+
+        const client: WSClient = {
+            socket,
+            session,
+            sessionId: sid,
+            send(data: string) {
+                try { socket.write(encodeWSFrame(data)); } catch (_) {}
+            },
+            close() {
+                try { socket.end(); } catch (_) {}
+            }
+        };
+
+        this.wsClients.add(client);
+
+        parseWSFrames(socket, (msg) => {
+            const payload = parseJSON<{ name?: string; data?: Record<string, unknown> }>(msg, {});
+            const js = this.handleAction(payload.name || '', payload.data || {}, req, null, client);
+            if (js) client.send(js);
+        }, () => {
+            this.wsClients.delete(client);
+        });
+    }
+
+    Handler(): http.RequestListener {
+        return async (req, res) => {
+            try {
+                const url = new URL(req.url || '/', 'http://localhost');
+
+                // WebSocket upgrade requests are handled by the 'upgrade' event on the server.
+                // We must not send any HTTP response here — just bail out silently.
+                if (req.headers.upgrade) {
+                    return;
+                }
+
+                if (req.method === 'GET' && url.pathname === '/__ws.js') {
+                    res.setHeader('content-type', 'application/javascript; charset=utf-8');
+                    res.setHeader('cache-control', 'no-cache');
+                    res.end(clientScript());
+                    return;
+                }
+
+                if (req.method === 'POST' && url.pathname === '/__action') {
+                    const body = await readBody(req);
+                    const payload = parseJSON<{ name?: string; data?: Record<string, unknown> }>(body, {});
+                    const js = this.handleAction(payload.name || '', payload.data || {}, req, res);
+                    res.setHeader('content-type', 'application/javascript; charset=utf-8');
+                    res.end(js);
+                    return;
+                }
+
+                for (const route of this.routes) {
+                    if (route.method === req.method && (url.pathname === route.path || url.pathname.startsWith(route.path))) {
+                        await route.handler(req, res);
+                        if (!res.writableEnded) {
+                            res.end();
+                        }
+                        return;
+                    }
+                }
+
+                if (req.method !== 'GET') {
+                    res.statusCode = 404;
+                    res.end('Not found');
+                    return;
+                }
+
+                const found = this.findPage(url.pathname);
+                if (!found) {
+                    res.statusCode = 404;
+                    res.end('Not found');
+                    return;
+                }
+
+                const ctx = new Context(req, res);
+                ctx._setPathParams(found.params);
+                if (this.sessions) ctx._setSession(this.getSessionFromReq(req, res));
+                const pageNode = found.page.handler(ctx);
+                const title = found.page.title || this.Title;
+                let root = pageNode;
+                if (this.layout) {
+                    root = this.layout(ctx);
+                    injectContent(root, pageNode);
+                }
+
+                const html = renderHTML({
+                    title,
+                    description: this.Description,
+                    favicon: this.Favicon,
+                    head: [...this.HTMLHead, ...ctx._getHeadCSS(), ...ctx._getHeadJS()],
+                    mountJS: root.ToJS(),
+                });
+
+                res.statusCode = 200;
+                res.setHeader('content-type', 'text/html; charset=utf-8');
+                res.end(html);
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[t-sui] Server error:', msg);
+                if (!res.headersSent) {
+                    res.statusCode = 500;
+                    res.setHeader('content-type', 'text/html; charset=utf-8');
+                    res.end(`<!doctype html><html><body><h1>Server Error</h1><pre>${escapeHTML(msg)}</pre></body></html>`);
+                }
+            }
+        };
+    }
+
+    Listen(port: number | string): Promise<http.Server> {
+        const server = http.createServer(this.Handler());
+        // Handle WS upgrade via the 'upgrade' event (primary path)
+        server.on('upgrade', (req: IncomingMessage, socket: Duplex, _head: Buffer) => {
+            const url = new URL(req.url || '/', 'http://localhost');
+            if (url.pathname === '/__ws') {
+                this.doWSUpgrade(req, socket);
+            } else {
+                socket.destroy();
+            }
+        });
+        return new Promise((resolve, reject) => {
+            server.on('error', reject);
+            server.listen(port, () => resolve(server));
+        });
+    }
 }
+
+function renderHTML(input: { title: string; description?: string; favicon?: string; head?: string[]; mountJS: string }): string {
+    const head = [
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        `<title>${escapeHTML(input.title)}</title>`,
+        input.description ? `<meta name="description" content="${escapeHTML(input.description)}">` : '',
+        input.favicon ? `<link rel="icon" href="${escapeHTML(input.favicon)}">` : '',
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
+        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">',
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Round">',
+        '<script src="/__ws.js"></script>',
+        ...(input.head || []),
+    ].filter(Boolean).join('');
+
+    return `<!doctype html><html><head>${head}</head><body><script>${input.mountJS}</script></body></html>`;
+}
+
+// Client-side WebSocket script — matches g-sui pattern:
+// - Message queue when offline
+// - Page reload on reconnection after disconnect
+// - Offline badge indicator (not modal)
+// - Loading bar with 120ms delay
+// - new Function() execution
+function clientScript(): string {
+    return `(function(){
+if(globalThis.__ws){return;}
+var __offline=(function(){
+var el=null;
+function show(){
+if(document.getElementById('__tsui_offline')){el=document.getElementById('__tsui_offline');return;}
+try{document.body.classList.add('pointer-events-none');}catch(_){}
+var o=document.createElement('div');o.id='__tsui_offline';
+o.style.cssText='position:fixed;inset:0;z-index:60;pointer-events:none;opacity:0;transition:opacity 160ms ease-out;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);background:'+(document.documentElement.classList.contains('dark')?'rgba(0,0,0,0.3)':'rgba(255,255,255,0.18)');
+var b=document.createElement('div');
+b.className='absolute top-3 left-3 flex items-center gap-2 rounded-full px-3 py-1 text-white shadow-lg ring-1 ring-white/30';
+b.style.background='linear-gradient(135deg,#ef4444,#ec4899)';
+var dot=document.createElement('span');dot.className='inline-block h-2.5 w-2.5 rounded-full bg-white/95 animate-pulse';
+var lbl=document.createElement('span');lbl.className='font-semibold tracking-wide';lbl.style.color='#fff';lbl.textContent='Offline';
+var sub=document.createElement('span');sub.className='ml-1 text-xs';sub.style.color='rgba(255,255,255,0.9)';sub.textContent='Trying to reconnect\\u2026';
+b.appendChild(dot);b.appendChild(lbl);b.appendChild(sub);o.appendChild(b);
+document.body.appendChild(o);
+requestAnimationFrame(function(){o.style.opacity='1';});
+el=o;
+}
+function hide(){
+try{document.body.classList.remove('pointer-events-none');}catch(_){}
+var o=document.getElementById('__tsui_offline');if(!o){el=null;return;}
+try{o.style.opacity='0';}catch(_){}
+setTimeout(function(){try{if(o&&o.parentNode){o.parentNode.removeChild(o);}}catch(_){}},150);
+el=null;
+}
+return{show:show,hide:hide};
+})();
+var ws,q=[],ready=false,pending=0,loaderEl=null,loaderTimer=0,hadClose=false;
+function showLoader(){
+pending++;
+if(pending===1&&!loaderTimer){
+loaderTimer=setTimeout(function(){
+if(pending<1){loaderTimer=0;return;}
+loaderEl=document.createElement('div');
+loaderEl.id='__tsui_loader';
+loaderEl.style.cssText='position:fixed;top:0;left:0;right:0;height:3px;z-index:99998;background:linear-gradient(90deg,#3b82f6,#8b5cf6,#3b82f6);background-size:200% 100%;animation:__tsui_load 1s linear infinite';
+var st=document.createElement('style');
+st.textContent='@keyframes __tsui_load{0%{background-position:200% 0}100%{background-position:-200% 0}}';
+loaderEl.appendChild(st);
+document.body.appendChild(loaderEl);
+loaderTimer=0;
+},120);
+}
+}
+function hideLoader(){
+pending--;if(pending<0)pending=0;
+if(pending===0){
+if(loaderTimer){clearTimeout(loaderTimer);loaderTimer=0;}
+if(loaderEl){try{loaderEl.remove()}catch(_){}loaderEl=null;}
+}
+}
+function exec(js){if(js){try{new Function(js)()}catch(e){console.error('[t-sui] exec error:',e)}}}
+function collectValue(id,d){
+var el=document.getElementById(id);if(!el)return;
+var key=el.getAttribute('name')||id;
+if(el.type==='checkbox'){d[key]=!!el.checked}
+else if(el.type==='radio'){if(el.checked)d[key]=el.value}
+else{d[key]=el.value}
+}
+function connect(){
+ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/__ws');
+ws.onopen=function(){
+ready=true;
+__offline.hide();
+for(var i=0;i<q.length;i++){ws.send(q[i]);}
+q=[];
+if(hadClose){hadClose=false;try{location.reload();return}catch(_){}}
+};
+ws.onmessage=function(e){hideLoader();exec(e.data)};
+ws.onclose=function(){
+ready=false;pending=0;
+if(loaderTimer){clearTimeout(loaderTimer);loaderTimer=0;}
+if(loaderEl){try{loaderEl.remove()}catch(_){}loaderEl=null;}
+__offline.show();
+hadClose=true;
+setTimeout(connect,1500);
+};
+ws.onerror=function(){ws.close()};
+}
+connect();
+window.addEventListener('popstate',function(){
+var msg=JSON.stringify({name:'__nav',data:{url:location.pathname+location.search}});
+showLoader();
+if(ready){ws.send(msg)}else{q.push(msg)}
+});
+globalThis.__ws={
+call:function(name,data,collect){
+var d=Object.assign({},data||{});
+if(collect&&collect.length){for(var i=0;i<collect.length;i++){collectValue(collect[i],d)}}
+var msg=JSON.stringify({name:name,data:d});
+showLoader();
+if(ready){ws.send(msg)}else{q.push(msg)}
+},
+notfound:function(id){
+var msg=JSON.stringify({name:'__notfound',data:{id:id}});
+if(ready){ws.send(msg)}else{q.push(msg)}
+}
+};
+globalThis.__nav=function(url){
+history.pushState(null,'',url);
+__ws.call('__nav',{url:url});
+};
+})();`;
+}
+
+export function NewApp(): App {
+    return new App();
+}
+
+export function MakeApp(_locale = 'en'): App {
+    return new App();
+}
+
+export default {
+    Context,
+    App,
+    NewApp,
+    MakeApp,
+};

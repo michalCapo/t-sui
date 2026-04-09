@@ -1,109 +1,40 @@
 import ui from "../../ui";
-import { Context } from "../../ui.server";
+import { Blue } from "../../ui.components";
+import type { Node } from "../../ui";
 
-interface TemplateFormData {
-    Title: string;
-    Description: string;
+export function examplePage(title: string, description: string, ...children: Array<Node | null | undefined | false>): Node {
+    return ui.Div("max-w-5xl mx-auto flex flex-col gap-6").Render(
+        ui.Div("text-3xl font-bold text-gray-900 dark:text-white").Text(title),
+        ui.Div("text-gray-600 dark:text-gray-400").Text(description),
+        ...children,
+    );
 }
 
-class TemplateForm {
-    target = ui.Target();
-    data: TemplateFormData;
-    onSubmit: ((ctx: Context) => string) | null = null;
-
-    constructor(title: string, description: string) {
-        this.data = {
-            Title: title,
-            Description: description,
-        };
-    }
-
-    OnCancel(ctx: Context): string {
-        this.data.Title = "";
-        this.data.Description = "";
-        return this.Render(ctx);
-    }
-
-    Render(ctx: Context): string {
-        const self = this;
-        
-        const onCancelAction = function(ctx: Context): string {
-            self.data.Title = "";
-            self.data.Description = "";
-            return self.Render(ctx);
-        };
-        onCancelAction.url = "/shared/cancel-" + this.target.id;
-
-        const submitAction = this.onSubmit || function(ctx: Context): string {
-            return self.Render(ctx);
-        };
-
-        return ui.form("flex flex-col gap-4", this.target, ctx.Submit(submitAction).Replace(this.target))(
-            ui.div("")(
-                ui.div("text-gray-600 text-sm")("Title"),
-                ui.IText("Title", this.data)
-                    .Class("w-full")
-                    .Placeholder("Title")
-                    .Render(""),
-            ),
-            ui.div("")(
-                ui.div("text-gray-600 text-sm")("Description"),
-                ui.IArea("Description", this.data)
-                    .Class("w-full")
-                    .Placeholder("Description")
-                    .Render(""),
-            ),
-
-            // Buttons
-            ui.div("flex flex-row gap-4 justify-end")(
-                ui.Button()
-                    .Class("rounded-lg hover:text-red-700 hover:underline text-gray-400")
-                    .Click(ctx.Call(onCancelAction).Replace(this.target))
-                    .Render("Reset"),
-
-                ui.Button()
-                    .Submit()
-                    .Class("rounded-lg")
-                    .Color(ui.Blue)
-                    .Render("Submit"),
-            ),
-        );
-    }
+export function card(title: string, ...children: Array<Node | null | undefined | false>): Node {
+    return ui.Div("bg-white dark:bg-gray-900 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-800 flex flex-col gap-3").Render(
+        ui.Div("text-sm font-bold text-gray-700 dark:text-gray-300").Text(title),
+        ...children,
+    );
 }
 
-export function SharedContent(ctx: Context): string {
-    const form1 = new TemplateForm("Hello", "What a nice day");
-    const form2 = new TemplateForm("Next Title", "Next Description");
+export function code(text: string): Node {
+    return ui.Div("rounded-xl bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 px-4 py-3 font-mono text-sm text-gray-700 dark:text-neutral-300").Text(text);
+}
 
-    const form1Submit = function(ctx: Context): string {
-        ctx.Body(form1.data);
-        ctx.Error("Data not stored");
-        return form1.Render(ctx);
-    };
-    form1Submit.url = "/shared/form1-submit";
-    form1.onSubmit = form1Submit;
-
-    const form2Submit = function(ctx: Context): string {
-        ctx.Body(form2.data);
-        ctx.Success("Data stored but do not share");
-        return form2.Render(ctx);
-    };
-    form2Submit.url = "/shared/form2-submit";
-    form2.onSubmit = form2Submit;
-
-    return ui.div("max-w-5xl mx-auto flex flex-col gap-4")(
-        ui.div("text-2xl font-bold")("Shared"),
-        ui.div("text-gray-600")("Tries to mimic real application: reused form in multiple places"),
-
-        ui.div("border rounded-lg p-4 bg-white dark:bg-gray-900 shadow-lg")(
-            ui.div("text-lg font-semibold")("Form 1"),
-            ui.div("text-gray-600 text-sm mb-4")("This form is reused."),
-            form1.Render(ctx),
+export function sharedForm(formID: string, title: string, description: string): Node {
+    const inputCls = "w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white";
+    return ui.Div("flex flex-col gap-4").ID(formID).Render(
+        ui.Div("flex flex-col gap-1").Render(
+            ui.Div("text-gray-600 dark:text-gray-400 text-sm").Text("Title"),
+            ui.IText(inputCls).ID(formID + "-title").Attr("name", formID + "-title").Attr("value", title).Attr("placeholder", "Title"),
         ),
-        ui.div("border rounded-lg p-4 bg-white dark:bg-gray-900 shadow-lg")(
-            ui.div("text-lg font-semibold")("Form 2"),
-            ui.div("text-gray-600 text-sm mb-4")("This form is reused."),
-            form2.Render(ctx),
+        ui.Div("flex flex-col gap-1").Render(
+            ui.Div("text-gray-600 dark:text-gray-400 text-sm").Text("Description"),
+            ui.Textarea(inputCls).ID(formID + "-desc").Attr("name", formID + "-desc").Attr("placeholder", "Description").Text(description),
+        ),
+        ui.Div("flex flex-row gap-4 justify-end").Render(
+            ui.Button("rounded-lg hover:text-red-700 hover:underline text-gray-500 px-3 py-1 cursor-pointer text-sm").Text("Reset").OnClick({ Name: "shared.reset", Data: { formID } }),
+            ui.Button(`rounded-lg px-4 py-2 ${Blue} cursor-pointer text-sm`).Text("Submit").OnClick({ Name: "shared.submit", Data: { formID }, Collect: [formID + "-title", formID + "-desc"] }),
         ),
     );
 }

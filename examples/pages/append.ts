@@ -1,59 +1,27 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
+import ui, { type Node } from "../../ui";
+import { Blue, Green } from "../../ui.components";
+import type { Context } from "../../ui.server";
+import { card, examplePage } from "./shared";
 
-function pad2(value: number): string {
-	if (value < 10) {
-		return "0" + String(value);
-	}
-	return String(value);
-}
+export const path = "/append";
+export const title = "Append";
+export const APPEND_LIST_ID = "append-list";
 
-function formatTime(date: Date): string {
-	const hours = pad2(date.getHours());
-	const minutes = pad2(date.getMinutes());
-	const seconds = pad2(date.getSeconds());
-	return hours + ":" + minutes + ":" + seconds;
-}
-
-function renderEntry(text: string): string {
-	return ui.div("p-2 rounded border bg-white dark:bg-gray-900")(
-		ui.span("text-sm text-gray-600")(text),
-	);
-}
-
-function addEnd(_ctx: Context): string {
-	const label = "Appended at " + formatTime(new Date());
-	return renderEntry(label);
-}
-
-function addStart(_ctx: Context): string {
-	const label = "Prepended at " + formatTime(new Date());
-	return renderEntry(label);
-}
-
-export function AppendContent(ctx: Context): string {
-	const target = ui.Target();
-	const controls = ui.div("flex gap-2")(
-		ui
-			.Button()
-			.Color(ui.Blue)
-			.Class("rounded")
-			.Click(ctx.Click(addEnd).Append(target))
-			.Render("Add at end"),
-		ui
-			.Button()
-			.Color(ui.Green)
-			.Class("rounded")
-			.Click(ctx.Click(addStart).Prepend(target))
-			.Render("Add at start"),
-	);
-	const container = ui.div("space-y-2", target)(
-		renderEntry("Initial item"),
-	);
-	return ui.div("max-w-5xl mx-auto flex flex-col gap-4")(
-		ui.div("text-2xl font-bold")("Append / Prepend Demo"),
-		ui.div("text-gray-600")("Click buttons to insert items at the beginning or end of the list."),
-		controls,
-		container,
-	);
+export default function page(_ctx: Context): Node {
+    return examplePage(
+        "Append / Prepend Demo",
+        "Click buttons to insert items at the beginning or end of the list.",
+        card(
+            "Append / Prepend",
+            ui.Div("flex gap-2").Render(
+                ui.Button(`px-4 py-2 rounded cursor-pointer ${Blue} text-sm`).Text("Add at end").OnClick({ Name: "append.end" }),
+                ui.Button(`px-4 py-2 rounded cursor-pointer ${Green} text-sm`).Text("Add at start").OnClick({ Name: "append.start" }),
+            ),
+            ui.Div("space-y-2").ID(APPEND_LIST_ID).Render(
+                ui.Div("p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700").Render(
+                    ui.Span("text-sm text-gray-600 dark:text-gray-400").Text("Initial item"),
+                ),
+            ),
+        ),
+    );
 }

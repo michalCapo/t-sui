@@ -1,36 +1,18 @@
-import ui from "../../ui";
-import { Context } from "../../ui.server";
+import ui, { type Node } from "../../ui";
+import type { Context } from "../../ui.server";
+import { card, examplePage } from "./shared";
 
-export function Clock(ctx: Context) {
-	// Render into a stable target id so reloads keep the same element
-	const target = ui.Target();
+export const path = "/clock";
+export const title = "Clock";
 
-	// Clock helpers
-	function pad2(n: number): string {
-		if (n < 10) {
-			return "0" + String(n);
-		} else {
-			return String(n);
-		}
-	}
-
-	function fmtTime(d: Date): string {
-		const h = pad2(d.getHours());
-		const m = pad2(d.getMinutes());
-		const s = pad2(d.getSeconds());
-		return h + ":" + m + ":" + s;
-	}
-
-	function Render(d: Date): string {
-		return ui.div("flex items-baseline gap-3", target)(
-			ui.div("text-4xl font-mono tracking-widest")(fmtTime(d)),
-			ui.div("text-gray-500")("Live server time"),
-		);
-	}
-
-	const stop = ui.Interval(1000, function () {
-		ctx.Patch(target.Replace, Render(new Date()), stop);
-	});
-
-	return Render(new Date());
+export default function page(_ctx: Context): Node {
+    const id = "clock-live";
+    return examplePage(
+        title,
+        "Live clock using client-side JS attached to a rendered node.",
+        card(
+            "Live Clock",
+            ui.Div("text-4xl font-mono text-gray-900 dark:text-white").ID(id).Text(new Date().toLocaleTimeString()).JS(`setInterval(()=>{this.textContent=new Date().toLocaleTimeString()},1000)`),
+        ),
+    );
 }

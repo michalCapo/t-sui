@@ -1,191 +1,235 @@
-// Shared Example App Definition
-// This module exports the app configuration that can be reused by both
-// the main server (examples/main.ts) and the test harness (examples/tests/harness.ts)
+import path from "node:path";
+import ui from "../ui";
+import components from "../ui.components";
+import { MakeApp, type App, type Context } from "../ui.server";
 
-import { App, Callable, Context, MakeApp } from '../ui.server';
-import ui from '../ui';
-import { ButtonContent } from './pages/button';
-import { TextContent } from './pages/text';
-import { PasswordContent } from './pages/password';
-import { NumberContent } from './pages/number';
-import { DateContent } from './pages/date';
-import { AreaContent } from './pages/area';
-import { SelectContent } from './pages/select';
-import { CheckboxContent } from './pages/checkbox';
-import { RadioContent } from './pages/radio';
-import { TableContent } from './pages/table';
-import { ShowcaseContent } from './pages/showcase';
-import { AppendContent } from './pages/append';
-import { OthersContent } from './pages/others';
-import { CollateContent } from './pages/collate';
-import { CaptchaContent } from './pages/captcha';
-import { FormAssocContent } from './pages/form-assoc';
-import { FormContent } from './pages/form';
-import { IconsContent } from './pages/icons';
-import { SpaContent } from './pages/spa';
-import { ReloadRedirectContent } from './pages/reload-redirect';
-import { SharedContent } from './pages/shared';
-import { RoutesContent, SearchContent, UserDetailContent, UserPostDetailContent, CategoryProductDetailContent } from './pages/routes';
-import { ComprehensiveFormContent } from './pages/comprehensive-form';
-import { ClockContent } from './pages/clock-page';
-import { DeferredContent } from './pages/deferred';
-import { CollateEmptyContent } from './pages/collate-empty';
-import { ImageUploadContent } from './pages/image-upload';
-import { ProxyContent } from './pages/proxy';
+import showcase, { path as showcasePath, title as showcaseTitle } from "./pages/showcase";
+import icons, { path as iconsPath, title as iconsTitle } from "./pages/icons";
+import button, { path as buttonPath, title as buttonTitle } from "./pages/button";
+import text, { path as textPath, title as textTitle } from "./pages/text";
+import password, { path as passwordPath, title as passwordTitle } from "./pages/password";
+import number, { path as numberPath, title as numberTitle } from "./pages/number";
+import date, { path as datePath, title as dateTitle } from "./pages/date";
+import area, { path as areaPath, title as areaTitle } from "./pages/area";
+import select, { path as selectPath, title as selectTitle, SELECT_DISPLAY_ID } from "./pages/select";
+import checkbox, { path as checkboxPath, title as checkboxTitle } from "./pages/checkbox";
+import radio, { path as radioPath, title as radioTitle } from "./pages/radio";
+import table, { path as tablePath, title as tableTitle, TABLE_DETAILS_ID, handleTableData } from "./pages/table";
+import form, { path as formPath, title as formTitle, FormData, formPage } from "./pages/form";
+import login, { path as loginPath, title as loginTitle, loginForm, loginSuccess } from "./pages/login";
+import others, { path as othersPath, title as othersTitle } from "./pages/others";
+import append, { path as appendPath, title as appendTitle, APPEND_LIST_ID } from "./pages/append";
+import clock, { path as clockPath, title as clockTitle } from "./pages/clock";
+import sharedPage, { path as sharedPath, title as sharedTitle } from "./pages/shared-page";
+import reloadRedirect, { path as reloadPath, title as reloadTitle } from "./pages/reload-redirect";
+import routes, { path as routesPath, title as routesTitle, ROUTES_OUTPUT_ID, handleRoutesUser, handleRoutesUserPost, handleRoutesProduct, handleRoutesSearch } from "./pages/routes";
+import skeleton, { path as skeletonPath, title as skeletonTitle } from "./pages/skeleton";
+import counter, { path as counterPath, title as counterTitle, counterWidget } from "./pages/counter";
+import hello, { path as helloPath, title as helloTitle } from "./pages/hello";
+import collate, { path as collatePath, title as collateTitle, handleCollateData } from "./pages/collate";
+import { sharedForm } from "./pages/shared";
 
-export type Route = { Path: string; Title: string };
-
-export const routes: Route[] = [
-    { Path: '/', Title: 'Showcase' },
-    { Path: '/icons', Title: 'Icons' },
-    { Path: '/button', Title: 'Button' },
-    { Path: '/text', Title: 'Text' },
-    { Path: '/password', Title: 'Password' },
-    { Path: '/number', Title: 'Number' },
-    { Path: '/date', Title: 'Date & Time' },
-    { Path: '/area', Title: 'Textarea' },
-    { Path: '/select', Title: 'Select' },
-    { Path: '/checkbox', Title: 'Checkbox' },
-    { Path: '/radio', Title: 'Radio' },
-    { Path: '/table', Title: 'Table' },
-    { Path: '/form', Title: 'Form' },
-    { Path: '/image-upload', Title: 'Image Upload' },
-    { Path: '/captcha', Title: 'Captcha' },
-    { Path: '/others', Title: 'Others' },
-    { Path: '/append', Title: 'Append' },
-    { Path: '/clock', Title: 'Clock' },
-    { Path: '/deferred', Title: 'Deferred' },
-    { Path: '/shared', Title: 'Shared' },
-    { Path: '/collate', Title: 'Collate' },
-    { Path: '/collate-empty', Title: 'Collate Empty' },
-    { Path: '/spa', Title: 'SPA' },
-    { Path: '/reload-redirect', Title: 'Reload & Redirect' },
-    { Path: '/routes', Title: 'Route Params' },
-    { Path: '/proxy', Title: 'Proxy' },
-
-    // t-sui specific examples kept for compatibility
-    { Path: '/comprehensive-form', Title: 'Comprehensive Form' },
-    { Path: '/form-assoc', Title: 'Form Association' },
-];
-
-const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">' +
-    '<rect width="128" height="128" rx="24" ry="24" fill="#2563eb" stroke="#1e40af" stroke-width="6"/>' +
-    '<text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" font-size="80" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="#ffffff">UI</text>' +
-    '</svg>';
-
-function createLayout(app: App) {
-    return function layout(ctx: Context): string {
-        let currentPath = (ctx.req && ctx.req.url ? String(ctx.req.url) : '/')
-            .split('?')[0]
-            .toLowerCase();
-
-        // Handle full URLs (Bun) vs paths (Node.js)
-        if (currentPath.startsWith('http://') || currentPath.startsWith('https://')) {
-            try {
-                currentPath = new URL(currentPath).pathname;
-            } catch {
-                // If URL parsing fails, use as-is
-            }
-        }
-        let links = '';
-
-        for (let i = 0; i < routes.length; i++) {
-            const route = routes[i];
-            const baseCls = 'px-2 py-1 rounded text-sm whitespace-nowrap transition-colors';
-            const isActive = (route.Path || '').toLowerCase() === currentPath;
-            const cls = isActive
-                ? baseCls +
-                ' bg-blue-700 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500'
-                : baseCls +
-                ' text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700';
-            const a = ui.a(cls, { href: route.Path }, ctx.Load(route.Path));
-
-            if (links.length > 0) links += ' ';
-
-            links += a(route.Title);
-        }
-
-        const nav = ui.nav('bg-white dark:bg-gray-900 shadow mb-6 w-full')(
-            ui.div('w-full px-4 py-2 flex items-start gap-2')(
-                ui.div('flex flex-wrap gap-1 mt-2 md:mt-0 w-full')(links),
-                ui.div('flex-1')(),
-                ui.ThemeSwitcher('ml-auto'),
-            ),
-        );
-
-        return app.HTML(
-            't-sui Examples',
-            'bg-gray-200 dark:bg-gray-900 min-h-screen overflow-y-scroll',
-            nav + ui.div('max-w-5xl mx-auto px-2 py-8')(
-                ui.div('')('__CONTENT__'),
-            ),
-        );
-    };
-}
-
-// Page content mapping
-const pageContents: Record<string, (ctx: Context) => string> = {
-    '/': ShowcaseContent,
-    '/comprehensive-form': ComprehensiveFormContent,
-    '/button': ButtonContent,
-    '/text': TextContent,
-    '/password': PasswordContent,
-    '/number': NumberContent,
-    '/date': DateContent,
-    '/area': AreaContent,
-    '/select': SelectContent,
-    '/checkbox': CheckboxContent,
-    '/radio': RadioContent,
-    '/table': TableContent,
-    '/append': AppendContent,
-    '/others': OthersContent,
-    '/collate': CollateContent,
-    '/captcha': CaptchaContent,
-    '/form': FormContent,
-    '/image-upload': ImageUploadContent,
-    '/clock': ClockContent,
-    '/deferred': DeferredContent,
-    '/form-assoc': FormAssocContent,
-    '/icons': IconsContent,
-    '/spa': SpaContent,
-    '/reload-redirect': ReloadRedirectContent,
-    '/shared': SharedContent,
-    '/routes': RoutesContent,
-    '/collate-empty': CollateEmptyContent,
-    '/proxy': ProxyContent,
-};
-
-// Configure and return the app instance
-export function createExampleApp(locale = 'en'): { app: App } {
+export function createExampleApp(locale = "en") {
     const app = MakeApp(locale);
+    app.Title = "t-sui Component Showcase";
+    app.Description = "A server-rendered TypeScript UI framework with live WebSocket updates, Tailwind CSS, and interactive components.";
+    app.Favicon = "/assets/favicon.svg";
 
-    app.HTMLHead.push(
-        '<link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,' + encodeURIComponent(svg) + '">',
-        '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" crossorigin="anonymous" referrerpolicy="no-referrer" />',
-    );
+    app.Assets(path.join(__dirname, "assets"), "/assets/");
 
-    const layout = createLayout(app);
+    app.Layout(function (ctx: Context) {
+        ctx.HeadJS(undefined, `(function(o){o.style.visibility='hidden';setTimeout(function(){o.style.visibility='visible'},250)})(document.body||document.documentElement);`);
+        return ui.Div("min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors overflow-y-scroll").Render(
+            ui.Nav("bg-white dark:bg-gray-900 shadow dark:shadow-gray-800/50").Attr("aria-label", "Main navigation").Render(
+                ui.Div("mx-auto px-4 py-3 flex items-start gap-2").Render(
+                    ui.Div("flex flex-wrap gap-1 flex-1").Render(
+                        navLink("Showcase", "/"),
+                        navLink("Icons", "/icons"),
+                        navLink("Button", "/button"),
+                        navLink("Text", "/text"),
+                        navLink("Password", "/password"),
+                        navLink("Number", "/number"),
+                        navLink("Date", "/date"),
+                        navLink("Textarea", "/area"),
+                        navLink("Select", "/select"),
+                        navLink("Checkbox", "/checkbox"),
+                        navLink("Radio", "/radio"),
+                        navLink("Table", "/table"),
+                        navLink("Form", "/form"),
+                        navLink("Login", "/login"),
+                        navLink("Others", "/others"),
+                        navLink("Append", "/append"),
+                        navLink("Clock", "/clock"),
+                        navLink("Shared", "/shared"),
+                        navLink("Reload", "/reload-redirect"),
+                        navLink("Routes", "/routes"),
+                        navLink("Skeleton", "/skeleton"),
+                        navLink("Collate", "/collate"),
+                    ),
+                    components.ThemeSwitcher(),
+                ),
+            ),
+            ui.Main("max-w-5xl mx-auto px-4 py-8").ID("__content__"),
+        );
+    });
 
-    // Register layout with content slot
-    app.Layout(layout);
+    registerActions(app);
 
-    // Register all pages - now they return content only
-    for (const route of routes) {
-        const content = pageContents[route.Path];
-        if (content) {
-            app.Page(route.Path, route.Title, content);
-        }
+    for (const page of [
+        [showcasePath, showcaseTitle, showcase],
+        [iconsPath, iconsTitle, icons],
+        [buttonPath, buttonTitle, button],
+        [textPath, textTitle, text],
+        [passwordPath, passwordTitle, password],
+        [numberPath, numberTitle, number],
+        [datePath, dateTitle, date],
+        [areaPath, areaTitle, area],
+        [selectPath, selectTitle, select],
+        [checkboxPath, checkboxTitle, checkbox],
+        [radioPath, radioTitle, radio],
+        [tablePath, tableTitle, table],
+        [formPath, formTitle, form],
+        [loginPath, loginTitle, login],
+        [othersPath, othersTitle, others],
+        [appendPath, appendTitle, append],
+        [clockPath, clockTitle, clock],
+        [sharedPath, sharedTitle, sharedPage],
+        [reloadPath, reloadTitle, reloadRedirect],
+        [routesPath, routesTitle, routes],
+        [skeletonPath, skeletonTitle, skeleton],
+        [counterPath, counterTitle, counter],
+        [helloPath, helloTitle, hello],
+        [collatePath, collateTitle, collate],
+    ] as const) {
+        app.Page(page[0], page[1], page[2]);
     }
 
-    // Register parameterized routes for the routes demo
-    app.Page('/routes/search', 'Search', SearchContent);
-    app.Page('/routes/user/{id}', 'User Detail', UserDetailContent);
-    app.Page('/routes/user/{userId}/post/{postId}', 'Post Detail', UserPostDetailContent);
-    app.Page('/routes/category/{category}/product/{product}', 'Product Detail', CategoryProductDetailContent);
-
-    // Enable smooth navigation
-    app.SmoothNav(true);
-
     return { app };
+}
+
+function registerActions(app: App) {
+    app.Action("form.submit", function (ctx: Context) {
+        const formID = ctx.QueryParam("formID") || "";
+        const data: FormData = { Action: "", Title: "", GenderNext: "", Gender: "", Country: "", Some: "", Number: "", Agree: false };
+        data.Action = ctx.QueryParam("action") || "";
+        data.Title = ctx.QueryParam("title") || "";
+        data.GenderNext = ctx.QueryParam("gender-next") || "";
+        data.Gender = ctx.QueryParam("gender") || "";
+        data.Country = ctx.QueryParam("country") || "";
+        data.Some = ctx.QueryParam("some") || "";
+        data.Number = ctx.QueryParam("number") || "";
+        data.Agree = ctx.QueryParam("agree") === "on";
+
+        let toast = "Form submitted successfully";
+        if (data.Action === "save") toast = "Form saved successfully";
+        if (data.Action === "preview") toast = "Form preview displayed";
+
+        const result = `Action=${data.Action}  Title=${data.Title}  GenderNext=${data.GenderNext}  Gender=${data.Gender}  Country=${data.Country}  Some=${data.Some}  Number=${data.Number}  Agree=${data.Agree}`;
+
+        if (formID === "form1") {
+            return ui.NewResponse().Replace("form-page", formPage(result, data, "", { Action: "", Title: "", GenderNext: "", Gender: "", Country: "", Some: "", Number: "", Agree: false })).Toast("success", toast).Build();
+        } else {
+            return ui.NewResponse().Replace("form-page", formPage("", { Action: "", Title: "", GenderNext: "", Gender: "", Country: "", Some: "", Number: "", Agree: false }, result, data)).Toast("success", toast).Build();
+        }
+    });
+
+    app.Action("demo.table.inspect", function (ctx: Context) {
+        const data = { id: 0, name: "", role: "", city: "" };
+        ctx.Body(data);
+        return ui.NewResponse().Inner(TABLE_DETAILS_ID, ui.Div("space-y-1").Render(
+            ui.P("text-gray-900 dark:text-white font-medium").Text(data.name),
+            ui.P("text-gray-600 dark:text-gray-400").Text(`${data.role} from ${data.city}`),
+            ui.P("text-sm text-gray-500 dark:text-gray-500").Text(`User id: ${String(data.id)}`),
+        )).Build();
+    });
+
+    // Table data handler for DataTable
+    app.Action("table.data", function (ctx: Context) {
+        return handleTableData(ctx);
+    });
+
+    // Select change handler
+    app.Action("select.change", function (ctx: Context) {
+        const data: Record<string, unknown> = {};
+        ctx.Body(data);
+        const val = String(data.ChooseField || data["select-choose"] || "");
+        const display = val || "(none)";
+        return ui.NewResponse().Inner(SELECT_DISPLAY_ID, ui.Div("text-sm text-gray-700 dark:text-gray-300").Text("Selected: " + display)).Build();
+    });
+
+    app.Action("hello.ok", function () { return ui.Notify("success", "Hello"); });
+    app.Action("hello.error", function () { return ui.Notify("error", "Hello error"); });
+    app.Action("hello.delay", function () { return ui.Notify("info", "Information (after 2s delay)"); });
+    app.Action("hello.crash", function () { return ui.Notify("error", "Hello again"); });
+
+    app.Action("append.end", function () {
+        const now = new Date().toLocaleTimeString();
+        return ui.Div("p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700").Render(ui.Span("text-sm text-gray-600 dark:text-gray-400").Text(`Appended at ${now}`)).ToJSAppend(APPEND_LIST_ID);
+    });
+    app.Action("append.start", function () {
+        const now = new Date().toLocaleTimeString();
+        return ui.Div("p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700").Render(ui.Span("text-sm text-gray-600 dark:text-gray-400").Text(`Prepended at ${now}`)).ToJSPrepend(APPEND_LIST_ID);
+    });
+
+    app.Action("counter.inc", function (ctx: Context) {
+        const data = { id: "", count: 0 } as { id: string; count: number };
+        ctx.Body(data);
+        return counterWidget(data.id, Number(data.count) + 1).ToJSReplace(data.id);
+    });
+    app.Action("counter.dec", function (ctx: Context) {
+        const data = { id: "", count: 0 } as { id: string; count: number };
+        ctx.Body(data);
+        return counterWidget(data.id, Math.max(0, Number(data.count) - 1)).ToJSReplace(data.id);
+    });
+
+    app.Action("login.submit", function (ctx: Context) {
+        const data: Record<string, unknown> = { Name: "", Password: "" };
+        ctx.Body(data);
+        const name = String(data.Name || "");
+        const pass = String(data.Password || "");
+        if (!name || !pass) return ui.NewResponse().Replace("login-form", loginForm("User name and password are required", { Name: name, Password: pass })).Build();
+        if (name !== "user" || pass !== "password") return ui.NewResponse().Replace("login-form", loginForm("Invalid credentials. Name must be 'user' and password 'password'.", { Name: name, Password: pass })).Build();
+        return ui.NewResponse().Replace("login-form", loginSuccess()).Toast("success", "Login successful").Build();
+    });
+
+    app.Action("redirect.dashboard", function () { return ui.Notify("info", "Redirecting to dashboard...") + ui.Redirect("/dashboard"); });
+    app.Action("redirect.button", function () { return ui.Notify("info", "Redirecting to button page...") + ui.Redirect("/button"); });
+
+    // Route parameter handlers
+    app.Action("routes.user", function (ctx: Context) {
+        return handleRoutesUser(ctx);
+    });
+    app.Action("routes.userpost", function (ctx: Context) {
+        return handleRoutesUserPost(ctx);
+    });
+    app.Action("routes.product", function (ctx: Context) {
+        return handleRoutesProduct(ctx);
+    });
+    app.Action("routes.search", function (ctx: Context) {
+        return handleRoutesSearch(ctx);
+    });
+
+    app.Action("shared.submit", function (ctx: Context) {
+        const data: Record<string, unknown> = { formID: "" };
+        ctx.Body(data);
+        const formID = String(data.formID || "");
+        const title = String(data[formID + "-title"] || "");
+        const desc = String(data[formID + "-desc"] || "");
+        return ui.NewResponse().Replace(formID, sharedForm(formID, title, desc)).Toast(formID === "form1" ? "error" : "success", formID === "form1" ? "Data not stored" : "Data stored").Build();
+    });
+    app.Action("shared.reset", function (ctx: Context) {
+        const data = { formID: "" }; ctx.Body(data);
+        return sharedForm(String(data.formID || ""), "", "").ToJSReplace(String(data.formID || ""));
+    });
+
+    // Collate data handler
+    app.Action("collate.data", function (ctx: Context) {
+        return handleCollateData(ctx);
+    });
+}
+
+function navLink(label: string, url: string) {
+    return ui.Button("px-3 py-1.5 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-pointer")
+        .Text(label)
+        .OnClick(ui.JS(`__nav('${url}')`));
 }
