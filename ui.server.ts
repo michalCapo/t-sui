@@ -679,8 +679,12 @@ setTimeout(connect,1500);
 };
 ws.onerror=function(){ws.close()};
 }
-connect();
-window.addEventListener('popstate',function(){
+ globalThis.__nav=function(url){
+ history.pushState(null,'',url);
+ __ws.call('__nav',{url:url});
+ };
+ connect();
+ window.addEventListener('popstate',function(){
 var msg=JSON.stringify({name:'__nav',data:{url:location.pathname+location.search}});
 showLoader();
 if(ready){ws.send(msg)}else{q.push(msg)}

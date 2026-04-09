@@ -1,7 +1,7 @@
 import {
     Node, Div, Span, Button as Btn, Input, Select, Option,
     Table, Thead, Tbody, Tr, Th, Td, Action, ActionData,
-    IText, INumber,
+    IText, INumber, Label,
 } from './ui';
 import { Skeleton } from './ui.components';
 
@@ -80,6 +80,53 @@ export function NewSimpleTable(numCols: number): SimpleTable {
 
 type FilterType = 'text' | 'date' | 'number' | 'select' | 'month-year';
 
+interface DataTableLocale {
+    Search: string;
+    Apply: string;
+    Cancel: string;
+    Reset: string;
+    Excel: string;
+    PDF: string;
+    LoadMore: string;
+    NoData: string;
+    From: string;
+    To: string;
+    Today: string;
+    ThisWeek: string;
+    ThisMonth: string;
+    ThisQuarter: string;
+    ThisYear: string;
+    LastMonth: string;
+    LastYear: string;
+    Value: string;
+    Contains: string;
+    StartsWith: string;
+    Equals: string;
+    Range: string;
+    GreaterOrEq: string;
+    LessOrEq: string;
+    GreaterThan: string;
+    LessThan: string;
+    NumEquals: string;
+    SelectAll: string;
+    ClearSelect: string;
+}
+
+function defaultLocale(): DataTableLocale {
+    return {
+        Search: 'Search...', Apply: 'Apply', Cancel: 'Cancel', Reset: 'Reset',
+        Excel: 'Excel', PDF: 'PDF', LoadMore: 'Load more...', NoData: 'No data',
+        From: 'From', To: 'To',
+        Today: 'Today', ThisWeek: 'This week', ThisMonth: 'This month',
+        ThisQuarter: 'This quarter', ThisYear: 'This year',
+        LastMonth: 'Last month', LastYear: 'Last year',
+        Value: 'Value', Contains: 'Contains', StartsWith: 'Starts with', Equals: 'Equals',
+        Range: 'Range', GreaterOrEq: '≥ Greater or equal', LessOrEq: '≤ Less or equal',
+        GreaterThan: '> Greater than', LessThan: '< Less than', NumEquals: '= Equals',
+        SelectAll: 'Select all', ClearSelect: 'Clear selection',
+    };
+}
+
 interface ColumnDef<T> {
     key: string;
     header: string;
@@ -117,6 +164,7 @@ export class DataTable<T> {
     private striped = true;
     private hoverable = true;
     private loading = false;
+    private locale: DataTableLocale = defaultLocale();
 
     constructor(id: string) {
         this.tableId = id;
@@ -143,6 +191,7 @@ export class DataTable<T> {
     Striped(v: boolean): this { this.striped = v; return this; }
     Hoverable(v: boolean): this { this.hoverable = v; return this; }
     Class(cls: string): this { this.className = cls; return this; }
+    Locale(loc: Partial<DataTableLocale>): this { this.locale = { ...this.locale, ...loc }; return this; }
 
     Column(key: string, header: string, render?: (item: T, index: number) => Node | string): this {
         this.columns.push({
@@ -160,10 +209,10 @@ export class DataTable<T> {
         return this;
     }
 
-    FilterColumn(key: string, header: string, filterType: FilterType = 'text', options?: { value: string; label: string }[]): this {
+    FilterColumn(key: string, header: string, filterType: FilterType = 'text', options?: { value: string; label: string }[], render?: (item: T, index: number) => Node | string): this {
         this.columns.push({
             key, header, sortable: true, filterable: true,
-            filterType, filterOptions: options || [], render: undefined,
+            filterType, filterOptions: options || [], render,
         });
         return this;
     }
@@ -178,60 +227,71 @@ export class DataTable<T> {
     Build(): Node {
         const wrapper = Div(`${this.className}`).ID(this.tableId);
 
-        // Toolbar: search + filter badges + export buttons
-        const toolbar = Div('flex flex-wrap items-center gap-3 mb-4');
+        // Toolbar: search + filter badges + reset
+        const toolbar = Div('flex items-center gap-3 mb-4 flex-wrap');
 
-        // Search
+        // Search input with magnifying glass icon
         const searchId = `${this.tableId}-search`;
-        const searchInput = IText('flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500')
+        const searchIcon = Span('text-gray-400 text-lg leading-none absolute left-3 top-1/2 -translate-y-1/2')
+            .Style('font-family', 'Material Icons Round')
+            .Text('search');
+        const searchInput = IText('w-64 border border-gray-300 rounded-full pl-10 pr-4 py-2 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500')
             .ID(searchId)
             .Attr('name', '__search')
-            .Attr('placeholder', 'Search...');
+            .Attr('placeholder', this.locale.Search);
         if (this.state.search) searchInput.Attr('value', this.state.search);
         searchInput.On('keydown', {
             rawJS: `if(event.key==='Enter'){event.preventDefault();${this.buildCallJSExpr({}, { search: `document.getElementById('${searchId}').value` }, true)}}`
         });
-        toolbar.Render(searchInput);
+        searchInput.On('search', {
+            rawJS: this.buildCallJSExpr({}, { search: `document.getElementById('${searchId}').value` }, true)
+        });
+        const searchWrap = Div('relative inline-flex items-center').Render(searchIcon, searchInput);
+        toolbar.Render(searchWrap);
 
-        // Export buttons
-        if (this.exportAction) {
-            toolbar.Render(
-                Btn('px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 inline-flex items-center gap-1')
-                    .OnClick(this.exportAction)
-                    .Render(Span('mdi mdi-file-excel'), Span().Text('Excel'))
-            );
+        // Filter count badge (lime green circle)
+        const activeFilterCount = Object.keys(this.state.filters).filter(k => this.state.filters[k]).length;
+        if (activeFilterCount > 0) {
+            const countBadge = Span('inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-lime-400 text-gray-900')
+                .Text(String(activeFilterCount));
+            toolbar.Render(countBadge);
         }
-        if (this.exportPdfAction) {
-            toolbar.Render(
-                Btn('px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 inline-flex items-center gap-1')
-                    .OnClick(this.exportPdfAction)
-                    .Render(Span('mdi mdi-file-pdf-box'), Span().Text('PDF'))
-            );
-        }
-
-        wrapper.Render(toolbar);
 
         // Active filter badges
         const filters = this.state.filters;
         const hasFilters = Object.keys(filters).some(function (k: string) { return !!filters[k]; });
         if (hasFilters) {
-            const badges = Div('flex flex-wrap gap-2 mb-3');
             for (const key of Object.keys(this.state.filters)) {
                 const val = this.state.filters[key];
                 if (!val) continue;
                 const col = this.columns.find(function (c) { return c.key === key; });
                 const label = col ? col.header : key;
-                badges.Render(
-                    Span('inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium').Render(
-                        Span().Text(`${label}: ${val}`),
-                        Btn('ml-1 hover:text-blue-900')
+                toolbar.Render(
+                    Div('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-gray-100 text-gray-700').Render(
+                        Span().Text(`${label}: `),
+                        Span('font-medium').Text(val),
+                        Btn('ml-1 text-gray-400 hover:text-gray-600 focus:outline-none text-base leading-none')
+                            .Attr('type', 'button')
                             .OnClick({ Name: this.actionName, Data: this.buildActionData({ removeFilter: key }) })
-                            .Render(Span('mdi mdi-close text-xs'))
+                            .Text('×')
                     )
                 );
             }
-            wrapper.Render(badges);
         }
+
+        // Spacer
+        toolbar.Render(Div('flex-1'));
+
+        // Reset button
+        if (activeFilterCount > 0 || this.state.search) {
+            toolbar.Render(
+                Btn('text-sm text-gray-500 hover:text-gray-700 cursor-pointer transition-colors')
+                    .Text(this.locale.Reset)
+                    .OnClick({ Name: this.actionName, Data: this.buildActionData({ reset: true }) })
+            );
+        }
+
+        wrapper.Render(toolbar);
 
         // Loading state
         if (this.loading) {
@@ -239,101 +299,77 @@ export class DataTable<T> {
             return wrapper;
         }
 
-        // Column filters row
-        const hasFilterable = this.columns.some(function (c) { return c.filterable; });
-
-        // Table
-        const table = Table('w-full text-sm text-left');
+        // Table with overflow wrapper (relative for filter popups)
+        const table = Table('w-full table-auto text-sm');
 
         // Header
         const thead = Thead('bg-gray-50');
         const headerRow = Tr();
         if (this.detailRender) {
-            headerRow.Render(Th('w-10 px-2 py-3 border-b border-gray-200'));
+            headerRow.Render(Th('w-10 p-2 border-b border-gray-200'));
         }
-        for (const col of this.columns) {
-            const thNode = Th('px-4 py-3 font-semibold text-gray-700 border-b border-gray-200');
+        for (let i = 0; i < this.columns.length; i++) {
+            const col = this.columns[i];
+            const thCls = `text-left font-semibold p-2 border-b border-gray-200 text-gray-700 text-xs uppercase tracking-wider relative${col.sortable || col.filterable ? ' cursor-pointer select-none' : ''}`;
+            const thNode = Th(thCls);
             if (col.width) thNode.Style('width', col.width);
 
-            if (col.sortable) {
-                const isSorted = this.state.sortKey === col.key;
-                const nextDir = isSorted && this.state.sortDir === 'asc' ? 'desc' : 'asc';
-                const sortIcon = isSorted
-                    ? (this.state.sortDir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down')
-                    : 'mdi-swap-vertical';
+            const hasSortOrFilter = col.sortable || col.filterable;
 
-                thNode.Render(
-                    Btn('inline-flex items-center gap-1 hover:text-blue-600 transition-colors font-semibold')
-                        .OnClick({ Name: this.actionName, Data: this.buildActionData({ sortKey: col.key, sortDir: nextDir }) })
-                        .Render(
-                            Span().Text(col.header),
-                            Span(`mdi ${sortIcon} text-xs ${isSorted ? 'text-blue-600' : 'text-gray-400'}`)
-                        )
-                );
-            } else {
+            if (!hasSortOrFilter) {
                 thNode.Text(col.header);
+            } else {
+                const headerParts: Node[] = [];
+
+                // Label text
+                if (col.sortable) {
+                    const labelSpan = Span('cursor-pointer select-none').Text(col.header);
+                    headerParts.push(labelSpan);
+
+                    // Sort arrow
+                    const isSorted = this.state.sortKey === col.key;
+                    const indicator = isSorted
+                        ? (this.state.sortDir === 'asc' ? Span('text-lime-500 text-lg ml-0.5').Text('↑') : Span('text-lime-500 text-lg ml-0.5').Text('↓'))
+                        : Span();
+                    headerParts.push(indicator);
+
+                    const nextDir = isSorted && this.state.sortDir === 'asc' ? 'desc' : 'asc';
+                    thNode.On('click', {
+                        rawJS: this.buildCallJSExpr({ sortKey: col.key, sortDir: nextDir }, {}, false)
+                    });
+                } else {
+                    headerParts.push(Span().Text(col.header));
+                }
+
+                // Filter icon (tune icon)
+                if (col.filterable) {
+                    const isActive = !!this.state.filters[col.key];
+                    const filterIcon = Span(`text-2xl leading-none ${isActive ? 'text-lime-500' : 'text-gray-400'} hover:text-lime-500 transition-colors cursor-pointer`)
+                        .Style('font-family', 'Material Icons Round')
+                        .Text('tune');
+                    const popupId = `${this.tableId}-filter-popup-${i}`;
+                    const filterBtn = Btn('inline-flex items-center focus:outline-none ml-0.5')
+                        .Attr('type', 'button')
+                        .On('click', {
+                            rawJS: `event.stopPropagation();var p=document.getElementById('${popupId}');if(p.style.display==='none'||!p.style.display){document.querySelectorAll('[id^="${this.tableId}-filter-popup-"]').forEach(function(el){el.style.display='none'});var r=this.getBoundingClientRect();p.style.left=r.left+'px';p.style.top=(r.bottom+4)+'px';p.style.display='block'}else{p.style.display='none'}`
+                        })
+                        .Render(filterIcon);
+                    headerParts.push(filterBtn);
+                }
+
+                thNode.Render(Div('inline-flex items-center gap-1').Render(...headerParts));
+
+                // Render filter popup
+                if (col.filterable) {
+                    const popupId = `${this.tableId}-filter-popup-${i}`;
+                    const popup = this.renderFilterPopup(i, col, popupId);
+                    thNode.Render(popup);
+                }
             }
 
             headerRow.Render(thNode);
         }
         thead.Render(headerRow);
-
-        // Filter row
-        if (hasFilterable) {
-            const filterRow = Tr('bg-gray-50');
-            if (this.detailRender) filterRow.Render(Td('px-2 py-2 border-b'));
-            for (const col of this.columns) {
-                const filterTd = Td('px-2 py-2 border-b border-gray-200');
-                if (col.filterable) {
-                    const filterId = `${this.tableId}-f-${col.key}`;
-                    const filterVal = this.state.filters[col.key] || '';
-
-                    if (col.filterType === 'select') {
-                        const sel = Select('w-full px-2 py-1 text-xs border border-gray-300 rounded').ID(filterId).Attr('name', `filter_${col.key}`);
-                        sel.Render(Option().Attr('value', '').Text('All'));
-                        for (const opt of col.filterOptions) {
-                            const o = Option().Attr('value', opt.value).Text(opt.label);
-                            if (opt.value === filterVal) o.Attr('selected', 'true');
-                            sel.Render(o);
-                        }
-                        sel.On('change', {
-                            rawJS: this.buildCallJSExpr({ setFilter: col.key }, { filterValue: 'event.target.value' }, true)
-                        });
-                        filterTd.Render(sel);
-                    } else if (col.filterType === 'date' || col.filterType === 'month-year') {
-                        const inp = Input('w-full px-2 py-1 text-xs border border-gray-300 rounded')
-                            .Attr('type', col.filterType === 'month-year' ? 'month' : 'date')
-                            .ID(filterId)
-                            .Attr('name', `filter_${col.key}`);
-                        if (filterVal) inp.Attr('value', filterVal);
-                        inp.On('change', {
-                            rawJS: this.buildCallJSExpr({ setFilter: col.key }, { filterValue: 'event.target.value' }, true)
-                        });
-                        filterTd.Render(inp);
-                    } else if (col.filterType === 'number') {
-                        const inp = INumber('w-full px-2 py-1 text-xs border border-gray-300 rounded')
-                            .ID(filterId).Attr('name', `filter_${col.key}`);
-                        if (filterVal) inp.Attr('value', filterVal);
-                        inp.On('change', {
-                            rawJS: this.buildCallJSExpr({ setFilter: col.key }, { filterValue: 'event.target.value' }, true)
-                        });
-                        filterTd.Render(inp);
-                    } else {
-                        const inp = IText('w-full px-2 py-1 text-xs border border-gray-300 rounded')
-                            .ID(filterId).Attr('name', `filter_${col.key}`)
-                            .Attr('placeholder', `Filter ${col.header}...`);
-                        if (filterVal) inp.Attr('value', filterVal);
-                        inp.On('keydown', {
-                            rawJS: `if(event.key==='Enter'){event.preventDefault();${this.buildCallJSExpr({ setFilter: col.key }, { filterValue: 'event.target.value' }, true)}}`
-                        });
-                        filterTd.Render(inp);
-                    }
-                }
-                filterRow.Render(filterTd);
-            }
-            thead.Render(filterRow);
-        }
-
         table.Render(thead);
 
         // Body
@@ -362,7 +398,7 @@ export class DataTable<T> {
                 if (this.detailRender) {
                     const detailId = `${this.tableId}-detail-${i}`;
                     tr.Render(
-                        Td('px-2 py-3 border-b border-gray-100 text-center').Render(
+                        Td('p-2 border-b border-gray-100 text-center w-10').Render(
                             Btn('text-gray-400 hover:text-gray-600')
                                 .On('click', {
                                     rawJS: `(function(){var d=document.getElementById('${detailId}');if(!d)return;var open=d.style.display!=='none';d.style.display=open?'none':'table-row';var icon=this.querySelector('.mdi');if(icon){icon.classList.toggle('mdi-chevron-right',open);icon.classList.toggle('mdi-chevron-down',!open);}})();`
@@ -373,7 +409,7 @@ export class DataTable<T> {
                 }
 
                 for (const col of this.columns) {
-                    const td = Td(`px-4 py-3 border-b border-gray-100${col.className ? ' ' + col.className : ''}`);
+                    const td = Td(`p-2 border-b border-gray-100${col.className ? ' ' + col.className : ''}`);
                     if (col.render) {
                         const rendered = col.render(item, i);
                         if (typeof rendered === 'string') {
@@ -393,7 +429,7 @@ export class DataTable<T> {
                 if (this.detailRender) {
                     const detailRow = Tr().ID(`${this.tableId}-detail-${i}`).Style('display', 'none');
                     detailRow.Render(
-                        Td('px-4 py-4 bg-gray-50 border-b border-gray-200')
+                        Td('p-4 bg-gray-50 border-b border-gray-200')
                             .Attr('colspan', String(this.columns.length + 1))
                             .Render(this.detailRender(item))
                     );
@@ -403,54 +439,276 @@ export class DataTable<T> {
         }
 
         table.Render(tbody);
-        wrapper.Render(Div('overflow-x-auto border border-gray-200 rounded-lg').Render(table));
+        wrapper.Render(Div('overflow-x-auto').Render(table));
 
-        // Pagination
+        // Footer: export buttons + item count + load more
+        const footer = Div('flex items-center gap-3 mt-3');
+        const footerItems: Node[] = [];
+
+        // Export buttons (bottom-left)
+        const exportBtnCls = 'inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md cursor-pointer border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors';
+        
+        if (this.exportPdfAction) {
+            footerItems.push(
+                Btn(exportBtnCls)
+                    .OnClick(this.exportPdfAction)
+                    .Render(
+                        Span('text-base leading-none').Style('font-family', 'Material Icons Round').Text('picture_as_pdf'),
+                        Span().Text(this.locale.PDF)
+                    )
+            );
+        }
+        if (this.exportAction) {
+            footerItems.push(
+                Btn(exportBtnCls)
+                    .OnClick(this.exportAction)
+                    .Render(
+                        Span('text-base leading-none').Style('font-family', 'Material Icons Round').Text('grid_on'),
+                        Span().Text(this.locale.Excel)
+                    )
+            );
+        }
+
+        // Spacer
+        footerItems.push(Div('flex-1'));
+
+        // Item count
+        if (this.totalItems > 0) {
+            const showing = Math.min(this.state.page * this.state.pageSize, this.totalItems);
+            footerItems.push(
+                Span('text-sm text-gray-500').Text(`${showing} of ${this.totalItems}`)
+            );
+        }
+
+        // Load more button
         const totalPages = Math.ceil(this.totalItems / this.state.pageSize) || 1;
-        const pager = Div('flex items-center justify-between mt-4');
-
-        pager.Render(
-            Span('text-sm text-gray-600').Text(
-                `Showing ${Math.min((this.state.page - 1) * this.state.pageSize + 1, this.totalItems)}-${Math.min(this.state.page * this.state.pageSize, this.totalItems)} of ${this.totalItems}`
-            )
-        );
-
-        const pageButtons = Div('flex items-center gap-1');
-
-        // Prev
-        if (this.state.page > 1) {
-            pageButtons.Render(
-                Btn('px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50')
-                    .OnClick({ Name: this.actionName, Data: this.buildActionData({ page: this.state.page - 1 }) })
-                    .Render(Span('mdi mdi-chevron-left'))
-            );
-        }
-
-        // Page numbers
-        const startPage = Math.max(1, this.state.page - 2);
-        const endPage = Math.min(totalPages, this.state.page + 2);
-        for (let p = startPage; p <= endPage; p++) {
-            const isActive = p === this.state.page;
-            pageButtons.Render(
-                Btn(`px-3 py-1.5 text-sm rounded-lg ${isActive ? 'bg-blue-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`)
-                    .Text(String(p))
-                    .OnClick({ Name: this.actionName, Data: this.buildActionData({ page: p }) })
-            );
-        }
-
-        // Next
         if (this.state.page < totalPages) {
-            pageButtons.Render(
-                Btn('px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50')
+            footerItems.push(
+                Btn('inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md cursor-pointer border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors')
+                    .Text(this.locale.LoadMore)
                     .OnClick({ Name: this.actionName, Data: this.buildActionData({ page: this.state.page + 1 }) })
-                    .Render(Span('mdi mdi-chevron-right'))
             );
         }
 
-        pager.Render(pageButtons);
-        wrapper.Render(pager);
+        footer.Render(...footerItems);
+        wrapper.Render(footer);
 
         return wrapper;
+    }
+
+    private renderFilterPopup(colIndex: number, col: ColumnDef<T>, popupId: string): Node {
+        const popup = Div('fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-2.5 w-[200px]')
+            .ID(popupId)
+            .Style('display', 'none');
+
+        // Header label
+        const header = Div('text-xs font-medium text-gray-500 uppercase tracking-wider mb-2')
+            .Text(col.header);
+
+        // Content based on filter type
+        let content: Node;
+        const filterVal = this.state.filters[col.key] || '';
+
+        switch (col.filterType) {
+            case 'date':
+                content = this.renderDateFilter(colIndex, col.key, filterVal);
+                break;
+            case 'month-year':
+                content = this.renderMonthYearFilter(colIndex, col.key, filterVal);
+                break;
+            case 'number':
+                content = this.renderNumberFilter(colIndex, col.key, filterVal);
+                break;
+            case 'select':
+                content = this.renderSelectFilter(colIndex, col.key, col.filterOptions, filterVal);
+                break;
+            default:
+                content = this.renderTextFilter(colIndex, col.key, filterVal);
+        }
+
+        // Action buttons
+        const actions = Div('flex items-center gap-2 mt-2.5').Render(
+            Btn('px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer bg-gray-900 text-white hover:bg-gray-800 transition-colors')
+                .Text(this.locale.Apply)
+                .On('click', { rawJS: this.applyFilterJS(colIndex, col.key, popupId) }),
+            Btn('text-sm text-gray-500 hover:text-gray-700 cursor-pointer')
+                .Text(this.locale.Cancel)
+                .On('click', { rawJS: `event.stopPropagation();document.getElementById('${popupId}').style.display='none'` })
+        );
+
+        // Stop click propagation on popup
+        popup.On('click', { rawJS: 'event.stopPropagation()' });
+
+        return popup.Render(header, content, actions);
+    }
+
+    private renderTextFilter(colIndex: number, key: string, value: string): Node {
+        const filterId = `${this.tableId}-filter-${colIndex}-val`;
+        const input = IText('block w-full px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500')
+            .ID(filterId)
+            .Attr('placeholder', this.locale.Contains || 'Contains...')
+            .Attr('value', value);
+        return Div().Render(input);
+    }
+
+    private renderDateFilter(colIndex: number, key: string, value: string): Node {
+        const fromId = `${this.tableId}-filter-${colIndex}-from`;
+        const toId = `${this.tableId}-filter-${colIndex}-to`;
+        const [from, to] = value.split(' - ');
+
+        const inputCls = 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500';
+
+        const fromRow = Div('flex items-center gap-2 mb-1.5').Render(
+            Label('text-xs text-gray-500 w-6').Text(this.locale.From),
+            Input(inputCls).Attr('type', 'date').ID(fromId).Attr('value', from || '')
+        );
+
+        const toRow = Div('flex items-center gap-2 mb-2').Render(
+            Label('text-xs text-gray-500 w-6').Text(this.locale.To),
+            Input(inputCls).Attr('type', 'date').ID(toId).Attr('value', to || '')
+        );
+
+        // Quick select buttons
+        const quickBtns = Div('flex flex-wrap gap-1').Render(
+            this.renderQuickDateBtn(colIndex, key, this.locale.Today, 'today'),
+            this.renderQuickDateBtn(colIndex, key, this.locale.ThisWeek, 'thisweek'),
+            this.renderQuickDateBtn(colIndex, key, this.locale.ThisMonth, 'thismonth'),
+            this.renderQuickDateBtn(colIndex, key, this.locale.ThisQuarter, 'thisquarter'),
+            this.renderQuickDateBtn(colIndex, key, this.locale.ThisYear, 'thisyear'),
+            this.renderQuickDateBtn(colIndex, key, this.locale.LastMonth, 'lastmonth'),
+            this.renderQuickDateBtn(colIndex, key, this.locale.LastYear, 'lastyear')
+        );
+
+        return Div().Render(fromRow, toRow, quickBtns);
+    }
+
+    private renderMonthYearFilter(colIndex: number, key: string, value: string): Node {
+        const fromId = `${this.tableId}-filter-${colIndex}-from`;
+        const toId = `${this.tableId}-filter-${colIndex}-to`;
+        const [from, to] = value.split(' - ');
+
+        const inputCls = 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500';
+
+        const fromRow = Div('flex items-center gap-2 mb-1.5').Render(
+            Label('text-xs text-gray-500 w-6').Text(this.locale.From),
+            Input(inputCls).Attr('type', 'month').ID(fromId).Attr('value', from || '')
+        );
+
+        const toRow = Div('flex items-center gap-2 mb-2').Render(
+            Label('text-xs text-gray-500 w-6').Text(this.locale.To),
+            Input(inputCls).Attr('type', 'month').ID(toId).Attr('value', to || '')
+        );
+
+        const quickBtns = Div('flex flex-wrap gap-1').Render(
+            this.renderQuickMonthBtn(colIndex, key, this.locale.ThisMonth, 'thismonth'),
+            this.renderQuickMonthBtn(colIndex, key, this.locale.ThisQuarter, 'thisquarter'),
+            this.renderQuickMonthBtn(colIndex, key, this.locale.ThisYear, 'thisyear'),
+            this.renderQuickMonthBtn(colIndex, key, this.locale.LastMonth, 'lastmonth'),
+            this.renderQuickMonthBtn(colIndex, key, this.locale.LastYear, 'lastyear')
+        );
+
+        return Div().Render(fromRow, toRow, quickBtns);
+    }
+
+    private renderNumberFilter(colIndex: number, key: string, value: string): Node {
+        const filterId = `${this.tableId}-filter-${colIndex}-op`;
+        const fromId = `${this.tableId}-filter-${colIndex}-from`;
+        const toId = `${this.tableId}-filter-${colIndex}-to`;
+
+        const opSelect = Select('block w-full mb-2 px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500')
+            .ID(filterId)
+            .Render(Option().Attr('value', 'range').Text(this.locale.Range))
+            .Render(Option().Attr('value', 'gte').Text(this.locale.GreaterOrEq))
+            .Render(Option().Attr('value', 'lte').Text(this.locale.LessOrEq))
+            .Render(Option().Attr('value', 'gt').Text(this.locale.GreaterThan))
+            .Render(Option().Attr('value', 'lt').Text(this.locale.LessThan))
+            .Render(Option().Attr('value', 'eq').Text(this.locale.NumEquals));
+
+        const inputCls = 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500';
+        const [from, to] = value.split(' - ');
+
+        const fromInput = INumber(inputCls)
+            .ID(fromId)
+            .Attr('placeholder', this.locale.From)
+            .Attr('value', from || '');
+
+        const toWrap = Div('flex gap-1.5')
+            .ID(`${this.tableId}-filter-${colIndex}-to-wrap`)
+            .Render(INumber(inputCls).ID(toId).Attr('placeholder', this.locale.To).Attr('value', to || ''));
+
+        opSelect.On('change', {
+            rawJS: `var isRange=this.value==='range';document.getElementById('${this.tableId}-filter-${colIndex}-to-wrap').style.display=isRange?'flex':'none';`
+        });
+
+        return Div().Render(opSelect, Div('flex flex-col gap-1.5').Render(fromInput, toWrap));
+    }
+
+    private renderSelectFilter(colIndex: number, key: string, options: { value: string; label: string }[], value: string): Node {
+        const select = Select('block w-full px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500')
+            .ID(`${this.tableId}-filter-${colIndex}-select`)
+            .Render(Option().Attr('value', '').Text('All'));
+
+        for (const opt of options) {
+            const o = Option().Attr('value', opt.value).Text(opt.label);
+            if (opt.value === value) o.Attr('selected', 'true');
+            select.Render(o);
+        }
+
+        return Div().Render(select);
+    }
+
+    private renderSelectFilterMulti(colIndex: number, key: string, options: { value: string; label: string }[], selectedValues: string[]): Node {
+        const items: Node[] = [];
+        for (const opt of options) {
+            const isChecked = selectedValues.includes(opt.value);
+            const item = Div('flex items-center gap-2 py-1').Render(
+                Input('w-4 h-4').Attr('type', 'checkbox').Attr('value', opt.value).Attr('checked', isChecked ? 'true' : '').ID(`${this.tableId}-filter-${colIndex}-opt-${opt.value}`),
+                Label('text-sm text-gray-700').Text(opt.label)
+            );
+            items.push(item);
+        }
+        return Div('flex flex-col').Render(...items);
+    }
+
+    private renderQuickDateBtn(colIndex: number, key: string, label: string, rangeType: string): Node {
+        return Btn('px-2 py-1 text-[10px] rounded-full border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer')
+            .Text(label)
+            .On('click', {
+                rawJS: `(function(){var d=new Date(),y=d.getFullYear(),m=d.getMonth(),day=d.getDate(),f,t;function fmt(dt){return dt.toISOString().slice(0,10)}switch('${rangeType}'){case 'today':f=t=fmt(d);break;case 'thisweek':var dow=d.getDay()||7;f=fmt(new Date(y,m,day-dow+1));t=fmt(new Date(y,m,day-dow+7));break;case 'thismonth':f=fmt(new Date(y,m,1));t=fmt(new Date(y,m+1,0));break;case 'thisquarter':var q=Math.floor(m/3)*3;f=fmt(new Date(y,q,1));t=fmt(new Date(y,q+3,0));break;case 'thisyear':f=fmt(new Date(y,0,1));t=fmt(new Date(y,11,31));break;case 'lastmonth':f=fmt(new Date(y,m-1,1));t=fmt(new Date(y,m,0));break;case 'lastyear':f=fmt(new Date(y-1,0,1));t=fmt(new Date(y-1,11,31));break;}document.getElementById('${this.tableId}-filter-${colIndex}-from').value=f;document.getElementById('${this.tableId}-filter-${colIndex}-to').value=t;})()`
+            });
+    }
+
+    private renderQuickMonthBtn(colIndex: number, key: string, label: string, rangeType: string): Node {
+        return Btn('px-2 py-1 text-[10px] rounded-full border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer')
+            .Text(label)
+            .On('click', {
+                rawJS: `(function(){var d=new Date(),y=d.getFullYear(),m=d.getMonth(),f,t;function fmt(yr,mo){return yr+'-'+String(mo).padStart(2,'0')}switch('${rangeType}'){case 'thismonth':f=t=fmt(y,m+1);break;case 'thisquarter':var q=Math.floor(m/3)*3;f=fmt(y,q+1);t=fmt(y,q+3);break;case 'thisyear':f=fmt(y,1);t=fmt(y,12);break;case 'lastmonth':var pm=m===0?12:m,py=m===0?y-1:y;f=t=fmt(py,pm);break;case 'lastyear':f=fmt(y-1,1);t=fmt(y-1,12);break;}document.getElementById('${this.tableId}-filter-${colIndex}-from').value=f;document.getElementById('${this.tableId}-filter-${colIndex}-to').value=t;})()`
+            });
+    }
+
+    private applyFilterJS(colIndex: number, key: string, popupId: string): string {
+        const col = this.columns[colIndex];
+        if (!col) return '';
+
+        let js = `event.stopPropagation();document.getElementById('${popupId}').style.display='none';`;
+
+        switch (col.filterType) {
+            case 'date':
+            case 'month-year':
+                js += `var f=document.getElementById('${this.tableId}-filter-${colIndex}-from').value;var t=document.getElementById('${this.tableId}-filter-${colIndex}-to').value;var val=f&&t?f+' - '+t:f||t;`;
+                break;
+            case 'number':
+                js += `var op=document.getElementById('${this.tableId}-filter-${colIndex}-op').value;var f=document.getElementById('${this.tableId}-filter-${colIndex}-from').value;var t=document.getElementById('${this.tableId}-filter-${colIndex}-to').value;var val=op==='range'?f+' - '+t:f;`;
+                break;
+            case 'select':
+                js += `var val=document.getElementById('${this.tableId}-filter-${colIndex}-select').value;`;
+                break;
+            default:
+                js += `var val=document.getElementById('${this.tableId}-filter-${colIndex}-val').value;`;
+        }
+
+        js += this.buildCallJSExpr({ setFilter: key }, { filterValue: 'val' }, true);
+        return js;
     }
 
     private buildActionData(overrides: Record<string, unknown>): ActionData {

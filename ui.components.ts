@@ -1,6 +1,6 @@
 import {
-    Node, Div, Span, Button as Btn, H3, H4, P, A, Label, Input, Select, Option,
-    El, Target, Action, ActionData, Notify, If, I,
+    Node, Div, Span, Button as Btn, H3, P, A, Input, Canvas, Button,
+    El, Target, Action, I,
 } from './ui';
 
 // --- 1. Accordion ---
@@ -333,30 +333,61 @@ export class Card {
 
 export function NewCard(): Card { return new Card(); }
 
-// --- 6. CaptchaV3 (reCAPTCHA v3) ---
+// --- 6. Captcha (Custom Math/Image-based, no Google) ---
 
-export class CaptchaV3 {
-    private siteKey = '';
-    private actionName = 'submit';
-    private fieldName = 'g-recaptcha-response';
+export class Captcha {
+    private inputName = 'captcha-response';
+    private inputId = '';
+    private canvasId = '';
+    private refreshId = '';
+    private containerId = '';
 
-    SiteKey(key: string): this { this.siteKey = key; return this; }
-    ActionName(name: string): this { this.actionName = name; return this; }
-    FieldName(name: string): this { this.fieldName = name; return this; }
+    FieldName(name: string): this { this.inputName = name; return this; }
 
     Build(): Node {
-        const id = Target();
-        return Div().ID(id).Render(
-            Input().Attr('type', 'hidden').Attr('name', this.fieldName).ID(id + '-token'),
-            El('script').Attr('src', `https://www.google.com/recaptcha/api.js?render=${this.siteKey}`),
-            El('script').JS(
-                `grecaptcha.ready(function(){grecaptcha.execute('${this.siteKey}',{action:'${this.actionName}'}).then(function(token){var el=document.getElementById('${id}-token');if(el)el.value=token;})});`
-            )
-        );
+        this.containerId = Target();
+        this.inputId = Target();
+        this.canvasId = Target();
+        this.refreshId = Target();
+
+        const js = `(function(){
+            var chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            function gen(len){var r='';for(var i=0;i<len;i++)r+=chars.charAt(Math.floor(Math.random()*chars.length));return r;}
+            var captcha={code:gen(6),canvasId:'${this.canvasId}',inputId:'${this.inputId}'};
+            function draw(){
+                var c=document.getElementById(captcha.canvasId);if(!c)return;
+                var ctx=c.getContext('2d');if(!ctx)return;
+                ctx.fillStyle='#f3f4f6';ctx.fillRect(0,0,c.width,c.height);
+                for(var i=0;i<6;i++){ctx.fillStyle='hsl('+Math.random()*360+',70%,50%)';ctx.font='bold 24px monospace';ctx.fillText(captcha.code[i],15+i*20,30+Math.random()*10-5);}
+                for(var i=0;i<5;i++){ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.beginPath();ctx.moveTo(Math.random()*c.width,Math.random()*c.height);ctx.lineTo(Math.random()*c.width,Math.random()*c.height);ctx.stroke();}
+            }
+            function refresh(){captcha.code=gen(6);draw();document.getElementById(captcha.inputId).value='';}
+            window.refreshCaptcha=refresh;
+            draw();
+        })();`;
+
+        return Div('flex items-center gap-3').ID(this.containerId).Render(
+            Div('relative').Render(
+                Canvas('border rounded-lg bg-gray-100').ID(this.canvasId).Attr('width', '150').Attr('height', '50'),
+            ),
+            Button('px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded transition-colors').ID(this.refreshId).Text('Refresh')
+                .On('click', { rawJS: `if(window.refreshCaptcha)window.refreshCaptcha();` }),
+            Input().Attr('type', 'hidden').Attr('name', this.inputName).ID(this.inputId),
+        ).JS(js);
+    }
+
+    Validate(userInput: string, callback: (valid: boolean) => void): Action {
+        return {
+            rawJS: `(function(){
+                var input=document.getElementById('${this.inputId}');
+                var valid=input&&input.value.toLowerCase()===('${userInput}').toLowerCase();
+                ${callback.toString().replace('function', '').replace('(valid)', '').replace('{', '(valid)=>{')}
+            })()`
+        };
     }
 }
 
-export function NewCaptchaV3(siteKey: string): CaptchaV3 { return new CaptchaV3().SiteKey(siteKey); }
+export function NewCaptcha(): Captcha { return new Captcha(); }
 
 // --- 7. Confirm Dialog ---
 
@@ -951,7 +982,7 @@ export const Skeleton = {
 // Default export
 export default {
     NewAccordion, NewAlert, NewBadge, NewButton, NewCard,
-    NewCaptchaV3, ConfirmDialog, NewDropdown,
+    NewCaptcha, ConfirmDialog, NewDropdown,
     Icon, IconText, Markdown, NewProgress, NewStepProgress,
     NewTabs, NewTooltip, ThemeSwitcher, Skeleton,
 };

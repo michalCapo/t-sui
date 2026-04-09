@@ -22,7 +22,7 @@ import append, { path as appendPath, title as appendTitle, APPEND_LIST_ID } from
 import clock, { path as clockPath, title as clockTitle } from "./pages/clock";
 import sharedPage, { path as sharedPath, title as sharedTitle } from "./pages/shared-page";
 import reloadRedirect, { path as reloadPath, title as reloadTitle } from "./pages/reload-redirect";
-import routes, { path as routesPath, title as routesTitle, ROUTES_OUTPUT_ID, handleRoutesUser, handleRoutesUserPost, handleRoutesProduct, handleRoutesSearch } from "./pages/routes";
+import routes, { path as routesPath, title as routesTitle, handleRoutesUser, handleRoutesUserPost, handleRoutesProduct, handleRoutesSearch } from "./pages/routes";
 import skeleton, { path as skeletonPath, title as skeletonTitle } from "./pages/skeleton";
 import counter, { path as counterPath, title as counterTitle, counterWidget } from "./pages/counter";
 import hello, { path as helloPath, title as helloTitle } from "./pages/hello";
