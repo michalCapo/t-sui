@@ -584,7 +584,7 @@ function renderHTML(input: { title: string; description?: string; favicon?: stri
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">',
         '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Round">',
-        '<script src="/__ws.js"></script>',
+        `<script>${clientScript()}</script>`,
         ...(input.head || []),
     ].filter(Boolean).join('');
 
@@ -679,16 +679,6 @@ setTimeout(connect,1500);
 };
 ws.onerror=function(){ws.close()};
 }
- globalThis.__nav=function(url){
- history.pushState(null,'',url);
- __ws.call('__nav',{url:url});
- };
- connect();
- window.addEventListener('popstate',function(){
-var msg=JSON.stringify({name:'__nav',data:{url:location.pathname+location.search}});
-showLoader();
-if(ready){ws.send(msg)}else{q.push(msg)}
-});
 globalThis.__ws={
 call:function(name,data,collect){
 var d=Object.assign({},data||{});
@@ -706,6 +696,12 @@ globalThis.__nav=function(url){
 history.pushState(null,'',url);
 __ws.call('__nav',{url:url});
 };
+connect();
+window.addEventListener('popstate',function(){
+var msg=JSON.stringify({name:'__nav',data:{url:location.pathname+location.search}});
+showLoader();
+if(ready){ws.send(msg)}else{q.push(msg)}
+});
 })();`;
 }
 

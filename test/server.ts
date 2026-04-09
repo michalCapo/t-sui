@@ -37,7 +37,7 @@ test('GET page serves minimal shell and mount JS', async () => {
         const res = await fetch(`${base}/`);
         const html = await res.text();
         assert.equal(res.status, 200);
-        assert.ok(html.includes('<script src="/__ws.js"></script>'));
+        assert.ok(html.includes('globalThis.__ws='));
         assert.ok(html.includes('document.body.appendChild('));
         assert.ok(html.includes('__content__'));
     });
