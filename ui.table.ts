@@ -615,17 +615,23 @@ export class DataTable<T> {
         const fromId = `${this.tableId}-filter-${colIndex}-from`;
         const toId = `${this.tableId}-filter-${colIndex}-to`;
 
+        // Parse stored value format "op:from - to" or "op:from"
+        const colonIdx = value.indexOf(':');
+        const savedOp = colonIdx >= 0 ? value.slice(0, colonIdx) : 'range';
+        const rest = colonIdx >= 0 ? value.slice(colonIdx + 1) : value;
+        const [from, to] = rest.split(' - ');
+
+        const ops = ['range', 'gte', 'lte', 'gt', 'lt', 'eq'] as const;
+        const opLabels = [this.locale.Range, this.locale.GreaterOrEq, this.locale.LessOrEq, this.locale.GreaterThan, this.locale.LessThan, this.locale.NumEquals];
         const opSelect = Select('block w-full mb-2 px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500')
-            .ID(filterId)
-            .Render(Option().Attr('value', 'range').Text(this.locale.Range))
-            .Render(Option().Attr('value', 'gte').Text(this.locale.GreaterOrEq))
-            .Render(Option().Attr('value', 'lte').Text(this.locale.LessOrEq))
-            .Render(Option().Attr('value', 'gt').Text(this.locale.GreaterThan))
-            .Render(Option().Attr('value', 'lt').Text(this.locale.LessThan))
-            .Render(Option().Attr('value', 'eq').Text(this.locale.NumEquals));
+            .ID(filterId);
+        for (let oi = 0; oi < ops.length; oi++) {
+            const opt = Option().Attr('value', ops[oi]).Text(opLabels[oi]);
+            if (ops[oi] === savedOp) opt.Attr('selected', 'true');
+            opSelect.Render(opt);
+        }
 
         const inputCls = 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500';
-        const [from, to] = value.split(' - ');
 
         const fromInput = INumber(inputCls)
             .ID(fromId)
@@ -635,6 +641,7 @@ export class DataTable<T> {
         const toWrap = Div('flex gap-1.5')
             .ID(`${this.tableId}-filter-${colIndex}-to-wrap`)
             .Render(INumber(inputCls).ID(toId).Attr('placeholder', this.locale.To).Attr('value', to || ''));
+        if (savedOp !== 'range') toWrap.Style('display', 'none');
 
         opSelect.On('change', {
             rawJS: `var isRange=this.value==='range';document.getElementById('${this.tableId}-filter-${colIndex}-to-wrap').style.display=isRange?'flex':'none';`
@@ -698,7 +705,7 @@ export class DataTable<T> {
                 js += `var f=document.getElementById('${this.tableId}-filter-${colIndex}-from').value;var t=document.getElementById('${this.tableId}-filter-${colIndex}-to').value;var val=f&&t?f+' - '+t:f||t;`;
                 break;
             case 'number':
-                js += `var op=document.getElementById('${this.tableId}-filter-${colIndex}-op').value;var f=document.getElementById('${this.tableId}-filter-${colIndex}-from').value;var t=document.getElementById('${this.tableId}-filter-${colIndex}-to').value;var val=op==='range'?f+' - '+t:f;`;
+                js += `var op=document.getElementById('${this.tableId}-filter-${colIndex}-op').value;var f=document.getElementById('${this.tableId}-filter-${colIndex}-from').value;var t=document.getElementById('${this.tableId}-filter-${colIndex}-to').value;var val=op+':'+(op==='range'?f+' - '+t:f);`;
                 break;
             case 'select':
                 js += `var val=document.getElementById('${this.tableId}-filter-${colIndex}-select').value;`;
@@ -768,6 +775,18 @@ export class DataTable<T> {
 /** Parse DataTable state from action body data */
 export function ParseDataTableState(data: Record<string, unknown>): DataTableState {
     const raw = (data.__dt_state || {}) as Record<string, unknown>;
+
+    // Reset: clear all filters, search, and sort
+    if (data.reset) {
+        return {
+            page: 1,
+            pageSize: Number(raw.pageSize || 10),
+            sortKey: '',
+            sortDir: 'asc',
+            filters: {},
+            search: '',
+        };
+    }
 
     // Start with __dt_state values, then apply top-level overrides for sort
     const sortKey = String(data.sortKey || raw.sortKey || '');

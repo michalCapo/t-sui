@@ -78,21 +78,37 @@ export function buildProductTable(state: DataTableState, products: Product[], to
         .Data(products, totalItems)
         .Page(state.page)
         .PageSize(pageSize)
+        .Sort(state.sortKey, state.sortDir)
         .Search(state.search)
         .Filters(state.filters)
-        .SortableColumn("id", "ID", function (item) { return String(item.id); })
-        .SortableColumn("name", "Name", function (item) { return item.name; })
-        .SortableColumn("price", "Price", function (item) { return "$" + item.price.toFixed(2); })
+        .FilterColumn("id", "ID", "number", undefined, function (item) { return String(item.id); })
+        .FilterColumn("name", "Name", "text", undefined, function (item) { return item.name; })
+        .FilterColumn("price", "Price", "number", undefined, function (item) { return "$" + item.price.toFixed(2); })
         .FilterColumn("stock", "Stock", "number")
         .FilterColumn("createdAt", "Created", "date")
-        .SortableColumn("category", "Category", function (item) { return item.category; })
-        .SortableColumn("status", "Status", function (item) { return statusBadge(item.status); })
-        .SortableColumn("releaseMonth", "Release", function (item) { return item.releaseMonth; })
+        .FilterColumn("category", "Category", "select", [
+            { value: "Electronics", label: "Electronics" },
+            { value: "Accessories", label: "Accessories" },
+            { value: "Office", label: "Office" },
+        ], function (item) { return item.category; })
+        .FilterColumn("status", "Status", "select", [
+            { value: "Draft", label: "Draft" },
+            { value: "Sent", label: "Sent" },
+            { value: "Paid", label: "Paid" },
+            { value: "Overdue", label: "Overdue" },
+        ], function (item) { return statusBadge(item.status); })
+        .FilterColumn("releaseMonth", "Release", "month-year", undefined, function (item) { return item.releaseMonth; })
         .Detail(function (item) { return productDetail(item); })
         .ExportExcel({ Name: "table.data", Data: { __operation: "export" } })
         .Class("bg-white dark:bg-gray-900 rounded-lg shadow border border-gray-200 dark:border-gray-800")
         .Build();
 }
+
+// Column filter type map (matches FilterColumn definitions)
+const columnFilterTypes: Record<string, string> = {
+    id: "number", name: "text", price: "number", stock: "number",
+    createdAt: "date", category: "select", status: "select", releaseMonth: "month-year",
+};
 
 // Filter + sort logic
 function filterProducts(search: string, state: DataTableState): Product[] {
@@ -108,9 +124,45 @@ function filterProducts(search: string, state: DataTableState): Product[] {
     for (const key of Object.keys(filters)) {
         const val = filters[key];
         if (!val) continue;
+        const ftype = columnFilterTypes[key] || "text";
         filtered = filtered.filter(function (p) {
             const record = p as unknown as Record<string, unknown>;
-            return String(record[key] || "").toLowerCase().includes(val.toLowerCase());
+            const fieldVal = record[key];
+            switch (ftype) {
+                case "number": {
+                    const num = Number(fieldVal);
+                    // Format: "op:from - to" or "op:from"
+                    const colonIdx = val.indexOf(":");
+                    const op = colonIdx >= 0 ? val.slice(0, colonIdx) : "range";
+                    const rest = colonIdx >= 0 ? val.slice(colonIdx + 1) : val;
+                    const parts = rest.split(" - ");
+                    const from = parts[0] ? Number(parts[0]) : NaN;
+                    const to = parts[1] ? Number(parts[1]) : NaN;
+                    switch (op) {
+                        case "range": return (!isNaN(from) ? num >= from : true) && (!isNaN(to) ? num <= to : true);
+                        case "gte": return !isNaN(from) ? num >= from : true;
+                        case "lte": return !isNaN(from) ? num <= from : true;
+                        case "gt": return !isNaN(from) ? num > from : true;
+                        case "lt": return !isNaN(from) ? num < from : true;
+                        case "eq": return !isNaN(from) ? num === from : true;
+                        default: return true;
+                    }
+                }
+                case "date":
+                case "month-year": {
+                    const dateVal = String(fieldVal || "");
+                    const parts = val.split(" - ");
+                    const from = parts[0] || "";
+                    const to = parts[1] || "";
+                    if (from && dateVal < from) return false;
+                    if (to && dateVal > to) return false;
+                    return true;
+                }
+                case "select":
+                    return String(fieldVal || "") === val;
+                default:
+                    return String(fieldVal || "").toLowerCase().includes(val.toLowerCase());
+            }
         });
     }
     return filtered;
