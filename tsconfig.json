@@ -17,6 +17,7 @@
     "ui.form.ts",
     "ui.table.ts",
     "ui.data.ts",
+    "ui.collate.ts",
     "ui.captcha.ts",
     "ui.protocol.ts",
     "ui.proxy.ts",
