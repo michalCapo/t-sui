@@ -1,6 +1,6 @@
 ---
 name: t-sui
-description: t-sui UI component API reference for HTML builders, form inputs, table helpers, and advanced components.
+description: t-sui UI component API reference for element constructors, input types, FormBuilder, and high-level components (Accordion, Alert, Badge, Card, Tabs, etc.).
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -8,115 +8,243 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 ## Example App
 
-- `examples/pages/form.ts` - form inputs and submit patterns
-- `examples/pages/comprehensive-form.ts` - broad input coverage
-- `examples/pages/showcase.ts` - component combinations in layouts
+- `examples/pages/form.ts` — form inputs and action patterns
+- `examples/pages/comprehensive-form.ts` — FormBuilder with many field types
+- `examples/pages/showcase.ts` — component combinations in layouts
+- `examples/pages/button.ts` — button presets and states
 
-## HTML builders (lowercase)
+## Element constructors (PascalCase)
 
-Use `ui.element(className?, attrs?)(children...)`.
-
-- `ui.div`, `ui.span`, `ui.p`, `ui.a`, `ui.i`
-- `ui.form`, `ui.label`, `ui.nav`
-- `ui.select`, `ui.option`, `ui.ul`, `ui.li`, `ui.canvas`
-- `ui.img`, `ui.input`
+All constructors take an optional `className` parameter:
 
 ```ts
-ui.div("flex gap-2", { id: "x" })(
-    ui.span("font-bold")("Label"),
-    ui.span("text-gray-500")("Value"),
+ui.Div("flex gap-2").ID("x").Render(
+    ui.Span("font-bold").Text("Label"),
+    ui.Span("text-gray-500").Text("Value"),
 );
 ```
+
+### Block elements
+
+`Div`, `Span`, `Button`, `H1`, `H2`, `H3`, `H4`, `H5`, `H6`, `P`, `A`, `Nav`, `Main`, `Header`, `Footer`, `Section`, `Article`, `Aside`, `Form`, `Pre`, `Code`, `Ul`, `Ol`, `Li`, `Label`, `Textarea`, `Select`, `Option`, `SVG`, `Table`, `Thead`, `Tbody`, `Tfoot`, `Tr`, `Th`, `Td`, `Caption`, `Colgroup`, `Details`, `Summary`, `Dialog`, `Strong`, `Em`, `Small`, `B`, `I`, `U`, `Sub`, `Sup`, `Mark`, `Abbr`, `Time`, `Blockquote`, `Figure`, `Figcaption`, `Dl`, `Dt`, `Dd`, `Video`, `Audio`, `Canvas`, `Iframe`, `ObjectEl`, `Picture`
+
+### Void elements
+
+`Img`, `Input`, `Br`, `Hr`, `Wbr`, `Link`, `Meta`, `Source`, `Embed`, `Col`
+
+### Input shorthand constructors
+
+Each creates an `Input` with the appropriate `type` attribute:
+
+`IText`, `IPassword`, `IEmail`, `IPhone`, `INumber`, `ISearch`, `IUrl`, `IDate`, `IMonth`, `ITime`, `IDatetime`, `IFile`, `ICheckbox`, `IRadio`, `IRange`, `IColor`, `IHidden`, `ISubmit`, `IReset`
+
+`IArea` creates a `Textarea` element.
 
 ## Buttons
 
 ```ts
-ui.Button()
-    .Color(ui.Blue)
-    .Size(ui.MD)
-    .Class("rounded")
-    .Click(ctx.Click(run).None())
-    .Render("Run");
+import { Blue, Red, Green, OutlineBlue } from "./ui.components";
+
+ui.Button(`px-4 py-2 rounded cursor-pointer ${Blue} text-sm`)
+    .Text("Save")
+    .OnClick({ Name: "form.save", Collect: ["name", "email"] });
 ```
 
-Methods:
+### Color presets (solid)
 
-- `.Color(preset)`, `.Size(preset)`, `.Class(...)`
-- `.Disabled(bool)`, `.If(bool)`
-- `.Submit()`, `.Reset()`, `.Href(url)`
-- `.Click(code)`, `.Form(formId)`, `.Render(text)`
+`Blue`, `Red`, `Green`, `Yellow`, `Purple`, `Gray`, `White`
 
-## Inputs
+### Color presets (outline)
 
-Available:
+`OutlineBlue`, `OutlineRed`, `OutlineGreen`, `OutlineYellow`, `OutlinePurple`, `OutlineGray`, `OutlineWhite`
 
-- `ui.IText`, `ui.IPassword`, `ui.IArea`
-- `ui.INumber`, `ui.IDate`, `ui.ITime`, `ui.IDateTime`
-- `ui.ISelect`, `ui.ICheckbox`, `ui.IRadio`, `ui.IRadioButtons`
-- `ui.Hidden(name, type, value)`
+## FormBuilder (`ui.form.ts`)
 
-Shared input methods:
-
-- `.Required()`, `.Disabled()`, `.Readonly()`
-- `.Placeholder(text)`, `.Pattern(regex)`, `.Autocomplete(value)`
-- `.Class(...)`, `.ClassLabel(...)`, `.ClassInput(...)`
-- `.Size(ui.XS|SM|MD|ST|LG|XL)`
-- `.Change(code)`, `.Click(code)`
-- `.Form(formId)`, `.If(bool)`, `.Error(bool)`, `.Render(label)`
-
-Type-specific:
-
-- `INumber.Numbers(min, max, step)`
-- `INumber.Format("%.2f")`
-- `IDate/ITime/IDateTime.Dates(minDate, maxDate)`
-- `IArea.Rows(n)`
-- `ISelect.Options([{ id, value }])`, `.Empty()`, `.EmptyText(text)`
-- `IRadio.Value(value)`
-- `IRadioButtons.Options([{ id, value }])`
-
-## Form class (`ui.Form`)
-
-Associates controls with one hidden form element.
+Declarative form builder that generates a Node tree with Collect-based submission:
 
 ```ts
-const f = new ui.Form(ctx.Submit(save).Replace(target));
+import { NewForm, ValidateForm } from "./ui.form";
 
-f.Render();
-f.Text("Name", model).Required().Render("Name");
-f.Date("Due", model).Render("Due date");
-f.Button().Submit().Color(ui.Blue).Render("Save");
+const form = NewForm("my-form")
+    .Title("Contact")
+    .Description("Fill in your details")
+    .Layout("vertical")
+    .OnSubmit({ Name: "contact.save" })
+    .SubmitText("Send")
+    .CancelText("Cancel");
+
+form.Text("name").Label("Name").Required().Placeholder("Your name");
+form.Email("email").Label("Email").Required();
+form.Number("age").Label("Age").Min("0").Max("120");
+form.TextArea("message").Label("Message").Rows(5);
+form.SelectField("topic").Label("Topic").Options(
+    { value: "bug", label: "Bug" },
+    { value: "feature", label: "Feature" },
+);
+form.Checkbox("agree").Label("I agree").Checked();
+form.Radio("priority").Label("Priority").Options(
+    { value: "low", label: "Low" },
+    { value: "high", label: "High" },
+).RadioButton();
+
+const node = form.Build();
 ```
 
-Methods:
+### FormBuilder methods
 
-- `Text`, `Password`, `Area`, `Number`, `Date`, `Time`, `DateTime`
-- `Select`, `Checkbox`, `Radio`, `RadioButtons`
-- `Button`, `Hidden`, `Render`
+- `.Title(text)`, `.Description(text)` — header section
+- `.Layout("vertical" | "horizontal" | "inline")` — field arrangement
+- `.Class(cls)` — wrapper CSS classes
+- `.OnSubmit(action)` — submit action (Collect is auto-populated)
+- `.OnCancel(action)` — cancel action (defaults to `history.back()`)
+- `.SubmitText(text)`, `.CancelText(text)` — button labels
+- `.Errors(errors)` — set field error messages
+- `.Fields()` — get all FieldBuilder instances for validation
 
-## Tables and helpers
+### Field types
 
-- `ui.SimpleTable(cols, className)` with `.Class(col, css)`, `.Field(value)`, `.Render()`
-- `ui.Map`, `ui.Map2`, `ui.For`, `ui.If`, `ui.Iff`
+`Text`, `Password`, `Email`, `Number`, `Tel`, `Url`, `Search`, `Date`, `Month`, `Time`, `DateTime`, `TextArea`, `SelectField`, `Checkbox`, `Radio`, `FileField`, `Range`, `Color`, `Hidden`
+
+### FieldBuilder methods
+
+- `.Label(text)`, `.Placeholder(text)`, `.Help(text)`
+- `.Required()`, `.Disabled()`, `.Readonly()`
+- `.Pattern(regex)`, `.MinLength(n)`, `.MaxLength(n)`
+- `.Min(value)`, `.Max(value)`, `.Step(value)`
+- `.Value(value)`, `.Checked()`
+- `.Rows(n)` — textarea rows
+- `.Accept(mime)`, `.Multiple()` — file inputs
+- `.Class(cls)` — input CSS
+- `.Validate(fn)` — custom validation function
+- `.Options(...opts)` — select/radio options (`{ value, label, disabled? }`)
+- `.RadioInline()`, `.RadioButton()`, `.RadioCard()` — radio variants
+
+### Server-side validation
+
+```ts
+const errors = ValidateForm("my-form", form.Fields(), data);
+// Returns { [fieldName]: errorMessage } for failing fields
+```
+
+Validates: required, minLength, maxLength, pattern, email format, custom validators.
+
+## Manual form patterns
+
+Without FormBuilder, build forms manually with Collect:
+
+```ts
+const formId = ui.Target();
+
+app.Action("save", function (ctx: Context) {
+    const data: Record<string, unknown> = {};
+    ctx.Body(data);
+    const name = String(data.name || "");
+    // ... process data
+    return ui.Notify("success", "Saved");
+});
+
+ui.Div("space-y-4").ID(formId).Render(
+    ui.Div("flex flex-col gap-1").Render(
+        ui.Label("text-sm font-medium").Text("Name"),
+        ui.IText("w-full px-3 py-2 border rounded").Attr("name", "name").ID("name"),
+    ),
+    ui.Button(`px-4 py-2 rounded ${Blue}`)
+        .Text("Save")
+        .OnClick({ Name: "save", Collect: ["name"] }),
+);
+```
+
+## High-level components (`ui.components.ts`)
+
+### Accordion
+
+```ts
+import { NewAccordion } from "./ui.components";
+
+NewAccordion()
+    .Bordered()     // or .Ghost() or .Separated()
+    .Multiple()     // allow multiple panels open
+    .Item("Title 1", contentNode1)
+    .Item("Title 2", contentNode2)
+    .Build()
+```
+
+### Alert
+
+```ts
+import { NewAlert } from "./ui.components";
+
+NewAlert("Something happened")
+    .Success()      // .Info(), .Warning(), .Error()
+    .Title("Note")
+    .Dismissible()
+    .Build()
+```
+
+### Badge
+
+```ts
+import { NewBadge } from "./ui.components";
+
+NewBadge("Active")
+    .Color("green")   // gray/red/green/blue/yellow/purple/pink/indigo
+    .Size("md")        // sm/md/lg
+    .Dot()
+    .Icon("check")
+    .Build()
+```
+
+### Card
+
+```ts
+import { NewCard } from "./ui.components";
+
+NewCard()
+    .Shadowed()     // or .Bordered(), .Flat(), .Glass()
+    .Hoverable()
+    .Header(headerNode)
+    .Body(bodyNode)
+    .Footer(footerNode)
+    .Image(url, alt)
+    .Build()
+```
+
+### Tabs
+
+```ts
+import { NewTabs } from "./ui.components";
+
+NewTabs()
+    .Underline()    // or .Pills(), .Boxed(), .Vertical()
+    .Tab("Tab 1", contentNode1)
+    .Tab("Tab 2", contentNode2)
+    .Build()
+```
+
+### Dropdown
+
+```ts
+import { NewDropdown } from "./ui.components";
+
+NewDropdown("Menu")
+    .Item("Edit", editAction)
+    .Item("Delete", deleteAction, true)  // danger
+    .Divider()
+    .Header("More")
+    .Build()
+```
+
+### Other components
+
+- `NewTooltip(text)` — with `.Position()`, `.Color()`, `.Delay()`
+- `NewProgress(value)` — with `.Gradient()`, `.Striped()`, `.Animated()`, `.Indeterminate()`
+- `NewStepProgress(current, total)` — step indicator
+- `NewConfirmDialog(title, message, action)` — overlay dialog
+- `Skeleton(type?)` — loader placeholders: `"table"`, `"cards"`, `"list"`, `"component"`, `"page"`, `"form"`
+- `ThemeSwitcher()` — System/Light/Dark toggle
+- `Icon(name)`, `IconWithLabel(name, text)` — Material Icons
 
 ## Visual utilities
 
-- Icons: `ui.Icon`, `ui.IconStart`, `ui.IconLeft`, `ui.IconRight`, `ui.IconEnd`
-- `ui.Flex1`, `ui.space`
-- Theme toggle: `ui.ThemeSwitcher()`
-- Timers: `ui.Interval`, `ui.Timeout`
-- Script helper: `ui.script("...")`
-
-## Additional components
-
-- `ui.Alert()`
-- `ui.Badge()`
-- `ui.Card()` plus variants (`ui.CardBordered`, `ui.CardShadowed`, `ui.CardFlat`, `ui.CardGlass`)
-- `ui.ProgressBar()`, `ui.StepProgress(current, total)`
-- `ui.Tooltip()`
-- `ui.Tabs()` with style constants (`ui.TabsStylePills`, `ui.TabsStyleUnderline`, `ui.TabsStyleBoxed`, `ui.TabsStyleVertical`)
-- `ui.Accordion()` with variants (`ui.AccordionBordered`, `ui.AccordionGhost`, `ui.AccordionSeparated`)
-- `ui.Dropdown()`
-
-## Accessibility
-
-Core controls include ARIA attributes (labels, required/invalid/disabled state, semantic roles where appropriate).
+- `ui.If(cond, node)`, `ui.Or(cond, yes, no)`, `ui.Map(items, fn)`
+- `ui.Target()` — generate unique ID string

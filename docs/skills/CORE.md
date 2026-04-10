@@ -1,6 +1,6 @@
 ---
 name: t-sui
-description: Core t-sui concepts: Context, Targets, actions, patching, navigation, and state flow.
+description: Core t-sui concepts: Node class, actions, DOM swap strategies, ResponseBuilder, JS helpers, and real-time push.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -8,112 +8,175 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 ## Example App
 
-- `examples/app.ts` - route map and layout setup
-- `examples/pages/` - concrete action and target examples
-- `examples/tests/` - behavior verification
+- `examples/app.ts` — route map and layout setup
+- `examples/pages/counter.ts` — action with data payload and replace
+- `examples/pages/append.ts` — append/prepend swap strategies
+- `examples/pages/clock.ts` — client-side JS attached to a node
+- `examples/pages/hello.ts` — simple notification actions
 
 ## Rendering model
 
-- Handlers return HTML strings.
-- `app.Page(path, title, handler)` handles HTTP route rendering.
-- Client events call actions and patch targets over WebSocket.
+- Page handlers return `Node` objects.
+- `Node.ToJS()` compiles to `document.createElement()` calls — no HTML intermediate.
+- SVG elements use `document.createElementNS()` with proper namespace handling.
+- The browser receives a minimal HTML shell with a `<script>` tag containing the compiled JS.
+- Client events call server actions over WebSocket; responses are JS strings executed via `new Function()`.
 
-## Context
+## Node class
 
-Common `Context` methods:
-
-- `ctx.Body(obj)` - parse submitted values into typed object
-- `ctx.PathParam(name)` - path params from route pattern
-- `ctx.QueryParam(name)` - first query value
-- `ctx.QueryParams(name)` - all query values
-- `ctx.AllQueryParams()` - full query map
-- `ctx.Load(path)` - smooth navigation onclick attr
-- `ctx.Redirect(path)` - push redirect operation
-- `ctx.Reload()` - push reload operation
-- `ctx.Title(text)` - update document title
-- `ctx.Success/Error/Info/ErrorReload(msg)` - notifications
-- `ctx.Patch(targetSwap, html)` - patch a target
-
-## Targets
+The `Node` class is the core building block. Created via PascalCase constructors:
 
 ```ts
-const target = ui.Target();
+import ui from "./ui";
 
-ui.div("", target)("Initial");
-
-ctx.Patch(target.Render, "inner html");
-ctx.Patch(target.Replace, ui.div("", target)("new node"));
-ctx.Patch(target.Append, ui.div()("append"));
-ctx.Patch(target.Prepend, ui.div()("prepend"));
+const node = ui.Div("flex gap-2").ID("my-div").Render(
+    ui.Span("font-bold").Text("Hello"),
+    ui.Span("text-gray-500").Text("World"),
+);
 ```
 
-Skeleton helpers:
+### Node methods
 
-- `target.Skeleton()`
-- `target.Skeleton("list" | "component" | "page" | "form")`
+- `.ID(id)` — set element ID
+- `.Class(cls)` — append CSS classes
+- `.Text(text)` — set textContent (XSS-safe)
+- `.Attr(key, value)` — set HTML attribute
+- `.Style(key, value)` — set inline style
+- `.Render(...children)` — append child Nodes (skips null/undefined/false)
+- `.OnClick(action)` — attach click event
+- `.OnSubmit(action)` — attach submit event
+- `.On(event, action)` — attach any event
+- `.JS(code)` — post-render JS (runs with `this` = the element)
+
+## DOM swap strategies
+
+```ts
+const id = ui.Target();  // random string ID like "t-a1b2c3d4e5f6"
+
+// Append to document.body (initial page render)
+node.ToJS();
+
+// Replace element by ID
+updatedNode.ID(id).ToJSReplace(id);
+
+// Append child to parent by ID
+newChild.ToJSAppend(parentId);
+
+// Prepend child to parent by ID
+newChild.ToJSPrepend(parentId);
+
+// Replace innerHTML of target by ID
+contentNode.ToJSInner(targetId);
+```
 
 ## Actions
+
+Actions are objects sent to the server via WebSocket:
+
+```ts
+interface Action {
+    Name?: string;       // action name registered with app.Action()
+    Data?: object;       // payload
+    Collect?: string[];  // element IDs to collect values from
+    rawJS?: string;      // inline JS (client-side only)
+}
+```
 
 ### Registering handlers
 
 ```ts
-function save(ctx: Context): string {
-    return ui.div()("ok");
-}
-save.url = "/save";
-
-// or app.Action("/save", save)
+app.Action("counter.inc", function (ctx: Context) {
+    const data = { id: "", count: 0 };
+    ctx.Body(data);
+    return counterWidget(data.id, data.count + 1).ToJSReplace(data.id);
+});
 ```
 
-### Submit actions
+### Attaching to elements
 
 ```ts
-ui.form("", target, ctx.Submit(save).Replace(target))(
-    ui.Button().Submit().Render("Save"),
-);
+// Named action with data
+ui.Button("...").Text("+1").OnClick({ Name: "counter.inc", Data: { id, count } });
+
+// Named action with field collection
+ui.Button("...").Text("Save").OnClick({ Name: "form.save", Collect: ["name", "email"] });
+
+// Inline JavaScript
+ui.Button("...").Text("Back").OnClick(ui.JS("history.back()"));
 ```
 
-### Click actions
+### Field collection (Collect)
+
+When `Collect` is specified, the client reads values from elements by their IDs and merges them into the action's data. This enables form-like behavior without `<form>` elements:
+
+- Checkboxes: collected as `true`/`false`
+- Radios: collected as the checked radio's value
+- Other inputs: collected as string value
+
+## ResponseBuilder
+
+For multi-action responses:
 
 ```ts
-ui.Button().Click(ctx.Click(save).Render(target)).Render("Run");
+return ui.NewResponse()
+    .Replace("row-" + id, updatedRow)
+    .Append("list", newItem)
+    .Prepend("list", newItem)
+    .Inner("details", content)
+    .Remove("temp")
+    .Toast("success", "Done")
+    .Navigate("/items")
+    .Redirect("/login")
+    .Back()
+    .SetTitle("New Title")
+    .JS("console.log('done')")
+    .Build();
 ```
 
-Use `ctx.Click(...)`. `ctx.Call(...)` is a deprecated alias.
+## JS Helpers
 
-Swap methods available on `Submit`, `Click`, and `Send`:
-
-- `Render(target)`
-- `Replace(target)`
-- `Append(target)`
-- `Prepend(target)`
-- `None()`
-
-## Passing payloads
+Standalone functions returning JS strings:
 
 ```ts
-ui.Button()
-    .Click(ctx.Click(increment, { Count: 1 }).Replace(target))
-    .Render("+");
-
-function increment(ctx: Context): string {
-    const model = { Count: 0 };
-    ctx.Body(model);
-    model.Count += 1;
-    return ui.div()(String(model.Count));
-}
+ui.Notify("success", "Saved")        // toast notification
+ui.Redirect("/login")                 // window.location.href redirect
+ui.SetLocation("/items")              // history.pushState (no reload)
+ui.SetTitle("Page Title")             // update document.title
+ui.RemoveEl("temp-id")               // remove element
+ui.SetText("count", "42")            // set textContent
+ui.SetAttr("link", "href", "/new")   // set attribute
+ui.AddClass("box", "hidden")         // add CSS class
+ui.RemoveClass("box", "hidden")      // remove CSS class
+ui.Show("box")                       // remove "hidden" class
+ui.Hide("box")                       // add "hidden" class
+ui.Download("file.pdf", "application/pdf", base64) // trigger download
+ui.DragToScroll("table-wrapper")     // enable drag-to-scroll
 ```
 
-## Deferred and Real-Time
+`ui.Back()` returns an Action (not a string): `{ rawJS: "history.back()" }`
+
+## Conditional rendering
 
 ```ts
-function clock(ctx: Context): string {
-    const target = ui.Target();
-    const stop = ui.Interval(1000, function () {
-        ctx.Patch(target.Replace, ui.div("", target)(new Date().toLocaleTimeString()), stop);
-    });
-    return ui.div("", target)(new Date().toLocaleTimeString());
-}
+ui.If(condition, node)     // node or undefined
+ui.Or(condition, yes, no)  // yes or no
+ui.Map(items, fn)          // items mapped to Node[] (skips null)
 ```
 
-Use `ui.Timeout` / `ui.Interval` for async patches and timed updates.
+## Real-time push
+
+```ts
+// Push to current WebSocket client
+ctx.Push(ui.SetText("clock", new Date().toLocaleTimeString()));
+
+// Broadcast to all connected clients
+app.Broadcast(ui.Notify("info", "Server restarted"));
+```
+
+## Context helpers
+
+- `ctx.Body(obj)` — parse action data into typed object
+- `ctx.Success(msg)` / `ctx.Error(msg)` / `ctx.Info(msg)` — queue toast
+- `ctx.JS(code)` — queue arbitrary JS
+- `ctx.Build(result)` — prepend queued extras to result string
+- `ctx.Push(js)` — send JS to current WebSocket client

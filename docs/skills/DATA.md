@@ -1,38 +1,179 @@
 ---
 name: t-sui
-description: t-sui data collation reference (`ui.data.ts`) for search, sort, filters, pagination, and rendering.
+description: t-sui data components reference — SimpleTable, DataTable, Collate data panel, and data helpers (NormalizeForSearch, filter constants).
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
-# t-sui Data Collation
+# t-sui Data Components
 
 ## Example App
 
-- `examples/pages/collate.ts` - primary collate usage
-- `examples/pages/collate-empty.ts` - empty-state handling
-- `examples/tests/collate.test.ts` - collate behavior checks
+- `examples/pages/table.ts` — DataTable with search, sort, pagination, filters
+- `examples/pages/collate.ts` — Collate data panel usage
+- `examples/pages/collate-empty.ts` — empty-state handling
 
-`ui.data.ts` provides a reusable collation model for list UIs.
+## SimpleTable (`ui.table.ts`)
 
-## Imports
+Quick table builder for static data:
 
 ```ts
-import {
-    createCollate,
-    NormalizeForSearch,
-    TField,
-    TQuery,
-    BOOL,
-    NOT_ZERO_DATE,
-    ZERO_DATE,
-    DATES,
-    SELECT,
-} from "./ui.data";
+import { NewSimpleTable } from "./ui.table";
+
+NewSimpleTable(3)
+    .Headers("Name", "Role", "City")
+    .Row("Alice", "Admin", "Prague")
+    .Row("Bob", ui.Span("font-bold").Text("User"), "Berlin")
+    .Striped()
+    .Hoverable()
+    .Bordered()
+    .Compact()
+    .Class("my-table")
+    .Build()
 ```
 
-## Types
+Cells can be strings or `Node` objects.
 
-`TQuery`:
+## DataTable (`ui.table.ts`)
+
+Generic data table with server-driven interactions. All interactions (search, sort, pagination, filters, export) are handled via WebSocket actions.
+
+### DataTable features
+
+- Debounced search input
+- Click-to-sort column headers with direction indicators
+- Pagination with page range and ellipsis
+- Per-column filters: text, date, number, select, month-year
+- Column visibility toggle
+- Row detail expansion (accordion)
+- Excel and PDF export
+- Customizable locale
+- Responsive with horizontal scroll
+
+### DataTable locale
+
+```ts
+interface DataTableLocale {
+    Search: string;
+    Apply: string;
+    Cancel: string;
+    Reset: string;
+    Excel: string;
+    PDF: string;
+    LoadMore: string;
+    NoData: string;
+    From: string;
+    To: string;
+    Today: string;
+    ThisWeek: string;
+    ThisMonth: string;
+    ThisQuarter: string;
+    ThisYear: string;
+    LastMonth: string;
+    LastYear: string;
+}
+```
+
+## Collate (`ui.collate.ts`)
+
+Card/list-style data component with slide-out filter/sort panel.
+
+### Collate locale
+
+```ts
+interface CollateLocale {
+    From: string; To: string;
+    Today: string; ThisWeek: string; ThisMonth: string;
+    ThisQuarter: string; ThisYear: string;
+    LastMonth: string; LastYear: string;
+    Search: string; Apply: string; Reset: string;
+    Excel: string; PDF: string; Filter: string;
+    LoadMore: string; NoData: string; AllOption: string;
+    FiltersAndSorting: string; Filters: string; SortBy: string;
+    ItemCount: (showing: number, total: number) => string;
+}
+```
+
+### Collate types
+
+```ts
+interface CollateSortField {
+    Field: string;
+    Label: string;
+}
+
+interface CollateFilterField {
+    Field: string;
+    Label: string;
+    Type: CollateFilterType;  // 0=Bool, 1=DateRange, 2=Select, 3=MultiCheck
+    Options?: CollateOption[];
+}
+
+interface CollateOption {
+    Value: string;
+    Label: string;
+}
+```
+
+### Filter type constants
+
+```ts
+const CollateBool: CollateFilterType = 0;
+const CollateDateRange: CollateFilterType = 1;
+const CollateSelect: CollateFilterType = 2;
+const CollateMultiCheck: CollateFilterType = 3;
+```
+
+### Collate data request
+
+The collate component sends this payload to the server action:
+
+```ts
+interface CollateDataRequest {
+    operation: string;  // "search", "filter", "reset", "loadmore", "export", "export-pdf"
+    search: string;
+    page: number;
+    limit: number;
+    order: string;
+    filters: CollateFilterValue[];
+}
+
+interface CollateFilterValue {
+    field: string;
+    type: string;   // "bool", "date", "select"
+    bool?: boolean;
+    from?: string;
+    to?: string;
+    value?: string;
+}
+```
+
+## Data helpers (`ui.data.ts`)
+
+### NormalizeForSearch
+
+Accent-insensitive search normalization:
+
+```ts
+import { NormalizeForSearch } from "./ui.data";
+
+NormalizeForSearch("Příliš žluťoučký")  // "prilis zlutoucky"
+```
+
+Converts to lowercase and replaces accented characters (Czech, Slovak, German, French, Polish, etc.) with ASCII equivalents.
+
+### Filter constants
+
+```ts
+import { BOOL, NOT_ZERO_DATE, ZERO_DATE, DATES, SELECT } from "./ui.data";
+
+BOOL = 0
+NOT_ZERO_DATE = 1
+ZERO_DATE = 2
+DATES = 3
+SELECT = 4
+```
+
+### TQuery and TField types
 
 ```ts
 interface TQuery {
@@ -43,11 +184,7 @@ interface TQuery {
     Search: string;
     Filter: TField[];
 }
-```
 
-`TField`:
-
-```ts
 interface TField {
     DB: string;
     Field: string;
@@ -61,71 +198,8 @@ interface TField {
 }
 ```
 
-Filter constants:
-
-- `BOOL = 0`
-- `NOT_ZERO_DATE = 1`
-- `ZERO_DATE = 2`
-- `DATES = 3`
-- `SELECT = 4`
-
-## Basic usage
-
-```ts
-const init: TQuery = {
-    Limit: 10,
-    Offset: 0,
-    Order: "name asc",
-    PendingOrder: "",
-    Search: "",
-    Filter: [],
-};
-
-const collate = createCollate<User>(init, async function (query) {
-    const data = await loadUsers(query);
-    return {
-        total: data.total,
-        filtered: data.filtered,
-        data: data.items,
-    };
-});
-
-collate
-    .setSearch(searchFields)
-    .setSort(sortFields)
-    .setFilter(filterFields)
-    .Row(function (item, index) {
-        return ui.div("p-2 border-b")(item.name);
-    });
-
-return collate.Render(ctx);
-```
-
-## Collate API
-
-- `.setSearch(fields)`
-- `.setSort(fields)`
-- `.setFilter(fields)`
-- `.setExcel(fields)`
-- `.setColor(colors)`
-- `.Row(renderFn)`
-- `.Empty(renderFn)`
-- `.EmptyIcon(iconName)`
-- `.EmptyText(text)`
-- `.EmptyAction(text, handler)`
-- `.Export(exporter)`
-- `.Render(ctx)`
-
-## Color presets
-
-- `CollateBlue`
-- `CollateGreen`
-- `CollatePurple`
-- `CollateRed`
-- `CollateYellow`
-- `CollateGray`
-
 ## Notes
 
-- Use `NormalizeForSearch` when implementing backend-side accent-insensitive matching.
-- Keep loader deterministic: honor `Limit`, `Offset`, `Order`, `Search`, and `Filter`.
+- All data component interactions are action-based — they send WebSocket messages to named handlers.
+- Use `NormalizeForSearch` for server-side accent-insensitive matching.
+- DataTable and Collate support Excel (via `xlsx` library) and PDF (via `jspdf`/`jspdf-autotable`) export.
