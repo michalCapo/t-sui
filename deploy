@@ -1,21 +1,16 @@
 #!/bin/bash
 
 # Deploy script for t-sui
-# Creates and pushes a new git tag in vX.Y.Z format.
+# Bumps version, creates a git tag, builds a tarball, and creates a GitHub release.
 
 set -euo pipefail
 
-REPO_PATH="github.com/michalCapo/t-sui"
-
-if ! command -v npm >/dev/null 2>&1; then
-    echo "Error: npm is required but not installed."
-    exit 1
-fi
-
-if ! command -v node >/dev/null 2>&1; then
-    echo "Error: node is required but not installed."
-    exit 1
-fi
+for cmd in npm node gh; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: $cmd is required but not installed."
+        exit 1
+    fi
+done
 
 # Check if working tree is clean
 if ! git diff-index --quiet HEAD --; then
@@ -55,29 +50,49 @@ if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
     exit 1
 fi
 
+# Update version in package.json
+SEMVER="${NEW_VERSION#v}"
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+pkg.version = '$SEMVER';
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+"
+echo "Updated package.json version to $SEMVER"
+
 echo "Running type check..."
 npm run check
 
 echo "Running tests..."
 npm test
 
+# Build tarball
+TARBALL="t-sui-${SEMVER}.tgz"
+echo "Building tarball..."
+npm pack 2>/dev/null
+echo "Tarball created: $TARBALL"
+
+# Commit version bump
+git add package.json
+git commit -m "release $NEW_VERSION"
+
 echo "Creating tag $NEW_VERSION..."
 git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
 
-echo "Pushing tag $NEW_VERSION to origin..."
-git push origin "$NEW_VERSION"
+echo "Pushing to origin..."
+git push origin "$CURRENT_BRANCH" --follow-tags
 
-echo "Ensuring current branch is pushed..."
-git push origin "$CURRENT_BRANCH" --follow-tags || true
+# Create GitHub release with tarball attached
+echo "Creating GitHub release..."
+gh release create "$NEW_VERSION" "$TARBALL" \
+    --title "$NEW_VERSION" \
+    --notes "Install: \`npm install https://github.com/michalCapo/t-sui/releases/download/$NEW_VERSION/$TARBALL\`"
+
+# Clean up local tarball
+rm -f "$TARBALL"
 
 echo ""
-echo "✓ Successfully deployed $NEW_VERSION"
-echo "  Tag created and pushed to origin"
+echo "Successfully deployed $NEW_VERSION"
 echo ""
-echo "Install from GitHub tag:"
-echo "  npm install github:michalCapo/t-sui#$NEW_VERSION"
-echo ""
-echo "Next steps:"
-echo "  - Create a GitHub release: https://github.com/michalCapo/t-sui/releases/new"
-echo "  - Select tag: $NEW_VERSION"
-echo "  - Verify dependency usage in downstream projects"
+echo "Install:"
+echo "  npm install https://github.com/michalCapo/t-sui/releases/download/$NEW_VERSION/$TARBALL"

@@ -1,0 +1,16 @@
+# Only ship framework source files
+examples/
+test/
+test-routes.ts
+docs/
+.idea/
+.vscode/
+.claude/
+.features/
+.zed/
+tmp/
+build/
+dist/
+deploy
+.gitignore
+tsconfig.json

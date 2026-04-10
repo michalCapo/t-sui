@@ -1,7 +1,17 @@
 {
   "name": "t-sui",
   "version": "0.1.0",
-  "private": true,
+  "exports": {
+    "./ui": "./ui.ts",
+    "./ui.server": "./ui.server.ts",
+    "./ui.components": "./ui.components.ts",
+    "./ui.form": "./ui.form.ts",
+    "./ui.table": "./ui.table.ts",
+    "./ui.collate": "./ui.collate.ts",
+    "./ui.data": "./ui.data.ts",
+    "./ui.protocol": "./ui.protocol.ts",
+    "./ui.proxy": "./ui.proxy.ts"
+  },
   "scripts": {
     "check": "tsc --noEmit",
     "dev": "node --import tsx examples/main.ts",

@@ -11,21 +11,34 @@ t-sui renders UI on the server as JavaScript strings. The browser receives raw J
 
 ## Install
 
-Clone the repository and install dependencies:
+From a specific release (recommended):
 
 ```bash
-git clone <repo-url>
-cd t-sui
-npm install
+npm install https://github.com/michalCapo/t-sui/releases/download/v0.1.0/t-sui-0.1.0.tgz
 ```
 
-Requires Node.js 18+ or Bun 1.0+.
+Or latest from git:
+
+```bash
+npm install github:michalCapo/t-sui
+```
+
+Then import:
+
+```typescript
+import ui from "t-sui/ui";
+import { MakeApp, type Context } from "t-sui/ui.server";
+import { NewForm } from "t-sui/ui.form";
+import components from "t-sui/ui.components";
+```
+
+Requires Node.js 18+ with [tsx](https://github.com/privatenumber/tsx) for TypeScript execution.
 
 ## Quick Start
 
 ```typescript
-import ui from "./ui";
-import { MakeApp, type Context } from "./ui.server";
+import ui from "t-sui/ui";
+import { MakeApp, type Context } from "t-sui/ui.server";
 
 const app = MakeApp("en");
 
@@ -362,7 +375,7 @@ npm test
 
 ## Deploy
 
-Use the deploy script to create annotated git tags:
+The deploy script bumps the version, runs checks/tests, creates a git tag, and publishes a GitHub release with the installable tarball:
 
 ```bash
 ./deploy
