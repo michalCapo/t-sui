@@ -877,12 +877,12 @@ export function ThemeSwitcher(extraClass = ''): Node {
         `var modes=['system','light','dark'];` +
         `var icons={system:'brightness_auto',light:'light_mode',dark:'dark_mode'};` +
         `var labels={system:'Auto',light:'Light',dark:'Dark'};` +
-        `function upd(){var m=localStorage.getItem('tsui-theme')||'system';icon.textContent=icons[m]||icons.system;lbl.textContent=labels[m]||labels.system}` +
+        `function apply(m){var d=document.documentElement;if(m==='dark'){d.classList.add('dark')}else if(m==='light'){d.classList.remove('dark')}else{if(window.matchMedia('(prefers-color-scheme:dark)').matches){d.classList.add('dark')}else{d.classList.remove('dark')}}}` +
+        `function upd(){var m=localStorage.getItem('tsui-theme')||'system';icon.textContent=icons[m]||icons.system;lbl.textContent=labels[m]||labels.system;apply(m)}` +
         `btn.addEventListener('click',function(){` +
         `var cur=localStorage.getItem('tsui-theme')||'system';` +
         `var idx=(modes.indexOf(cur)+1)%3;` +
-        `var m=modes[idx];localStorage.setItem('tsui-theme',m);` +
-        `var d=document.documentElement;if(m==='dark'){d.classList.add('dark')}else if(m==='light'){d.classList.remove('dark')}else{if(window.matchMedia('(prefers-color-scheme:dark)').matches){d.classList.add('dark')}else{d.classList.remove('dark')}}` +
+        `var m=modes[idx];localStorage.setItem('tsui-theme',m);apply(m);` +
         `upd()});` +
         `upd();` +
         `window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){upd()});` +

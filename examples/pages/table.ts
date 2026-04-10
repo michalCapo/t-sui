@@ -59,15 +59,22 @@ function statusBadge(status: string): Node {
 }
 
 function productDetail(p: Product): Node {
-    const labelCls = "text-[11px] font-semibold text-blue-600/70 dark:text-blue-400/70 uppercase tracking-wider";
-    const valueCls = "text-[15px] font-bold text-gray-900 dark:text-gray-100 mt-0.5";
-    return ui.Div("grid grid-cols-3 gap-x-10 gap-y-5 py-1").Render(
-        ui.Div("flex flex-col").Render(ui.Span(labelCls).Text("Product ID"), ui.Span(valueCls).Text("#" + String(p.id).padStart(4, "0"))),
-        ui.Div("flex flex-col").Render(ui.Span(labelCls).Text("Price"), ui.Span(valueCls).Text("$" + p.price.toFixed(2))),
-        ui.Div("flex flex-col").Render(ui.Span(labelCls).Text("Category"), ui.Span(valueCls).Text(p.category)),
-        ui.Div("flex flex-col").Render(ui.Span(labelCls).Text("Stock"), ui.Span(valueCls).Text(String(p.stock) + " units")),
-        ui.Div("flex flex-col").Render(ui.Span(labelCls).Text("Created"), ui.Span(valueCls).Text(p.createdAt)),
-        ui.Div("flex flex-col").Render(ui.Span(labelCls).Text("Status"), ui.Span("text-[15px] font-bold mt-0.5 " + (p.status === "Paid" ? "text-green-600 dark:text-green-400" : p.status === "Overdue" ? "text-red-500 dark:text-red-400" : "text-gray-900 dark:text-gray-100")).Text(p.status)),
+    function field(label: string, value: string): Node {
+        return ui.Div("flex gap-2").Render(
+            ui.Span("text-gray-500 dark:text-gray-400 font-medium min-w-[80px]").Text(label + ":"),
+            ui.Span("text-gray-800 dark:text-gray-200").Text(value),
+        );
+    }
+    return ui.Div("grid grid-cols-2 gap-3 text-sm").Render(
+        field("ID", String(p.id)),
+        field("Name", p.name),
+        field("Price", "$" + p.price.toFixed(2)),
+        field("Stock", p.stock + " units"),
+        field("Created", p.createdAt),
+        field("Category", p.category),
+        field("Status", p.status),
+        field("Release", p.releaseMonth),
+        field("Value", "$" + (p.price * p.stock).toFixed(2)),
     );
 }
 
@@ -100,7 +107,7 @@ export function buildProductTable(state: DataTableState, products: Product[], to
         .FilterColumn("releaseMonth", "Release", "month-year", undefined, function (item) { return item.releaseMonth; })
         .Detail(function (item) { return productDetail(item); })
         .ExportExcel({ Name: "table.data", Data: { __operation: "export" } })
-        .Class("bg-white dark:bg-gray-900 rounded-lg shadow border border-gray-200 dark:border-gray-800")
+        .Class("bg-white dark:bg-gray-900 rounded-lg shadow border border-gray-200 dark:border-gray-800 p-4")
         .Build();
 }
 

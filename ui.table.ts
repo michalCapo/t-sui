@@ -305,9 +305,6 @@ export class DataTable<T> {
         // Header
         const thead = Thead('bg-gray-50');
         const headerRow = Tr();
-        if (this.detailRender) {
-            headerRow.Render(Th('w-10 p-2 border-b border-gray-200'));
-        }
         for (let i = 0; i < this.columns.length; i++) {
             const col = this.columns[i];
             const thCls = `text-left font-semibold p-2 border-b border-gray-200 text-gray-700 text-xs uppercase tracking-wider relative${col.sortable || col.filterable ? ' cursor-pointer select-none' : ''}`;
@@ -369,6 +366,9 @@ export class DataTable<T> {
 
             headerRow.Render(thNode);
         }
+        if (this.detailRender) {
+            headerRow.Render(Th('w-10 p-2 border-b border-gray-200'));
+        }
         thead.Render(headerRow);
         table.Render(thead);
 
@@ -394,18 +394,24 @@ export class DataTable<T> {
 
                 const tr = Tr(trCls.trim());
 
-                // Expand button for detail
+                // Make row clickable if detail is present
                 if (this.detailRender) {
                     const detailId = `${this.tableId}-detail-${i}`;
-                    tr.Render(
-                        Td('p-2 border-b border-gray-100 text-center w-10').Render(
-                            Btn('text-gray-400 hover:text-gray-600')
-                                .On('click', {
-                                    rawJS: `(function(){var d=document.getElementById('${detailId}');if(!d)return;var open=d.style.display!=='none';d.style.display=open?'none':'table-row';var icon=this.querySelector('.mdi');if(icon){icon.classList.toggle('mdi-chevron-right',open);icon.classList.toggle('mdi-chevron-down',!open);}})();`
-                                })
-                                .Render(Span('mdi mdi-chevron-right'))
-                        )
-                    );
+                    tr.Style('cursor', 'pointer');
+                    tr.On('click', {
+                        rawJS: `(function(){` +
+                            `var d=document.getElementById('${detailId}');` +
+                            `var inner=d.querySelector('.dt-detail-inner');` +
+                            `if(d.style.display==='none'||!d.style.display){` +
+                            `d.style.display='table-row';inner.style.maxHeight=inner.scrollHeight+'px';inner.style.opacity='1';` +
+                            `d.previousElementSibling.classList.add('dt-row-expanded')` +
+                            `}else{` +
+                            `inner.style.maxHeight='0';inner.style.opacity='0';` +
+                            `d.previousElementSibling.classList.remove('dt-row-expanded');` +
+                            `setTimeout(function(){d.style.display='none'},200)` +
+                            `}` +
+                            `})()`
+                    });
                 }
 
                 for (const col of this.columns) {
@@ -423,15 +429,30 @@ export class DataTable<T> {
                     tr.Render(td);
                 }
 
+                // Chevron indicator cell (last column)
+                if (this.detailRender) {
+                    const chevron = Span('text-base leading-none text-gray-400 dark:text-gray-500 transition-transform duration-200')
+                        .Style('font-family', 'Material Icons Round')
+                        .Text('expand_more');
+                    tr.Render(
+                        Td('p-2 border-b border-gray-100 text-center w-10').Render(chevron)
+                    );
+                }
+
                 tbody.Render(tr);
 
                 // Detail row
                 if (this.detailRender) {
                     const detailRow = Tr().ID(`${this.tableId}-detail-${i}`).Style('display', 'none');
                     detailRow.Render(
-                        Td('p-4 bg-gray-50 border-b border-gray-200')
+                        Td('p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700')
                             .Attr('colspan', String(this.columns.length + 1))
-                            .Render(this.detailRender(item))
+                            .Render(
+                                Div('dt-detail-inner overflow-hidden transition-all duration-200 ease-in-out')
+                                    .Style('max-height', '0')
+                                    .Style('opacity', '0')
+                                    .Render(this.detailRender(item))
+                            )
                     );
                     tbody.Render(detailRow);
                 }
