@@ -582,6 +582,7 @@ function renderHTML(input: { title: string; description?: string; favicon?: stri
         input.description ? `<meta name="description" content="${escapeHTML(input.description)}">` : '',
         input.favicon ? `<link rel="icon" href="${escapeHTML(input.favicon)}">` : '',
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
+        '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>',
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">',
         '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Round">',
         `<script>${clientScript()}</script>`,
