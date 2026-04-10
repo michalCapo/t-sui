@@ -11,7 +11,11 @@ t-sui renders UI on the server as JavaScript strings. The browser receives raw J
 
 ## Install
 
+Clone the repository and install dependencies:
+
 ```bash
+git clone <repo-url>
+cd t-sui
 npm install
 ```
 
