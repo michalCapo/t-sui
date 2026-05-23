@@ -20,7 +20,6 @@
     "ui.collate.ts",
     "ui.captcha.ts",
     "ui.protocol.ts",
-    "ui.proxy.ts",
     "examples/**/*.ts",
     "test/tests.ts",
     "test/server.ts"

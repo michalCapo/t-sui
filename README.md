@@ -80,7 +80,6 @@ ActionHandler → JS string          ←→ WebSocket (__ws)
 | `ui.collate.ts` | Collate data panel with filter/sort/search slide-out panel |
 | `ui.data.ts` | Data querying helpers, NormalizeForSearch, filter constants |
 | `ui.protocol.ts` | WebSocket protocol type definitions |
-| `ui.proxy.ts` | HTTP/WS proxy server utilities |
 
 ## Node API
 
@@ -333,16 +332,6 @@ table.Locale({ Search: "Hledat...", Apply: "Pouzit", NoData: "Zadna data" });
 
 // Collate
 collate.Locale({ Filter: "Filtr", Reset: "Obnovit", SortBy: "Radit dle" });
-```
-
-## Proxy (`ui.proxy.ts`)
-
-HTTP/WebSocket reverse proxy for development:
-
-```typescript
-import { startProxyServer, stopProxyServer, getProxyStatus } from "./ui.proxy";
-
-await startProxyServer({ ProxyPort: "8080", TargetHost: "localhost", TargetPort: "1423" });
 ```
 
 ## Security

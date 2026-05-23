@@ -1,6 +1,6 @@
 ---
 name: t-sui
-description: t-sui server setup, routing, layouts, SPA navigation, WebSocket actions, Context API, sessions, proxy, and static assets.
+description: t-sui server setup, routing, layouts, SPA navigation, WebSocket actions, Context API, sessions, and static assets.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -229,21 +229,3 @@ The client script (~120 lines) provides:
 - Accessible via `ctx.Session`
 - Session ID created on first request
 
-## Proxy (`ui.proxy.ts`)
-
-HTTP/WebSocket reverse proxy for development:
-
-```ts
-import { startProxyServer, stopProxyServer, getProxyStatus } from "./ui.proxy";
-
-await startProxyServer({
-    ProxyPort: "8080",
-    TargetHost: "localhost",
-    TargetPort: "1423",
-});
-
-const status = getProxyStatus();
-await stopProxyServer();
-```
-
-Forwards all HTTP and WebSocket traffic. Rewrites port references in HTML/CSS/JS/JSON responses.

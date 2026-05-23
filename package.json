@@ -9,8 +9,7 @@
     "./ui.table": "./ui.table.ts",
     "./ui.collate": "./ui.collate.ts",
     "./ui.data": "./ui.data.ts",
-    "./ui.protocol": "./ui.protocol.ts",
-    "./ui.proxy": "./ui.proxy.ts"
+    "./ui.protocol": "./ui.protocol.ts"
   },
   "scripts": {
     "check": "tsc --noEmit",

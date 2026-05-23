@@ -266,10 +266,11 @@ export class DataTable<T> {
                 if (!val) continue;
                 const col = this.columns.find(function (c) { return c.key === key; });
                 const label = col ? col.header : key;
+                const display = col ? this.formatBadgeValue(col, val) : val;
                 toolbar.Render(
                     Div('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-gray-100 text-gray-700').Render(
                         Span().Text(`${label}: `),
-                        Span('font-medium').Text(val),
+                        Span('font-medium').Text(display),
                         Btn('ml-1 text-gray-400 hover:text-gray-600 focus:outline-none text-base leading-none')
                             .Attr('type', 'button')
                             .OnClick({ Name: this.actionName, Data: this.buildActionData({ removeFilter: key }) })
@@ -712,6 +713,50 @@ export class DataTable<T> {
             .On('click', {
                 rawJS: `(function(){var d=new Date(),y=d.getFullYear(),m=d.getMonth(),f,t;function fmt(yr,mo){return yr+'-'+String(mo).padStart(2,'0')}switch('${rangeType}'){case 'thismonth':f=t=fmt(y,m+1);break;case 'thisquarter':var q=Math.floor(m/3)*3;f=fmt(y,q+1);t=fmt(y,q+3);break;case 'thisyear':f=fmt(y,1);t=fmt(y,12);break;case 'lastmonth':var pm=m===0?12:m,py=m===0?y-1:y;f=t=fmt(py,pm);break;case 'lastyear':f=fmt(y-1,1);t=fmt(y-1,12);break;}document.getElementById('${this.tableId}-filter-${colIndex}-from').value=f;document.getElementById('${this.tableId}-filter-${colIndex}-to').value=t;})()`
             });
+    }
+
+    private formatBadgeValue(col: ColumnDef<T>, rawValue: string): string {
+        if (!rawValue) return rawValue;
+        switch (col.filterType) {
+            case 'date':
+            case 'month-year': {
+                const parts = rawValue.split(' - ');
+                if (parts.length === 2) {
+                    const from = parts[0].trim();
+                    const to = parts[1].trim();
+                    if (from && to) return `${from} – ${to}`;
+                    return from || to;
+                }
+                return rawValue;
+            }
+            case 'number': {
+                const idx = rawValue.indexOf(':');
+                if (idx < 0) return rawValue;
+                const op = rawValue.slice(0, idx);
+                const rest = rawValue.slice(idx + 1);
+                switch (op) {
+                    case 'range': {
+                        const parts = rest.split(' - ');
+                        if (parts.length === 2) {
+                            const from = parts[0].trim();
+                            const to = parts[1].trim();
+                            if (from && to) return `${from} – ${to}`;
+                            return from || to;
+                        }
+                        return rest;
+                    }
+                    case 'gt': return `> ${rest}`;
+                    case 'lt': return `< ${rest}`;
+                    case 'gte': return `≥ ${rest}`;
+                    case 'lte': return `≤ ${rest}`;
+                    case 'eq': return `= ${rest}`;
+                    default: return rest;
+                }
+            }
+            case 'select':
+            default:
+                return rawValue;
+        }
     }
 
     private applyFilterJS(colIndex: number, key: string, popupId: string): string {

@@ -38,7 +38,6 @@ Reference for the current t-sui API.
 - `ui.collate.ts` — Collate data panel with filters and sorting
 - `ui.data.ts` — Data querying helpers, NormalizeForSearch, filter constants
 - `ui.protocol.ts` — WebSocket protocol type definitions
-- `ui.proxy.ts` — HTTP/WS reverse proxy
 - `examples/` — runnable example app and tests
 - `examples/app.ts` — shared example app configuration and route registration
 - `examples/main.ts` — local development entrypoint
@@ -416,25 +415,13 @@ Filter constants: `BOOL = 0`, `NOT_ZERO_DATE = 1`, `ZERO_DATE = 2`, `DATES = 3`,
 
 `NormalizeForSearch(input)` — accent-insensitive lowercased string for search matching.
 
-## 16) Proxy (`ui.proxy.ts`)
-
-```ts
-import { startProxyServer, stopProxyServer, getProxyStatus } from "./ui.proxy";
-
-await startProxyServer({ ProxyPort: "8080", TargetHost: "localhost", TargetPort: "1423" });
-const status = getProxyStatus();
-await stopProxyServer();
-```
-
-Forwards HTTP and WebSocket connections. Rewrites port references in HTML/CSS/JS responses.
-
-## 17) Runtime
+## 16) Runtime
 
 - Node.js: `npm run dev` or `node --import tsx examples/main.ts`
 - Tests: `npm test`
 - Type check: `npm run check`
 
-## 18) Skill Docs
+## 17) Skill Docs
 
 For LLM assistants, keep these files synchronized with API changes:
 

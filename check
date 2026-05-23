@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "error: '$1' is not installed or is not on PATH" >&2
+    exit 127
+  fi
+}
+
+run() {
+  echo "+ $*"
+  "$@"
+}
+
+require_command node
+require_command npx
+
+run npx --no-install tsc --noEmit
+
+# ts-prune surfaces exports with no external usage. Most of the ui*.ts surface
+# is public API used only by library consumers, so this is advisory: it prints
+# candidates for cleanup without failing the script. The "(used in module)"
+# marker is filtered out (internal-only is legitimate).
+echo "+ npx ts-prune -p tsconfig.json -i 'examples/|test/'"
+npx --yes ts-prune -p tsconfig.json -i 'examples/|test/' \
+  | grep -v '(used in module)' || true

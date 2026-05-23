@@ -146,10 +146,5 @@ test.it('Example App - Page Tests', function (ctx: TestContext) {
             await ctx.page.goto(ctx.baseUrl + '/deferred');
             await ctx.page.waitForSelector('text=Deferred');
         });
-
-        it('should load proxy page', async function () {
-            await ctx.page.goto(ctx.baseUrl + '/proxy');
-            await ctx.page.waitForSelector('text=Proxy');
-        });
     });
 });

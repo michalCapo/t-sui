@@ -1,7 +1,9 @@
-import ui, { type Node } from "../../ui";
+import ui, { type Node, Download } from "../../ui";
 import { Blue, Green } from "../../ui.components";
 import { NewSimpleTable, NewDataTable, ParseDataTableState, type DataTableState } from "../../ui.table";
 import type { Context } from "../../ui.server";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export const path = "/table";
 export const title = "Table";
@@ -107,6 +109,7 @@ export function buildProductTable(state: DataTableState, products: Product[], to
         .FilterColumn("releaseMonth", "Release", "month-year", undefined, function (item) { return item.releaseMonth; })
         .Detail(function (item) { return productDetail(item); })
         .ExportExcel({ Name: "table.data", Data: { __operation: "export" } })
+        .ExportPdf({ Name: "table.data", Data: { __operation: "export-pdf" } })
         .Class("bg-white dark:bg-gray-900 rounded-lg shadow border border-gray-200 dark:border-gray-800 p-4")
         .Build();
 }
@@ -188,6 +191,43 @@ function sortProducts(products: Product[], sortKey: string, sortDir: string): Pr
     });
 }
 
+function exportProductsPDF(products: Product[]): string {
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+
+    pdf.setFontSize(16);
+    pdf.text("Products", pdf.internal.pageSize.getWidth() / 2, 15, { align: "center" });
+
+    const headers = ["ID", "Name", "Price", "Stock", "Created", "Category", "Status", "Release"];
+    const rows = products.map(function (p) {
+        return [
+            String(p.id),
+            p.name,
+            "$" + p.price.toFixed(2),
+            String(p.stock),
+            p.createdAt,
+            p.category,
+            p.status,
+            p.releaseMonth,
+        ];
+    });
+
+    autoTable(pdf, {
+        head: [headers],
+        body: rows,
+        startY: 22,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+        columnStyles: {
+            0: { halign: "right" },
+            2: { halign: "right" },
+            3: { halign: "right" },
+        },
+    });
+
+    const b64 = Buffer.from(pdf.output("arraybuffer")).toString("base64");
+    return Download("products.pdf", "application/pdf", b64);
+}
+
 export function handleTableData(ctx: Context): string {
     const body: Record<string, unknown> = {};
     ctx.Body(body);
@@ -201,6 +241,10 @@ export function handleTableData(ctx: Context): string {
 
     const totalItems = filtered.length;
     const pageSize = state.pageSize;
+
+    if (operation === "export-pdf") {
+        return exportProductsPDF(filtered);
+    }
 
     // CSV export
     if (operation === "export") {

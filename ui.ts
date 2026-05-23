@@ -22,15 +22,6 @@ export function JS(code: string): Action {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const SVG_TAGS = new Set([
-    "svg", "g", "path", "circle", "ellipse", "line", "polyline", "polygon", "rect", "text",
-    "tspan", "defs", "symbol", "use", "image", "clipPath", "mask", "pattern", "linearGradient",
-    "radialGradient", "stop", "filter", "feBlend", "feColorMatrix", "feComponentTransfer",
-    "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap", "feFlood",
-    "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset",
-    "feSpecularLighting", "feTile", "feTurbulence", "marker", "title", "desc", "metadata",
-    "foreignObject", "switch", "a", "animate", "animateMotion", "animateTransform", "set", "textPath",
-]);
 
 function escJS(value: string): string {
     return String(value)
@@ -149,7 +140,7 @@ export class Node {
 
     private compile(state: { counter: number; post: string[]; js: string }, inSVG: boolean): string {
         const varName = `e${state.counter++}`;
-        const useSVGNS = inSVG || SVG_TAGS.has(this.tag);
+        const useSVGNS = inSVG || this.tag === "svg";
 
         if (useSVGNS) {
             state.js += `var ${varName}=document.createElementNS('${SVG_NS}','${escJS(this.tag)}');`;
