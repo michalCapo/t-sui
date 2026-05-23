@@ -18,7 +18,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 - Page handlers return `Node` objects.
 - `Node.ToJS()` compiles to `document.createElement()` calls — no HTML intermediate.
-- SVG elements use `document.createElementNS()` with proper namespace handling.
+- SVG elements use `document.createElementNS()`: the SVG namespace is opened by an actual `<svg>` root element and inherited by all descendants. Elements outside `<svg>` (including names shared with SVG like `<a>`, `<title>`, `<text>`) always use the HTML namespace.
 - The browser receives a minimal HTML shell with a `<script>` tag containing the compiled JS.
 - Client events call server actions over WebSocket; responses are JS strings executed via `new Function()`.
 

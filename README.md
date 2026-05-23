@@ -2,7 +2,7 @@
 
 TypeScript server-rendered UI framework with real-time WebSocket updates.
 
-t-sui renders UI on the server as JavaScript strings. The browser receives raw JS that performs `document.createElement()` calls directly — no HTML templates, no JSON intermediate, no client-side framework. SVG elements use `document.createElementNS()` with proper namespace handling. User interactions trigger server actions via WebSocket, which respond with JS strings for DOM mutations.
+t-sui renders UI on the server as JavaScript strings. The browser receives raw JS that performs `document.createElement()` calls directly — no HTML templates, no JSON intermediate, no client-side framework. SVG elements use `document.createElementNS()`: the SVG namespace is opened by an actual `<svg>` root element and inherited by all descendants, while elements outside `<svg>` (including names shared with SVG like `<a>`, `<title>`, `<text>`) always use the HTML namespace. User interactions trigger server actions via WebSocket, which respond with JS strings for DOM mutations.
 
 ## Documentation
 
@@ -360,6 +360,14 @@ The example app includes 23+ pages demonstrating components, forms, tables, data
 
 ```bash
 npm test
+```
+
+## Check
+
+`./check` runs `tsc --noEmit` (gate, must pass) followed by `ts-prune` (advisory; prints unused exports but never fails the script). Requires `node` and `npx`.
+
+```bash
+./check
 ```
 
 ## Deploy

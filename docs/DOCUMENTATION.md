@@ -23,7 +23,7 @@ Reference for the current t-sui API.
 
 - UI is generated on the server as `Node` objects that compile to JavaScript strings.
 - `Node.ToJS()` produces `document.createElement()` calls — no HTML intermediate.
-- SVG elements use `document.createElementNS()` with proper namespace handling.
+- SVG elements use `document.createElementNS()`: the SVG namespace is opened by an actual `<svg>` root element and inherited by all descendants. Elements outside `<svg>` (including names shared with SVG like `<a>`, `<title>`, `<text>`) always use the HTML namespace.
 - Interactions (clicks, form submits) send action payloads over WebSocket.
 - DOM updates use five swap strategies targeting elements by ID.
 - Pages are served over HTTP as minimal HTML shells with embedded `<script>` tags.
@@ -420,6 +420,7 @@ Filter constants: `BOOL = 0`, `NOT_ZERO_DATE = 1`, `ZERO_DATE = 2`, `DATES = 3`,
 - Node.js: `npm run dev` or `node --import tsx examples/main.ts`
 - Tests: `npm test`
 - Type check: `npm run check`
+- `./check` — runs `tsc --noEmit` (gate, must pass) followed by `ts-prune` (advisory, never fails). Requires `node` and `npx`.
 
 ## 17) Skill Docs
 

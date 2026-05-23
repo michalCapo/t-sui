@@ -49,6 +49,8 @@ Generic data table with server-driven interactions. All interactions (search, so
 - Customizable locale
 - Responsive with horizontal scroll
 
+Active filter badges display human-friendly values: range-style filters use an en-dash (e.g. `5 – 10`, `2024-01-01 – 2024-06-30`); number-operator filters use mathematical symbols (`>`, `<`, `≥`, `≤`, `=`).
+
 ### DataTable locale
 
 ```ts
